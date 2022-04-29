@@ -10,8 +10,7 @@ LndhubX is a reimplementation of [LndHub](https://github.com/BlueWallet/LndHub) 
 📒 Use of **double entry accounting** to ensure a transparent and fault tolerant accounting trail.
  
 💶 Support of **synthetic fiat accounts** and payments by integrating directly with Kollider.
- 
- 
+
 ### Overview
 The project consists of 3 microservices.
  
@@ -22,7 +21,7 @@ A simple REST api that allows users to interface with the bank. The api is state
 The bank is the central ledger of the project. It keeps track of account balances, transactions and connects to the lightning node.
  
 #### Dealer
-The dealer is an OTC desk that works on the behalf of the bank to hedge the bank's fiat exposure. We implemented an RFQ system between the Dealer and the Bank in order for the bank to quote users with an up to date exchange prior to them making a transaction.
+The dealer is an OTC desk that works on the behalf of the bank to hedge the bank's fiat exposure. We implemented an RFQ system between the Dealer and the Bank in order for the dealer to manage risk levels as well as for the user to see an exchange rate before making a currency swap.
 
 Currently supported fiat currencies:
 - [x] USD 💵
@@ -34,27 +33,33 @@ Currently supported fiat currencies:
  
 ### Known issues
 - No integration tests.
-- Blocking on making a lightning payment.
+- Blocking on making a lightning payment. Which allows anyone to ddos the bank with a Hodl invoice.
 ---
 ### TODO
 - Add spread configuration to the dealer RFQ system to charge users for currency conversions.
+- Insurance fund for the dealer. 
 - Add more parameters to the Dealer to improve its strategy.
-- Add a fee model to the bank so the bank can charge transaction fees on top of the network fees.
-- Add lnurl auth. For users as well as the Dealer to login over lnurl auth rather than API Keys.
 - No prevention or monitoring of fee ransom attacks.
 - Add logging
 - API rate limiting
+- Add a fee model to the bank so the bank can charge transaction fees on top of the network fees.
+- Add lnurl auth. For users as well as the Dealer to login over lnurl auth rather than API Keys.
 - Admin dashboard to manage accounts.
 ---
  
 ### How to run PROD
-The easiest way to launch the project is by copying your `tls.cert` and `admin.macaroon` files to the `config` dir, then running the starter script.
+The easiest way to launch the project is by copying your `tls.cert` and `admin.macaroon` files to the `config` dir
 ```
 cp /path/to/tls.cert config/
 cp /path/to/admin.macaroon config/
+```
+in the root directory. After you set all necessary config variables in the `lndhubx.prod.toml` file you can launch lndhubx by running
+
+```
 ./start.sh
 ```
-in the root directory. This wraps docker-compose and will bring up the DB, create the database if needed, and start up the services.
+This wraps docker-compose and will bring up the DB, create the database if needed, and start up the services.
+
 ### How to run DEV
 Each microservice can be run individually
  
@@ -63,12 +68,15 @@ ENV=dev FILE_NAME=lndhubx cargo run --bin api
 ENV=dev FILE_NAME=lndhubx cargo run --bin dealer
 ENV=dev FILE_NAME=lndhubx cargo run --bin bank
 ```
+-----------
  
 ### Tests
 To run the test you can run
 ```
 cargo test
 ```
+------
+
  
 ### Configuration
  
@@ -80,6 +88,16 @@ cargo test
 `kollider_api_key` = Your Kollider api key. <br>
 `kollider_api_secret` = Your Kollider secret. <br>
 `kollider_api_passphrase` = Your Kollider passphrase. <br>
+
+
+##### Dealer config
+It's optional to run the dealer and if you don't specify your API keys in the `lndhubx.prod.toml` then the service will simply exit. In order to get api keys you have to first register on [Kollider](https://pro.kollider.xyz). Then navigate to https://pro.kollider.xyz/dashboard/developer. Ther you can generate a fresh set of API keys. Make sure you select the `Trade` `View` and `Transfer` permissions, otherwise the Dealer won't be able to perform its magic.
+
+ --------
  
 ### Synthetic Fiat Accounts
 LndhubX natively supports synthetic fiat accounts if it is run with the Dealer service. This is achieved by hedging the banks fiat exposure through taking a short position in an inversely price perpetual swap. If you want to learn more about how this exactly works we published a blog post on this [here]().
+
+### 🚧 🚨 **Under construction** 🚨🚧
+ The project is for demo purposes at the moment but PR's to improve it are welcome! 
+ 
