@@ -19,6 +19,11 @@ node_url = "<lnd-node-url>"
 bank_push_address = "tcp://127.0.0.1:5557"
 bank_pull_address = "tcp://127.0.0.1:5558"
 
+[risk_tolerances]
+USD = 100
+EUR = 100
+GBP = 100
+
 kollider_ws_url = "<kollider-ws-url>"
 kollider_api_key = "<kollider-api-key>"
 kollider_api_secret = "<kollider-api-secret>"

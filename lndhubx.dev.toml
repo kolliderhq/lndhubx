@@ -19,6 +19,11 @@ node_url = "http://lnd.staging.kollider.internal:10009"
 dealer_bank_push_address = "tcp://10.11.0.4:5557"
 dealer_bank_pull_address = "tcp://10.11.0.5:5558"
 
+[risk_tolerances]
+USD = 100
+EUR = 100
+GBP = 100
+
 kollider_ws_url = "ws://api.staging.kollider.internal/v1/ws/"
 kollider_api_key = "redacted"
 kollider_api_secret = "redacted"
