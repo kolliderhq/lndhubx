@@ -21,8 +21,8 @@ pub struct RegisterData {
     pub password: String,
 }
 
-#[post("/register")]
-pub async fn register(pool: WebDbPool, register_data: Json<RegisterData>) -> Result<HttpResponse, ApiError> {
+#[post("/create")]
+pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Result<HttpResponse, ApiError> {
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
     let username = match &register_data.username {
@@ -57,8 +57,8 @@ pub struct LoginData {
     pub password: String,
 }
 
-#[post("/login")]
-pub async fn login(pool: WebDbPool, login_data: Json<LoginData>) -> Result<HttpResponse, ApiError> {
+#[post("/auth")]
+pub async fn auth(pool: WebDbPool, login_data: Json<LoginData>) -> Result<HttpResponse, ApiError> {
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
     let user = match User::get_by_username(&conn, login_data.username.clone()) {
