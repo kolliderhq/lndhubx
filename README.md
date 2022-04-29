@@ -91,7 +91,7 @@ cargo test
 
 
 ##### Dealer config
-It's optional to run the dealer and if you don't specify your API keys in the `lndhubx.prod.toml` then the service will simply exit. In order to get api keys you have to first register on [Kollider](https://pro.kollider.xyz). Then navigate to https://pro.kollider.xyz/dashboard/developer. Ther you can generate a fresh set of API keys. Make sure you select the `Trade` `View` and `Transfer` permissions, otherwise the Dealer won't be able to perform its magic.
+It's optional to run the dealer and if you don't specify your API keys in the `lndhubx.prod.toml` then the service will simply exit. In order to get api keys you have to first register on [Kollider](https://pro.kollider.xyz). Then navigate to https://pro.kollider.xyz/dashboard/developer, where you can generate a fresh set of API keys. Make sure you select the `Trade` `View` and `Transfer` permissions, otherwise the Dealer won't be able to do its magic.
 
  --------
  
