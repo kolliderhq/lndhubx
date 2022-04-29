@@ -1,0 +1,34 @@
+[package]
+name = "lnd_connector"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+uuid = { version = "0.8", features = ["serde", "v4"] }
+
+serde = { version = "1.0.92", features = ["derive"] }
+rust_decimal_macros = { version = "1.12.3" }
+rust_decimal= { version = "1.12.3" }
+crossbeam-channel = "0.5"
+tokio = { version = "1.17.0", features = ["full"] }
+hex = "0.4"
+
+[dependencies.msgs]
+path = "../msgs"
+
+[dependencies.xerror]
+path = "../xerror"
+
+[dependencies.utils]
+path = "../utils"
+
+[dependencies.core_types]
+path = "../core_types"
+
+[dependencies.models]
+path = "../models"
+
+[dependencies.tonic_lnd]
+path = "../tonic_lnd"

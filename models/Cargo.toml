@@ -1,0 +1,24 @@
+[package]
+name = "models"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+diesel = { version = "1.4.5", features = ["postgres", "uuidv07", "numeric"] }
+base64 = "0.12.1"
+serde = { version = "1.0.110", features = ["derive"] }
+serde_json = "1.0.53"
+ring = "*"
+diesel_migrations = "1.4.0"
+cfg-if = "0.1.10"
+err-derive = "0.2.4"
+futures = "0.3.5"
+
+uuid = { version = "0.8.1", features = ["v4", "serde"   ] }
+bigdecimal = { version = "0.1.2", features = ["serde"]}
+
+rust_decimal_macros = { version = "1.12.3" }
+rust_decimal= { version = "1.12.3", features=["serde-str"] }
+chrono = "0.4"

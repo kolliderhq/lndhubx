@@ -1,0 +1,15 @@
+[package]
+name = "core_types"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0.92", features = ["derive"] }
+rust_decimal = { version = "1.12.3" }
+rust_decimal_macros = { version = "1.12.3" }
+uuid = { version = "0.8", features = ["serde", "v4"] }
+
+r2d2 = "0.8.8"
+diesel = { version = "1.4.2", features = ["postgres","uuidv07", "r2d2", "chrono"] }
