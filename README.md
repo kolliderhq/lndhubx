@@ -1,0 +1,87 @@
+# 🏦 LndHubX ⚡
+ 
+##### A lightning bank with fiat accounts
+LndhubX is a reimplementation of [LndHub](https://github.com/BlueWallet/LndHub) originally created by [BlueWallet](https://bluewallet.io/). This project is meant to be an improvement as well as an enhancement of the original one. The focus lies on the following areas:
+ 
+🦀 Use of a **strongly type programming language (Rust)** to ensure type safety and performance.
+ 
+💾 Use of a **scalable relational database** to persist account data and transactional data (PSQL)
+ 
+📒 Use of **double entry accounting** to ensure a transparent and fault tolerant accounting trail.
+ 
+💶 Support of **synthetic fiat accounts** and payments by integrating directly with Kollider.
+ 
+ 
+### Overview
+The project consists of 3 microservices.
+ 
+#### Api
+A simple REST api that allows users to interface with the bank. The api is stateless and uses JWT tokens for authentication.
+ 
+#### Bank
+The bank is the central ledger of the project. It keeps track of account balances, transactions and connects to the lightning node.
+ 
+#### Dealer
+The dealer is an OTC desk that works on the behalf of the bank to hedge the bank's fiat exposure. We implemented an RFQ system between the Dealer and the Bank in order for the bank to quote users with an up to date exchange prior to them making a transaction.
+
+Currently supported fiat currencies:
+- [x] USD 💵
+- [ ] EUR 💶
+- [ ] GBP 💷
+- [ ] ?
+ 
+---
+ 
+### Known issues
+- No integration tests.
+- Blocking on making a lightning payment.
+---
+### TODO
+- Add spread configuration to the dealer RFQ system to charge users for currency conversions.
+- Add more parameters to the Dealer to improve its strategy.
+- Add a fee model to the bank so the bank can charge transaction fees on top of the network fees.
+- Add lnurl auth. For users as well as the Dealer to login over lnurl auth rather than API Keys.
+- No prevention or monitoring of fee ransom attacks.
+- Add logging
+- API rate limiting
+- Admin dashboard to manage accounts.
+---
+ 
+### How to run PROD
+The easiest way to launch the project is by copying your `tls.cert` and `admin.macaroon` files to the `config` dir, then running the starter script.
+```
+cp /path/to/tls.cert config/
+cp /path/to/admin.macaroon config/
+./start.sh
+```
+in the root directory. This wraps docker-compose and will bring up the DB, create the database if needed, and start up the services.
+### How to run DEV
+Each microservice can be run individually
+ 
+```
+ENV=dev FILE_NAME=lndhubx cargo run --bin api
+ENV=dev FILE_NAME=lndhubx cargo run --bin dealer
+ENV=dev FILE_NAME=lndhubx cargo run --bin bank
+```
+ 
+### Tests
+To run the test you can run
+```
+cargo test
+```
+ 
+### Configuration
+ 
+`psql_url` = The postgres url.
+ 
+`tls_path` = Path to the tls certificate of the lnd node.
+`macaroon_path` = Path to the admin.macaroon file of your lnd node.
+`node_url` = The url of your lnd node.
+ 
+`kollider_ws_url` = "wss:/api.kollider.xyz/v1/ws/"
+`kollider_api_key` = Your Kollider api key.
+`kollider_api_secret` = Your Kollider secret.
+`kollider_api_passphrase` = Your Kollider passphrase.
+ 
+### Synthetic Fiat Accounts
+LndhubX natively supports synthetic fiat accounts if it is run with the Dealer service. This is achieved by hedging the banks fiat exposure through taking a short position in an inversely price perpetual swap. If you want to learn more about how this exactly works we published a blog post on this [here]().

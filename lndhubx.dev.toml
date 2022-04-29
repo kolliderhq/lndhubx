@@ -1,0 +1,28 @@
+### API Config
+psql_url = "postgres://postgres:changeme@10.11.0.2:5432/lndhubx"
+
+api_zmq_push_address = "tcp://10.11.0.4:5555"
+api_zmq_subscribe_address = "tcp://10.11.0.4:5556"
+
+### Bank Config
+bank_zmq_pull_address = "tcp://10.11.0.4:5555"
+bank_zmq_publish_address = "tcp://10.11.0.4:5556"
+
+bank_dealer_pull_address = "tcp://10.11.0.4:5557"
+bank_dealer_push_address = "tcp://10.11.0.5:5558"
+
+tls_path = "/config/tls.cert"
+macaroon_path = "/config/admin.macaroon"
+node_url = "http://lnd.staging.kollider.internal:10009"
+
+### Dealer Config
+dealer_bank_push_address = "tcp://10.11.0.4:5557"
+dealer_bank_pull_address = "tcp://10.11.0.5:5558"
+
+kollider_ws_url = "ws://api.staging.kollider.internal/v1/ws/"
+kollider_api_key = "redacted"
+kollider_api_secret = "redacted"
+kollider_api_passphrase = "redacted"
+
+
+

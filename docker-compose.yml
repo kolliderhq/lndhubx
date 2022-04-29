@@ -1,0 +1,57 @@
+version: "3.9"
+services:
+  db:
+    networks:
+      lndhubx:
+        ipv4_address: 10.11.0.2
+    image: postgres:14.2
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: changeme
+    healthcheck:
+      test: pg_isready -U postgres
+  api:
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      lndhubx:
+        ipv4_address: 10.11.0.3
+    build:
+      context: .
+      dockerfile: api.Dockerfile
+    image: kolliderhq/lndhubx-api:v1.0.0
+    ports:
+    - "8080:8080"
+  bank:
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      lndhubx:
+        ipv4_address: 10.11.0.4
+    build:
+      context: .
+      dockerfile: bank.Dockerfile
+    image: kolliderhq/lndhubx-bank:v1.0.0
+    volumes:
+      - ${PWD}/config:/config
+    environment:
+      RUST_BACKTRACE: full
+  dealer:
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      lndhubx:
+        ipv4_address: 10.11.0.5
+    build:
+      context: .
+      dockerfile: dealer.Dockerfile
+    image: kolliderhq/lndhubx-dealer:v1.0.0
+networks:
+  lndhubx:
+    name: lndhubx
+    ipam:
+      config:
+        - subnet: 10.11.0.0/16

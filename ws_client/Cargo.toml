@@ -1,0 +1,19 @@
+[package]
+name = "ws_client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+crossbeam = "0.8.1"
+rust_decimal= { version = "1.12.3" }
+
+[dependencies.msgs]
+path = "../msgs"
+
+[dependencies.xerror]
+path = "../xerror"
+
+[dependencies.core_types]
+path = "../core_types"

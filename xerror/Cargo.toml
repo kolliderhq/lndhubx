@@ -1,0 +1,15 @@
+[package]
+name = "xerror"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+err-derive = "0.2.4"
+serde_json = "1.0.53"
+serde = { version = "1.0.110", features = ["derive"] }
+
+actix-http = { version = "^3"}
+actix-web = { version = "^4"}
+diesel = { version = "1.4.4", features = ["postgres", "r2d2"], optional = true }

@@ -1,0 +1,17 @@
+[workspace]
+
+members = [
+    "api",
+    "models",
+    "bank",
+    "utils",
+    "xerror",
+    "msgs",
+    "core_types",
+    "lnd_connector",
+    "tonic_lnd",
+    "dealer",
+    "kollider_hedging",
+    "ws_client",
+]
+
