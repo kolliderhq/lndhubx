@@ -27,8 +27,8 @@ use crate::WebSender;
 use models::invoices::*;
 use models::transactions::Transaction;
 
-#[get("/get_balances")]
-pub async fn get_balances(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+#[get("/balance")]
+pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
@@ -65,8 +65,8 @@ pub struct PayInvoiceData {
     pub payment_request: String,
 }
 
-#[post("/pay")]
-pub async fn pay(
+#[post("/payinvoice")]
+pub async fn pay_invoice(
     auth_data: AuthData,
     web_sender: WebSender,
     pay_invoice_data: Json<PayInvoiceData>,
@@ -115,8 +115,8 @@ pub struct CreateInvoiceParams {
     pub account_id: Option<Uuid>,
 }
 
-#[get("/create_invoice")]
-pub async fn create_invoice(
+#[get("/addinvoice")]
+pub async fn add_invoice(
     auth_data: AuthData,
     web_sender: WebSender,
     query: Query<CreateInvoiceParams>,
@@ -212,8 +212,8 @@ pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapDat
     Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
 }
 
-#[get("/invoices")]
-pub async fn invoices(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+#[get("/getuserinvoices")]
+pub async fn get_user_invoices(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
@@ -224,11 +224,6 @@ pub async fn invoices(pool: WebDbPool, auth_data: AuthData) -> Result<HttpRespon
     };
 
     Ok(HttpResponse::Ok().json(&invoices))
-}
-
-#[get("/conversions")]
-pub async fn conversions() -> Result<HttpResponse, ApiError> {
-    Ok(HttpResponse::Ok().json(json!({"balancee": 0})))
 }
 
 #[derive(Deserialize)]
@@ -287,8 +282,8 @@ pub struct TransactionsParams {
     pub to: Option<i64>,
 }
 
-#[get("/transactions")]
-pub async fn transactions(
+#[get("/gettxs")]
+pub async fn get_txs(
     pool: WebDbPool,
     auth_data: AuthData,
     query: Query<TransactionsParams>,
