@@ -36,6 +36,8 @@ pub struct DealerEngineSettings {
     pub kollider_api_secret: String,
     pub kollider_api_passphrase: String,
 
+    pub risk_tolerances: HashMap<Currency, u64>,
+
     pub kollider_ws_url: String,
     // pub hedge_settings: HashMap<Currency, HedgeSettings>,
 }
@@ -46,19 +48,21 @@ pub struct DealerEngine {
     level2_data: HashMap<Symbol, Level2State>,
     bid_quotes: HashMap<Symbol, BTreeMap<u64, Decimal>>,
     ask_quotes: HashMap<Symbol, BTreeMap<u64, Decimal>>,
+    risk_tolerances: HashMap<Currency, u64>,
     // timestamp in microseconds is used as quote id
     guaranteed_quotes: BTreeMap<u128, QuoteResponse>,
     pub last_bank_state_update: Option<Instant>,
 }
 
 impl DealerEngine {
-    pub fn new(_settings: DealerEngineSettings, ws_client: impl WsClient + 'static) -> Self {
+    pub fn new(settings: DealerEngineSettings, ws_client: impl WsClient + 'static) -> Self {
         Self {
             ws_client: Box::new(ws_client),
             _positions: HashMap::new(),
             level2_data: HashMap::new(),
             bid_quotes: HashMap::new(),
             ask_quotes: HashMap::new(),
+            risk_tolerances: settings.risk_tolerances,
             guaranteed_quotes: BTreeMap::new(),
             last_bank_state_update: None,
         }
@@ -283,7 +287,12 @@ impl DealerEngine {
                     // This works under the assumption that qty_contracts_required is <= 0.
                     let delta_qty = qty_contracts_required - currently_hedged_qty;
 
-                    if delta_qty == dec!(0) {
+                    let risk_tolerance = match  self.risk_tolerances.get(&currency) {
+                        Some(t) => t,
+                        None => continue
+                    };
+
+                    if delta_qty.abs() < Decimal::new(*risk_tolerance as i64, 0) {
                         continue;
                     }
 
