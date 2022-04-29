@@ -72,16 +72,14 @@ cargo test
  
 ### Configuration
  
-`psql_url` = The postgres url.
- 
-`tls_path` = Path to the tls certificate of the lnd node.
-`macaroon_path` = Path to the admin.macaroon file of your lnd node.
-`node_url` = The url of your lnd node.
- 
-`kollider_ws_url` = "wss:/api.kollider.xyz/v1/ws/"
-`kollider_api_key` = Your Kollider api key.
-`kollider_api_secret` = Your Kollider secret.
-`kollider_api_passphrase` = Your Kollider passphrase.
+`psql_url` = The postgres url. <br/>
+`tls_path` = Path to the tls certificate of the lnd node. <br/>
+`macaroon_path` = Path to the admin.macaroon file of your lnd node. <br>
+`node_url` = The url of your lnd node. <br>
+`kollider_ws_url` = "wss:/api.kollider.xyz/v1/ws/" <br>
+`kollider_api_key` = Your Kollider api key. <br>
+`kollider_api_secret` = Your Kollider secret. <br>
+`kollider_api_passphrase` = Your Kollider passphrase. <br>
  
 ### Synthetic Fiat Accounts
 LndhubX natively supports synthetic fiat accounts if it is run with the Dealer service. This is achieved by hedging the banks fiat exposure through taking a short position in an inversely price perpetual swap. If you want to learn more about how this exactly works we published a blog post on this [here]().
