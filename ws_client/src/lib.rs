@@ -1,6 +1,6 @@
 use core_types::kollider_client::{Balances, PositionState, Side};
 use core_types::{Currency, Symbol};
-use msgs::kollider_client::TradableSymbol;
+use msgs::kollider_client::{TradableSymbol, Channel};
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use xerror::kollider_client::KolliderClientError;
@@ -15,6 +15,7 @@ pub trait WsClient {
     fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol>;
     fn make_withdrawal(&self, amount: u64, payment_request: String) -> Result<()>;
     fn make_order(&self, quantity: u64, symbol: Symbol, side: Side) -> Result<()>;
+    fn subscribe(&self, chanels: Vec<Channel>, symbols: Option<Vec<Symbol>>);
     fn buy(&self, quantity: u64, currency: Currency) -> Result<()>;
     fn sell(&self, quantity: u64, currency: Currency) -> Result<()>;
 }

@@ -56,6 +56,8 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::user::swap)
             .service(routes::user::quote)
             .service(routes::user::get_txs)
+            .service(routes::user::get_available_currencies)
+            .service(routes::user::get_node_info)
     })
     .bind("127.0.0.1:8080")?
     .run()

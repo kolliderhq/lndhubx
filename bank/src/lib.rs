@@ -36,7 +36,7 @@ pub async fn start(
 
     tokio::spawn(invoice_task);
 
-    let mut bank_engine = BankEngine::new(Some(pool), lnd_connector).await;
+    let mut bank_engine = BankEngine::new(Some(pool), lnd_connector, settings).await;
     bank_engine.init_accounts();
 
     let mut listener = |msg: Message, destination: ServiceIdentity| match destination {
@@ -55,6 +55,7 @@ pub async fn start(
         // Receiving msgs from the api.
         if let Ok(frame) = api_recv.recv_msg(1) {
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
+                dbg!(&message);
                 bank_engine.process_msg(message, &mut listener).await;
             };
         }

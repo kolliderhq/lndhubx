@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError};
+use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError, AvailableCurrenciesResponse};
 use msgs::dealer::*;
 use msgs::kollider_client::*;
 use msgs::Message;
@@ -17,7 +17,9 @@ use rust_decimal_macros::*;
 
 use std::time::{Duration, Instant, SystemTime};
 use utils::time::time_now;
+use utils::currencies::get_base_currency_from_symbol;
 use uuid::Uuid;
+use utils::xlogging::{LoggingSettings, init_log};
 
 const QUOTE_TTL_MS: u64 = 5000;
 
@@ -26,7 +28,7 @@ pub struct HedgeSettings {
     pub max_exposure: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct DealerEngineSettings {
     pub psql_url: String,
     pub dealer_bank_pull_address: String,
@@ -36,9 +38,10 @@ pub struct DealerEngineSettings {
     pub kollider_api_secret: String,
     pub kollider_api_passphrase: String,
 
-    pub risk_tolerances: HashMap<Currency, u64>,
+    pub risk_tolerances: HashMap<String, u64>,
 
     pub kollider_ws_url: String,
+    pub logging_settings: LoggingSettings,
     // pub hedge_settings: HashMap<Currency, HedgeSettings>,
 }
 
@@ -51,20 +54,48 @@ pub struct DealerEngine {
     risk_tolerances: HashMap<Currency, u64>,
     // timestamp in microseconds is used as quote id
     guaranteed_quotes: BTreeMap<u128, QuoteResponse>,
+    last_bank_state: Option<BankState>,
+    has_received_init_data: bool,
+    has_received_symbols: bool,
+    is_kollider_authenticated: bool,
+    logger: slog::Logger,
     pub last_bank_state_update: Option<Instant>,
 }
 
 impl DealerEngine {
     pub fn new(settings: DealerEngineSettings, ws_client: impl WsClient + 'static) -> Self {
+        let mut settings = settings.clone();
+
+        let risk_tolerances = settings.risk_tolerances.into_iter().map(|(c, r)| {
+            let currency = Currency::from_str(&c).unwrap();
+            (currency, r)
+        }).collect::<HashMap<Currency, u64>>();
+        
+        settings.logging_settings.name = String::from("Dealer");
+        let logger = init_log(&settings.logging_settings);
+
         Self {
+            risk_tolerances,
             ws_client: Box::new(ws_client),
             _positions: HashMap::new(),
             level2_data: HashMap::new(),
             bid_quotes: HashMap::new(),
             ask_quotes: HashMap::new(),
-            risk_tolerances: settings.risk_tolerances,
+            last_bank_state: None,
+            has_received_init_data: false,
+            has_received_symbols: false,
+            is_kollider_authenticated: false,
             guaranteed_quotes: BTreeMap::new(),
             last_bank_state_update: None,
+            logger,
+        }
+    }
+
+    pub fn check_has_received_initial_data(&mut self) {
+        if self.has_received_symbols && self.is_kollider_authenticated {
+            self.has_received_init_data = true;
+        } else {
+            self.has_received_init_data = false;
         }
     }
 
@@ -81,11 +112,6 @@ impl DealerEngine {
         // GBPUSD.PERP => 1 GBP
 
         let value_in_whole_currency_units = value;
-        // let value_in_whole_currency_units = match denom {
-        //     Denom::MilliCents(v) => value / Decimal::new(v as i64, 0),
-        //     Denom::MilliPence(v) => value / Decimal::new(v as i64, 0),
-        //     Denom::Sats(v) => value / Decimal::new(v as i64, 0),
-        // };
 
         if value_in_whole_currency_units > dec!(0.0) {
             Ok(value_in_whole_currency_units.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero))
@@ -97,8 +123,6 @@ impl DealerEngine {
     pub fn sweep_excess_funds<F: FnMut(Message)>(&self, listener: &mut F) {
         if let Some(balances) = self.ws_client.get_all_balances() {
             if balances.cash > dec!(1) {
-                dbg!("Sweeping excess cash!");
-                dbg!(&balances.cash);
                 let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
                     amount: balances.cash.to_i64().unwrap() as u64,
@@ -109,7 +133,7 @@ impl DealerEngine {
     }
 
     pub fn check_health<F: FnMut(Message)>(&self, listener: &mut F) {
-        log::info!("Checking Dealer Health.");
+        slog::info!(self.logger, "Checking Dealer Health.");
         let is_authenticated = self.ws_client.is_authenticated();
         let available_currencies = self
             .ws_client
@@ -143,6 +167,69 @@ impl DealerEngine {
 
         let msg = Message::Dealer(Dealer::Health(dealer_health));
         listener(msg);
+    }
+
+    pub fn check_risk<F: FnMut(Message)>(&mut self, bank_state: BankState, listener: &mut F) {
+        slog::debug!(self.logger, "Checking Risk");
+
+        if !self.has_received_init_data {
+            slog::info!(self.logger, "Not received all data. Skip checking risk.");
+            return
+        }
+
+        for (currency, exposure) in bank_state.total_exposures.clone().into_iter() {
+            if currency == Currency::BTC {
+                continue;
+            }
+
+            slog::debug!(self.logger, "{:?}", bank_state);
+
+            let symbol = Symbol::from(currency);
+            let denom = Denom::from_currency(currency);
+
+            let qty_contracts_required =
+                match self.calc_num_contracts_for_value(exposure, symbol.clone(), denom) {
+                    Ok(q) => dec!(-1) * q,
+                    Err(_) => continue,
+                };
+
+            slog::info!(self.logger, "Target number of cotracts: {}", qty_contracts_required);
+
+            let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
+                Some(p) => match p.side {
+                    None => dec!(0),
+                    Some(side) => {
+                        let side_sign = Decimal::new(side.to_sign(), 0);
+                        side_sign * p.quantity
+                    }
+                },
+                None => dec!(0),
+            };
+
+            slog::info!(self.logger, "Current number of cotracts: {}", currently_hedged_qty);
+
+            // If negative we need to sell more and if positive we need to buy more.
+            // This works under the assumption that qty_contracts_required is <= 0.
+            let delta_qty = qty_contracts_required - currently_hedged_qty;
+
+            let risk_tolerance = match  self.risk_tolerances.get(&currency) {
+                Some(t) => t,
+                None => continue
+            };
+
+            if delta_qty.abs() < Decimal::new(*risk_tolerance as i64, 0) {
+                slog::info!(self.logger, "Deltaa qty of {} within risk tolerance of {}. NO ACTION.", delta_qty, risk_tolerance);
+                continue;
+            }
+
+            let trade_side = Side::from_sign(delta_qty.to_i64().unwrap());
+
+            slog::info!(self.logger, "Placing trade on side: {:?} of qty: {} for symbol: {}", trade_side, delta_qty, symbol);
+
+            self.ws_client
+                .make_order(delta_qty.abs().to_i64().unwrap() as u64, symbol, trade_side)
+                .expect("Failed to create order");
+        }
     }
 
     pub fn process_msg<F: FnMut(Message)>(&mut self, msg: Message, listener: &mut F) {
@@ -227,10 +314,41 @@ impl DealerEngine {
                     let msg = Message::Api(Api::QuoteResponse(quote_response));
                     listener(msg);
                 }
+                Api::AvailableCurrenciesRequest(available_currencies_request) => {
+
+                    let tradable_symbols = self.ws_client.get_tradable_symbols();
+                    let mut currencies = tradable_symbols.into_iter().map(|(s, _)| {
+                        let base_currency = get_base_currency_from_symbol(s).unwrap();
+                        base_currency
+                    }).collect::<HashSet<Currency>>().into_iter().map(|c| {
+                        c
+                    }).collect::<Vec<Currency>>();
+                    currencies.push(Currency::from_str("BTC").unwrap());
+
+                    let response = AvailableCurrenciesResponse {
+                        currencies,
+                        req_id: available_currencies_request.req_id,
+                        error: None,
+                    };
+
+                    let msg = Message::Api(Api::AvailableCurrenciesResponse(response));
+                    listener(msg);
+                }
                 _ => {}
             },
             Message::KolliderApiResponse(msg) => {
                 match msg {
+                    KolliderApiResponse::Authenticate(auth) => {
+                        if auth.success() {
+                            slog::info!(self.logger, "Successful Kollider authenticated!");
+                            self.is_kollider_authenticated = true;
+                            self.check_has_received_initial_data();
+                        }
+                        self.ws_client.subscribe(
+                            vec![Channel::PositionStates],
+                            None,
+                        );
+                    }
                     KolliderApiResponse::OrderInvoice(order_invoice) => {
                         // Received an order invoice. We need to send this to the bank to pay for it.
                         let msg = Message::Dealer(Dealer::PayInvoice(PayInvoice {
@@ -240,72 +358,43 @@ impl DealerEngine {
                         listener(msg)
                     }
                     KolliderApiResponse::SettlementRequest(settlement_request) => {
-                        dbg!(&settlement_request);
                         let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                             req_id: Uuid::new_v4(),
                             amount: settlement_request.amount.parse().unwrap(),
                         }));
                         listener(msg);
                     }
+                    KolliderApiResponse::PositionStates(_) => {
+                        if let Some(last_bank_state) = self.last_bank_state.clone() {
+                            self.check_risk(last_bank_state, listener);
+                        }
+                    }
                     KolliderApiResponse::Level2State(level2state) => {
                         self.process_orderbook_update(level2state);
+                    }
+                    KolliderApiResponse::TradableSymbols(tradable_symbols) => {
+                        slog::info!(self.logger, "Received Symbols");
+                        let mut available_symbols = vec![];
+                        tradable_symbols.symbols.into_iter().for_each(|(s, _)| {
+                            available_symbols.push(s);
+                        });
+                        self.has_received_symbols = true;
+                        self.check_has_received_initial_data();
+                        self.ws_client.subscribe(
+                            vec![Channel::MarkPrices, Channel::OrderbookLevel2],
+                            Some(available_symbols)
+                        );
                     }
                     _ => {}
                 }
             }
-            Message::Dealer(Dealer::BankState(ref bank_state)) => {
+            Message::Dealer(Dealer::BankState(bank_state)) => {
                 self.last_bank_state_update = Some(Instant::now());
-
-                for (currency, exposure) in bank_state.total_exposures.clone().into_iter() {
-                    dbg!(&currency);
-
-                    if currency == Currency::BTC {
-                        continue;
-                    }
-
-                    let symbol = Symbol::from(currency);
-                    let denom = Denom::from_currency(currency);
-
-                    let qty_contracts_required =
-                        match self.calc_num_contracts_for_value(exposure, symbol.clone(), denom) {
-                            Ok(q) => dec!(-1) * q,
-                            Err(_) => continue,
-                        };
-
-                    let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
-                        Some(p) => match p.side {
-                            None => dec!(0),
-                            Some(side) => {
-                                let side_sign = Decimal::new(side.to_sign(), 0);
-                                side_sign * p.quantity
-                            }
-                        },
-                        None => dec!(0),
-                    };
-
-                    // If negative we need to sell more and if positive we need to buy more.
-                    // This works under the assumption that qty_contracts_required is <= 0.
-                    let delta_qty = qty_contracts_required - currently_hedged_qty;
-
-                    let risk_tolerance = match  self.risk_tolerances.get(&currency) {
-                        Some(t) => t,
-                        None => continue
-                    };
-
-                    if delta_qty.abs() < Decimal::new(*risk_tolerance as i64, 0) {
-                        continue;
-                    }
-
-                    let trade_side = Side::from_sign(delta_qty.to_i64().unwrap());
-
-                    self.ws_client
-                        .make_order(delta_qty.abs().to_i64().unwrap() as u64, symbol, trade_side)
-                        .expect("Failed to create order");
-                }
+                self.last_bank_state = Some(bank_state.clone());
+                self.check_risk(bank_state, listener);
             }
 
             Message::Dealer(Dealer::CreateInvoiceResponse(ref create_invoice_response)) => {
-                dbg!(&create_invoice_response);
                 self.ws_client
                     .make_withdrawal(
                         create_invoice_response.amount,
@@ -487,6 +576,8 @@ fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(
 
 #[cfg(test)]
 mod tests {
+    use msgs::kollider_client::Channel;
+
     struct MockWsClient {
         is_authenticated: bool,
         position_states: HashMap<Symbol, PositionState>,
@@ -555,6 +646,9 @@ mod tests {
             }
         }
 
+        fn subscribe(&self, channels: Vec<Channel>, symbols: Option<Vec<Symbol>>) {
+        }
+
         fn get_all_balances(&self) -> Option<Balances> {
             Some(self.balances.borrow().clone())
         }
@@ -600,16 +694,24 @@ mod tests {
     use uuid::Uuid;
     use ws_client::WsClient;
     use xerror::kollider_client::KolliderClientError;
+    use utils::xlogging::*;
 
     fn initialise_dealer_engine() -> DealerEngine {
         let settings = DealerEngineSettings {
             psql_url: "".to_string(),
-            bank_pull_address: "".to_string(),
-            bank_push_address: "".to_string(),
+            dealer_bank_pull_address: "".to_string(),
+            dealer_bank_push_address: "".to_string(),
             kollider_api_key: "".to_string(),
             kollider_api_secret: "".to_string(),
             kollider_api_passphrase: "".to_string(),
             kollider_ws_url: "".to_string(),
+            risk_tolerances: HashMap::new(),
+            logging_settings: LoggingSettings {
+                name: String::from(""),
+                level: String::from("debug"),
+                stdout: false,
+                log_path: None
+            }
         };
         let ws_client = MockWsClient::new();
         let mut dealer = DealerEngine::new(settings, ws_client);

@@ -12,22 +12,30 @@ use msgs::api::*;
 use msgs::dealer::*;
 use msgs::*;
 use xerror::bank_engine::*;
+use utils::currencies::{SATS_DECIMALS, SATS_IN_BITCOIN};
+use utils::xlogging::*;
 
 use lnd_connector::connector::LndConnector;
 
 use serde::{Deserialize, Serialize};
 
-use log::{error, info};
-
 const BANK_UID: u64 = 23193913;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BankEngineSettings {
+    /// url to the postgres database.
     pub psql_url: String,
     pub bank_zmq_pull_address: String,
     pub bank_zmq_publish_address: String,
     pub bank_dealer_pull_address: String,
     pub bank_dealer_push_address: String,
+    /// The margin users have to keep on their account to account for network fees.
+    pub ln_network_fee_margin: Decimal,
+    pub ln_network_max_fee: Decimal,
+    pub internal_tx_fee: Decimal,
+    pub external_tx_fee: Decimal,
+    pub reserve_ratio: Decimal,
+    pub logging_settings: LoggingSettings,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -76,6 +84,8 @@ pub struct Ledger {
     pub fee_account: Account,
     /// The external account is the counterparty for every deposit from an unknown external user.
     pub external_account: Account,
+    /// The external account is the counterparty for every deposit from an unknown external user.
+    pub external_fee_account: Account,
 }
 
 impl Ledger {
@@ -85,6 +95,7 @@ impl Ledger {
             insurance_fund_account: Account::new(Currency::BTC, AccountType::Internal),
             fee_account: Account::new(Currency::BTC, AccountType::Internal),
             external_account: Account::new(Currency::BTC, AccountType::External),
+            external_fee_account: Account::new(Currency::BTC, AccountType::External),
         }
     }
 }
@@ -128,11 +139,21 @@ pub struct BankEngine {
     pub lnd_connector: LndConnector,
     pub lnd_node_info: LndNodeInfo,
     pub available_currencies: Vec<Currency>,
+    pub ln_network_fee_margin: Decimal,
+    pub ln_network_max_fee: Decimal,
+    pub internal_tx_fee: Decimal,
+    pub external_tx_fee: Decimal,
+    pub reserve_ratio: Decimal,
+    pub logger: slog::Logger,
     pub tx_seq: u64,
 }
 
 impl BankEngine {
-    pub async fn new(conn_pool: Option<DbPool>, lnd_connector: LndConnector) -> Self {
+    pub async fn new(conn_pool: Option<DbPool>, lnd_connector: LndConnector, settings: BankEngineSettings) -> Self {
+        let mut settings = settings.clone();
+        settings.logging_settings.name = String::from("Bank");
+        let logger = init_log(&settings.logging_settings);
+
         Self {
             lnd_node_info: LndNodeInfo::default(),
             bank_uid: BANK_UID,
@@ -141,6 +162,12 @@ impl BankEngine {
             conn_pool,
             lnd_connector,
             available_currencies: Vec::new(),
+            internal_tx_fee: settings.internal_tx_fee,
+            external_tx_fee: settings.external_tx_fee,
+            ln_network_fee_margin: settings.ln_network_fee_margin,
+            reserve_ratio: settings.reserve_ratio,
+            ln_network_max_fee: settings.ln_network_max_fee,
+            logger,
             tx_seq: 0,
         }
     }
@@ -149,7 +176,7 @@ impl BankEngine {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
             None => {
-                error!("No database provided.");
+                slog::error!(self.logger, "No database provided.");
                 return;
             }
         };
@@ -157,7 +184,7 @@ impl BankEngine {
         let c = match conn.get() {
             Ok(psql_connection) => psql_connection,
             Err(_) => {
-                error!("Couldn't get psql connection.");
+                slog::error!(self.logger, "Couldn't get psql connection.");
                 return;
             }
         };
@@ -213,7 +240,7 @@ impl BankEngine {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
             None => {
-                error!("No database provided.");
+                slog::error!(self.logger, "No database provided.");
                 return;
             }
         };
@@ -221,7 +248,7 @@ impl BankEngine {
         let c = match conn.get() {
             Ok(psql_connection) => psql_connection,
             Err(_) => {
-                error!("Couldn't get psql connection.");
+                slog::error!(self.logger, "Couldn't get psql connection.");
                 return;
             }
         };
@@ -271,7 +298,7 @@ impl BankEngine {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
             None => {
-                error!("No database provided.");
+                slog::error!(self.logger, "No database provided.");
                 return Err(BankError::FailedTransaction);
             }
         };
@@ -279,7 +306,7 @@ impl BankEngine {
         let c = match conn.get() {
             Ok(psql_connection) => psql_connection,
             Err(_) => {
-                error!("Couldn't get psql connection.");
+                slog::error!(self.logger, "Couldn't get psql connection.");
                 return Err(BankError::FailedTransaction);
             }
         };
@@ -356,6 +383,7 @@ impl BankEngine {
                 Dealer::Health(dealer_health) => {
                     self.available_currencies = dealer_health.available_currencies;
                     if dealer_health.status == HealthStatus::Down {
+                        slog::warn!(self.logger, "Dealer is now!");
                         self.available_currencies = Vec::new();
                     }
                 }
@@ -365,19 +393,32 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Dealer::PayInvoice(pay_invoice) => {
-                    if let Err(err) = self
+
+                    let decoded = match pay_invoice.payment_request.clone().parse::<lightning_invoice::Invoice>() {
+                        Ok(d) => d,
+                        Err(_)=> return
+                    };
+
+                    let amount_in_sats = Decimal::new(decoded.amount_milli_satoshis().unwrap() as i64, 0) / dec!(1000);
+
+                    slog::debug!(self.logger, "Dealer requests to pay invoice: {} of amount: {}", pay_invoice.payment_request, amount_in_sats);
+
+                    if let Ok(result) = self
                         .lnd_connector
-                        .pay_invoice(pay_invoice.payment_request.clone())
+                        .pay_invoice(pay_invoice.payment_request.clone(), amount_in_sats, self.ln_network_max_fee)
                         .await
                     {
-                        dbg!(err);
+						slog::debug!(self.logger, "{:?}", result);
+                        // let mut outbound_acconut = self.
+                        // we have to make a transaction here.
                     }
                 }
                 Dealer::CreateInvoiceRequest(req) => {
+                    slog::debug!(self.logger, "Dealer requested payment: {:?}", req);
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
-                            error!("No database provided.");
+                            slog::error!(self.logger, "No database provided.");
                             return;
                         }
                     };
@@ -385,7 +426,7 @@ impl BankEngine {
                     let c = match conn.get() {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
-                            error!("Couldn't get psql connection.");
+                            slog::error!(self.logger, "Couldn't get psql connection.");
                             return;
                         }
                     };
@@ -397,6 +438,7 @@ impl BankEngine {
                         .await
                     {
                         if let Err(_err) = invoice.insert(&c) {
+                            slog::error!(self.logger, "Couldn't insert invoice.");
                             return;
                         }
 
@@ -413,12 +455,12 @@ impl BankEngine {
                 _ => {}
             },
             Message::Deposit(msg) => {
-                info!("Received deposit: {:?}", msg);
+                slog::info!(self.logger, "Received deposit: {:?}", msg);
                 // Deposit can only be triggered if someone external has payed an invoice generated by someone internal.
                 let conn = match &self.conn_pool {
                     Some(conn) => conn,
                     None => {
-                        error!("No database provided.");
+                        slog::error!(self.logger, "No database provided.");
                         return;
                     }
                 };
@@ -426,7 +468,7 @@ impl BankEngine {
                 let c = match conn.get() {
                     Ok(psql_connection) => psql_connection,
                     Err(_) => {
-                        error!("Couldn't get psql connection.");
+                        slog::error!(self.logger, "Couldn't get psql connection.");
                         return;
                     }
                 };
@@ -434,7 +476,7 @@ impl BankEngine {
                 // Check whether we know about this invoice.
                 if let Ok(invoice) = Invoice::get_by_invoice_hash(&c, msg.payment_request) {
                     // Value of the depoist.
-                    let value = Decimal::new(invoice.value as i64, 0);
+                    let value = Decimal::new(invoice.value as i64, SATS_DECIMALS);
                     // Exchange rate of the deposit.
                     let rate = dec!(1);
 
@@ -487,11 +529,11 @@ impl BankEngine {
             }
             Message::Api(msg) => match msg {
                 Api::InvoiceRequest(msg) => {
-                    info!("Received invoice request: {:?}", msg);
+                    slog::info!(self.logger, "Received invoice request: {:?}", msg);
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
-                            error!("No database provided.");
+                            slog::error!(self.logger, "No database provided.");
                             return;
                         }
                     };
@@ -499,7 +541,7 @@ impl BankEngine {
                     let c = match conn.get() {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
-                            error!("Couldn't get psql connection.");
+                            slog::error!(self.logger, "Couldn't get psql connection.");
                             return;
                         }
                     };
@@ -542,6 +584,7 @@ impl BankEngine {
                         .await
                     {
                         if let Err(_err) = invoice.insert(&c) {
+                            slog::error!(self.logger, "Error inserting invoice.");
                             return;
                         }
 
@@ -559,12 +602,12 @@ impl BankEngine {
                     }
                 }
                 Api::PaymentRequest(msg) => {
-                    info!("Received payment request: {:?}", msg);
+                    slog::info!(self.logger, "Received payment request: {:?}", msg);
 
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
-                            error!("No database provided.");
+                            slog::error!(self.logger, "No database provided.");
                             return;
                         }
                     };
@@ -572,7 +615,7 @@ impl BankEngine {
                     let psql_connection = match conn.get() {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
-                            error!("Couldn't get psql connection.");
+                            slog::error!(self.logger, "Couldn't get psql connection.");
                             return;
                         }
                     };
@@ -614,7 +657,10 @@ impl BankEngine {
 
                         // If we couldn't create an invoice we cannot proceed with the payment.
                         let mut invoice = match invoice {
-                            None => return,
+                            None => {
+                                slog::error!(self.logger, "Couldn't create invoice. Can't make payment.");
+                                return
+                            },
                             Some(inv) => inv,
                         };
 
@@ -625,11 +671,13 @@ impl BankEngine {
                             success: false,
                             payment_request: msg.payment_request.clone(),
                             currency: Currency::BTC,
+                            fees: dec!(0),
                             error: None,
                         };
 
                         if let Some(owner) = invoice.owner {
                             if uid == owner as u64 {
+                                slog::info!(self.logger, "User tried to make self payment. Not allowed.");
                                 payment_response.error = Some(PaymentResponseError::SelfPayment);
                                 let msg = Message::Api(Api::PaymentResponse(payment_response));
                                 listener(msg, ServiceIdentity::Api);
@@ -639,13 +687,15 @@ impl BankEngine {
 
                         // If invoice was already paid we reject this the payment request.
                         if invoice.settled {
+                            slog::info!(self.logger, "Invoice is already settled.");
                             payment_response.error = Some(PaymentResponseError::InvoiceAlreadyPaid);
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
                             return;
                         }
 
-                        let amount = Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000) as i64, 0);
+                        let amount_in_sats = Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000 ) as i64, 0);
+                        let amount_in_btc = amount_in_sats / Decimal::new(SATS_IN_BITCOIN as i64, 0);
                         let rate = dec!(1);
 
                         // We could be dealing with an internal transaction in which case we cannot borrow two accounts
@@ -660,8 +710,15 @@ impl BankEngine {
                             user_account.get_default_account(Currency::BTC).clone()
                         };
 
-                        if outbound_account.balance < amount {
+                        if outbound_account.balance < amount_in_btc {
                             payment_response.error = Some(PaymentResponseError::InsufficientFunds);
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
+                        }
+
+                        if (outbound_account.balance * (dec!(1) + self.ln_network_fee_margin)) < amount_in_btc {
+                            payment_response.error = Some(PaymentResponseError::InsufficientFundsForFees);
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
                             return;
@@ -670,13 +727,21 @@ impl BankEngine {
                         // If the invoice has a known owner that means that the invoice was generated by us and
                         // we are dealing with an internal transaction. If not we are doing an external transaction.
                         if invoice.owner.is_none() {
-                            if self
+                            if let Ok(result) = self
                                 .lnd_connector
-                                .pay_invoice(msg.payment_request.clone())
+                                .pay_invoice(msg.payment_request.clone(), amount_in_sats, self.ln_network_max_fee)
                                 .await
-                                .is_ok()
                             {
                                 let mut external_account = self.ledger.external_account.clone();
+                                let fee_btc = Decimal::new(result.fee as i64, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0);
+                                let total_amount_debit = amount_in_btc + fee_btc;
+
+                                // If the total amount of tx (including fees) is larger than what user has. Bank fee acount takes
+                                // a hit.
+                                let debitable_value = std::cmp::min(total_amount_debit, outbound_account.balance);
+
+                                // If there is value we can no deduct because user does not have enough funds.
+                                let excess_value = total_amount_debit - debitable_value;
 
                                 if self
                                     .make_tx(
@@ -684,7 +749,7 @@ impl BankEngine {
                                         uid,
                                         &mut external_account,
                                         BANK_UID,
-                                        amount,
+                                        debitable_value,
                                         rate,
                                     )
                                     .is_err()
@@ -703,11 +768,38 @@ impl BankEngine {
                                 self.update_account(&outbound_account, msg.uid);
                                 self.update_account(&external_account, BANK_UID);
 
+                                let mut outbound_acconut = self.ledger.insurance_fund_account.clone();
+                                let mut inbound_account = self.ledger.external_fee_account.clone();
+                                
+                                // Taking care of any excess value.
+                                if excess_value > dec!(0) {
+                                    if self
+                                        .make_tx(
+                                            &mut outbound_acconut,
+                                            BANK_UID,
+                                            &mut inbound_account,
+                                            BANK_UID,
+                                            excess_value,
+                                            rate,
+                                        )
+                                        .is_err()
+                                    {
+                                        slog::error!(self.logger, "Couldn't make tx for excess value.");
+                                        return;
+                                    }
+                                    self.ledger.insurance_fund_account = outbound_acconut.clone();
+                                    self.ledger.external_fee_account = inbound_account.clone();
+
+                                    self.update_account(&outbound_acconut, BANK_UID);
+                                    self.update_account(&inbound_account, BANK_UID);
+                                }
+
                                 payment_response.success = true;
+                                payment_response.fees = fee_btc;
                                 invoice.settled = true;
 
                                 if invoice.update(&psql_connection).is_err() {
-                                    dbg!("Error updating updating invoices!");
+                                    slog::error!(self.logger, "Error updating updating invoices!");
                                 }
 
                                 let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -736,19 +828,50 @@ impl BankEngine {
                             user_account.get_default_account(Currency::BTC)
                         };
 
+                        let internal_tx_fee = amount_in_btc * self.internal_tx_fee;
+
+                        if internal_tx_fee + amount_in_btc > invoice_payer_account.balance {
+                            slog::info!(self.logger, "User: {} doesn't have enough funds to cover tx fee of {}", uid, internal_tx_fee);
+                            payment_response.success = false;
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return
+                        }
+
                         if self
                             .make_tx(
                                 &mut invoice_payer_account,
                                 uid,
                                 &mut invoice_owner_account,
                                 owner,
-                                amount,
+                                amount_in_btc,
                                 rate,
                             )
                             .is_err()
                         {
                             return;
                         }
+
+                        let mut fee_account = self.ledger.fee_account.clone();
+
+                        // Deducting internal fees
+                        if internal_tx_fee > dec!(0) {
+                            if self
+                                .make_tx(
+                                    &mut invoice_payer_account,
+                                    uid,
+                                    &mut fee_account,
+                                    BANK_UID,
+                                    amount_in_btc,
+                                    rate,
+                                )
+                                .is_err()
+                            {
+                                return;
+                            }
+                        }
+
+                        self.ledger.fee_account = fee_account;
 
                         {
                             let owner_user_account = self.ledger.user_accounts.get_mut(&owner).unwrap();
@@ -771,11 +894,12 @@ impl BankEngine {
                         // Update Invoice
                         invoice.settled = true;
                         if invoice.update(&psql_connection).is_err() {
-                            dbg!("Error updating invoices!");
+                            slog::error!(self.logger, "Couldn't update invoice.");
                             return;
                         }
 
                         payment_response.success = true;
+                        payment_response.fees = internal_tx_fee;
 
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
                         listener(msg, ServiceIdentity::Api);
@@ -783,10 +907,12 @@ impl BankEngine {
                 }
 
                 Api::SwapRequest(msg) => {
+                    slog::debug!(self.logger, "Received swap request: {:?}", msg);
                     let msg = Message::Api(Api::SwapRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Api::SwapResponse(msg) => {
+                    slog::debug!(self.logger, "Received swap response: {:?}", msg);
                     if msg.error.is_some() || !msg.success {
                         let msg = Message::Api(Api::SwapResponse(msg));
                         listener(msg, ServiceIdentity::Api);
@@ -807,7 +933,7 @@ impl BankEngine {
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
-                            error!("No database provided.");
+                            slog::error!(self.logger, "No database provided.");
                             return;
                         }
                     };
@@ -815,7 +941,7 @@ impl BankEngine {
                     let _psql_connection = match conn.get() {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
-                            error!("Couldn't get psql connection.");
+                            slog::error!(self.logger, "Couldn't get psql connection.");
                             return;
                         }
                     };
@@ -847,7 +973,7 @@ impl BankEngine {
                     };
 
                     if outbound_account.balance < swap_amount {
-                        dbg!("User has not enough funds");
+                        slog::info!(self.logger, "User: {} has not enough available balance. Available: {}", uid, outbound_account.balance);
                         return;
                     }
 
@@ -855,7 +981,7 @@ impl BankEngine {
                         .make_tx(&mut outbound_account, uid, &mut inbound_account, uid, swap_amount, rate)
                         .is_err()
                     {
-                        dbg!("Transaction failed");
+                        slog::info!(self.logger, "Tx failed to go through.");
                         return;
                     }
 
@@ -903,6 +1029,31 @@ impl BankEngine {
                     let msg = Message::Api(Api::QuoteResponse(msg));
                     listener(msg, ServiceIdentity::Api);
                 }
+                Api::AvailableCurrenciesRequest(msg) => {
+                    let msg = Message::Api(Api::AvailableCurrenciesRequest(msg));
+                    listener(msg, ServiceIdentity::Dealer);
+                }
+                Api::AvailableCurrenciesResponse(msg) => {
+                    let msg = Message::Api(Api::AvailableCurrenciesResponse(msg));
+                    listener(msg, ServiceIdentity::Api);
+                }
+                Api::GetNodeInfoRequest(msg) => {
+                    let lnd_node_info = match self.lnd_connector.get_node_info().await {
+                        Ok(ni) => ni,
+                        Err(_) => LndNodeInfo::default(),
+                    };
+                    let response = GetNodeInfoResponse {
+                        req_id: msg.req_id,
+                        lnd_node_info,
+                        ln_network_fee_margin: self.ln_network_fee_margin,
+                        ln_network_max_fee: self.ln_network_max_fee,
+                        internal_tx_fee: self.internal_tx_fee, 
+                        external_tx_fee: self.external_tx_fee,
+                        reserve_ratio: self.reserve_ratio,
+                    };
+                    let msg = Message::Api(Api::GetNodeInfoResponse(response));
+                    listener(msg, ServiceIdentity::Api);
+                }
                 _ => {}
             },
             _ => {}
@@ -912,18 +1063,7 @@ impl BankEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use lnd_connector::connector::{LndConnector, LndConnectorSettings};
-
     #[tokio::test]
     async fn test_create_bank_manager() {
-        let lnd_connector_settings = LndConnectorSettings {
-            node_url: "".to_string(),
-            macaroon_path: "".to_string(),
-            tls_path: "".to_string(),
-        };
-        let lnd_connector = LndConnector::new(lnd_connector_settings).await;
-        let _bank_manager = BankEngine::new(None, lnd_connector).await;
-        panic!()
     }
 }

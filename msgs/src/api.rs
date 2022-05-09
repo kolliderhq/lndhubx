@@ -26,6 +26,11 @@ pub enum QuoteResponseError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AvailableCurrenciesResponseError {
+    GeneralError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvoiceRequest {
     pub req_id: RequestId,
     pub uid: UserId,
@@ -57,6 +62,7 @@ pub struct PaymentRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaymentResponseError {
     InsufficientFunds,
+    InsufficientFundsForFees,
     InvoiceAlreadyPaid,
     SelfPayment,
 }
@@ -68,6 +74,7 @@ pub struct PaymentResponse {
     pub success: bool,
     pub currency: Currency,
     pub payment_request: String,
+    pub fees: Decimal,
     pub error: Option<PaymentResponseError>,
 }
 
@@ -130,6 +137,35 @@ pub struct QuoteResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableCurrenciesRequest {
+    pub req_id: RequestId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableCurrenciesResponse {
+    pub req_id: RequestId,
+    pub currencies: Vec<Currency>,
+    pub error: Option<AvailableCurrenciesResponseError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetNodeInfoRequest {
+    pub req_id: RequestId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetNodeInfoResponse {
+    pub req_id: RequestId,
+    pub lnd_node_info: LndNodeInfo,
+    pub ln_network_max_fee: Decimal,
+    pub ln_network_fee_margin: Decimal,
+    pub reserve_ratio: Decimal,
+    pub external_tx_fee: Decimal,
+    pub internal_tx_fee: Decimal,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
     InvoiceRequest(InvoiceRequest),
     InvoiceResponse(InvoiceResponse),
@@ -141,4 +177,8 @@ pub enum Api {
     Balances(Balances),
     QuoteRequest(QuoteRequest),
     QuoteResponse(QuoteResponse),
+    AvailableCurrenciesRequest(AvailableCurrenciesRequest),
+    AvailableCurrenciesResponse(AvailableCurrenciesResponse),
+    GetNodeInfoRequest(GetNodeInfoRequest),
+    GetNodeInfoResponse(GetNodeInfoResponse),
 }
