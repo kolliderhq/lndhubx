@@ -34,6 +34,7 @@ Currently supported fiat currencies:
 ### Known issues
 - No integration tests.
 - Blocking on making a lightning payment. Which allows anyone to ddos the bank with a Hodl invoice.
+- Fee drain attacks are possible because bank pays for fees.
 ---
 ### TODO
 - Add spread configuration to the dealer RFQ system to charge users for currency conversions.
