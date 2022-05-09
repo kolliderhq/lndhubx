@@ -13,6 +13,7 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 
 rust_decimal_macros = { version = "1.12.3"}
 rust_decimal= { version = "1.12.3" }
+slog = "2.5.2"
 
 log = { version = "0.4.16" }
 

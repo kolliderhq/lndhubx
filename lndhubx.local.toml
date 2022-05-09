@@ -1,27 +1,23 @@
 ### API Config
 psql_url = "postgres://postgres:changeme@10.11.0.2:5432/lndhubx"
 
-api_zmq_push_address = "tcp://10.11.0.4:5555"
-api_zmq_subscribe_address = "tcp://10.11.0.4:5556"
+api_zmq_push_address = "tcp://0.0.0.0:5555"
+api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
 
 ### Bank Config
-bank_zmq_pull_address = "tcp://10.11.0.4:5555"
-bank_zmq_publish_address = "tcp://10.11.0.4:5556"
+bank_zmq_pull_address = "tcp://0.0.0.0:5555"
+bank_zmq_publish_address = "tcp://0.0.0.0:5556"
 
-bank_dealer_pull_address = "tcp://10.11.0.4:5557"
-bank_dealer_push_address = "tcp://10.11.0.5:5558"
+bank_dealer_pull_address = "tcp://0.0.0.0:5557"
+bank_dealer_push_address = "tcp://0.0.0.0:5558"
 
-tls_path = "/config/tls.cert"
-macaroon_path = "/config/admin.macaroon"
+## Lnd Node specific config settings.
+tls_path = "path/to/your/tls.cert"
+macaroon_path = "path/to/your/admin.macaroon"
 node_url = "your node url"
-
-### Dealer Config
-dealer_bank_push_address = "tcp://10.11.0.4:5557"
-dealer_bank_pull_address = "tcp://10.11.0.5:5558"
-
 ## The margin users have to keep on their account to account
 ## for network fees.
-ln_network_fee_margin = 0.02
+ln_network_fee_margin = 0.005
 ## This is the max amount the bank is willing to pay for a transaction.
 ## If its the same as `ln_network_fee_margin` then bank will never
 ## lose money on making external txs			.
@@ -33,11 +29,16 @@ external_tx_fee = 0
 ## The minimum of liabilities the bank has to keep.
 reserve_ratio = 0.75
 
-kollider_ws_url = "ws://api.kollider.xyz/v1/ws/"
-kollider_api_key = "redacted"
-kollider_api_secret = "redacted"
-kollider_api_passphrase = "redacted"
+### Dealer Config
+dealer_bank_push_address = "tcp://0.0.0.0:5557"
+dealer_bank_pull_address = "tcp://0.0.0.0:5558"
 
+kollider_ws_url = "wss://api.kollider.xyz/v1/ws/"
+kollider_api_key = ""
+kollider_api_secret = ""
+kollider_api_passphrase = ""
+
+# Risk the dealer is willing to take before hedging.
 [risk_tolerances]
 USD = 1
 EUR = 1

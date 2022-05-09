@@ -31,6 +31,23 @@ pub mod time {
     }
 }
 
+pub mod currencies {
+    use core_types::{Symbol, Currency};
+    use std::str::FromStr;
+
+    pub const SATS_IN_BITCOIN: u32 = 100000000;
+    pub const SATS_DECIMALS: u32 = 8;
+
+    pub fn get_base_currency_from_symbol(symbol: Symbol) -> Result<Currency, String> {
+        let base = symbol[3..6].to_string();
+        if let Ok(currency) = Currency::from_str(&base) {
+            Ok(currency)
+        } else {
+            return Err("Couldn't find base currency".to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

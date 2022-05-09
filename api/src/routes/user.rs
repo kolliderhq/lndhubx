@@ -296,3 +296,74 @@ pub async fn get_txs(
     };
     Ok(HttpResponse::Ok().json(&transactions))
 }
+
+#[get("/getavailablecurrencies")]
+pub async fn get_available_currencies(
+    web_sender: WebSender,
+) -> Result<HttpResponse, ApiError> {
+    let req_id = Uuid::new_v4();
+
+    let request = AvailableCurrenciesRequest {
+        req_id,
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::AvailableCurrenciesResponse(response)) if response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::AvailableCurrenciesRequest(request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::AvailableCurrenciesResponse(response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&response));
+    }
+    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+}
+
+#[get("/nodeinfo")]
+pub async fn get_node_info(
+    web_sender: WebSender,
+) -> Result<HttpResponse, ApiError> {
+    let req_id = Uuid::new_v4();
+
+    let request = GetNodeInfoRequest{
+        req_id,
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::GetNodeInfoResponse(response)) if response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::GetNodeInfoRequest(request));
+    dbg!(&message);
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::GetNodeInfoResponse(response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&response));
+    }
+    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+}

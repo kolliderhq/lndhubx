@@ -5,9 +5,17 @@ use xerror::lnd_connector::*;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 use utils::time::*;
+use rust_decimal::prelude::*;
+use rust_decimal_macros::*;
 
 use core_types::*;
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct PayResponse {
+    pub payment_hash: String,
+    pub fee: u64,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LndConnectorSettings {
@@ -96,9 +104,12 @@ impl LndConnector {
         Err(LndConnectorError::FailedToCreateInvoice)
     }
 
-    pub async fn pay_invoice(&mut self, payment_request: String) -> Result<(), LndConnectorError> {
-        // Limiting the fees we pay to 2%.
-        let limit = tonic_lnd::rpc::fee_limit::Limit::Fixed(2);
+    pub async fn pay_invoice(&mut self, payment_request: String, amount_in_sats: Decimal, max_fee: Decimal) -> Result<PayResponse, LndConnectorError> {
+
+        // Max fee is always a percentage of amount.
+        let max_fee = (amount_in_sats * max_fee).round_dp(0).to_i64().unwrap();
+
+        let limit = tonic_lnd::rpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_lnd::rpc::FeeLimit { limit: Some(limit) };
         let send_payment = tonic_lnd::rpc::SendRequest {
             payment_request,
@@ -111,23 +122,40 @@ impl LndConnector {
             if !r.payment_error.is_empty() {
                 return Err(LndConnectorError::FailedToSendPayment);
             }
-            return Ok(());
+            let fee = match r.payment_route {
+                Some(pr) => {
+                    pr.total_fees.try_into().unwrap()
+                }
+                None => 0
+            };
+            let response = PayResponse {
+                fee,
+                payment_hash: hex::encode(r.payment_hash),
+            };
+            return Ok(response);
         }
         Err(LndConnectorError::FailedToSendPayment)
     }
 
     pub async fn get_node_info(&mut self) -> Result<LndNodeInfo, LndConnectorError> {
-        let get_node_info = tonic_lnd::rpc::NodeInfoRequest::default();
-        if let Ok(resp) = self.client.get_node_info(get_node_info).await {
-            dbg!(&resp);
-            return Ok(LndNodeInfo {
-                pubkey: String::from("fuck"),
-                name: String::from("hello"),
-            });
+        let get_info = tonic_lnd::rpc::GetInfoRequest::default();
+        match self.client.get_info(get_info).await {
+            Ok(ni) => {
+                let resp = ni.into_inner();
+                let lnd_node_info = LndNodeInfo {
+                    identity_pubkey: resp.identity_pubkey,
+                    uris: resp.uris,
+                    num_active_channels: resp.num_active_channels as u64,
+                    num_pending_channels: resp.num_pending_channels as u64,
+                    num_peers: resp.num_peers as u64,
+                    testnet: resp.testnet,
+                };
+                return Ok(lnd_node_info);
+            },
+            Err(err) => {
+                dbg!(&err);
+                Err(LndConnectorError::FailedToGetNodeInfo)
+            }
         }
-        Err(LndConnectorError::FailedToGetNodeInfo)
     }
-
-    // pub fn lnurl_auth(&self) {
-    // }
 }

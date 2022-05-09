@@ -105,11 +105,12 @@ impl FromStr for Currency {
     type Err = String;
 
     fn from_str(currency: &str) -> Result<Currency, Self::Err> {
-        match currency {
-            "BTC" => Ok(Currency::BTC),
-            "EUR" => Ok(Currency::EUR),
-            "GBP" => Ok(Currency::GBP),
-            "USD" => Ok(Currency::USD),
+        let currency = currency.to_lowercase();
+        match &currency[..] {
+            "btc" => Ok(Currency::BTC),
+            "eur" => Ok(Currency::EUR),
+            "gbp" => Ok(Currency::GBP),
+            "usd" => Ok(Currency::USD),
             _ => Err("unknown currency".to_string()),
         }
     }
@@ -161,21 +162,6 @@ pub enum ServiceIdentity {
     Dealer,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LndNodeInfo {
-    pub pubkey: String,
-    pub name: String,
-}
-
-impl Default for LndNodeInfo {
-    fn default() -> Self {
-        Self {
-            pubkey: String::from(""),
-            name: String::from(""),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct ConversionInfo {
     pub from: Currency,
@@ -219,6 +205,31 @@ impl ConversionInfo {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LndNodeInfo {
+    pub identity_pubkey: String,
+    pub uris: Vec<String>,
+    pub num_active_channels: u64,
+    pub num_pending_channels: u64,
+    pub num_peers: u64,
+    pub testnet: bool,
+
+}
+
+impl Default for LndNodeInfo {
+    fn default() -> Self {
+        Self {
+            identity_pubkey: String::from(""),
+            uris: vec![],
+            num_active_channels: 0,
+            num_pending_channels: 0,
+            num_peers: 0,
+            testnet: false,
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

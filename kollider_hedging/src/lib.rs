@@ -138,10 +138,6 @@ impl KolliderHedgingClient {
         client.authenticate(api_key.to_string(), api_passphrase.to_string(), api_secret.to_string())?;
         client.fetch_tradable_symbols()?;
         client.fetch_balances()?;
-        client.subscribe(
-            vec![Channel::PositionStates, Channel::MarkPrices, Channel::OrderbookLevel2],
-            vec![Symbol::from("BTCUSD.PERP")],
-        )?;
         Ok(client)
     }
 
@@ -183,7 +179,13 @@ impl KolliderHedgingClient {
             .map_err(|_err| KolliderClientError::WebsocketSendFailed)
     }
 
-    fn subscribe(&self, channels: Vec<Channel>, symbols: Vec<Symbol>) -> Result<()> {
+    pub fn subscribe(&self, channels: Vec<Channel>, symbols: Vec<Symbol>) -> Result<()> {
+        let subscription_request = Request::Subscribe(Subscribe { channels, symbols });
+        self.send_request(&subscription_request)
+    }
+
+    pub fn subscribe_all(&self, channels: Vec<Channel>) -> Result<()> {
+        let symbols = vec![];
         let subscription_request = Request::Subscribe(Subscribe { channels, symbols });
         self.send_request(&subscription_request)
     }
@@ -250,6 +252,14 @@ impl WsClient for KolliderHedgingClient {
         }
     }
 
+    fn subscribe(&self, channels: Vec<Channel>, symbols: Option<Vec<Symbol>>) {
+        if let Some(s) = symbols {
+            self.subscribe(channels, s).unwrap();
+        } else {
+            self.subscribe_all(channels).unwrap();
+        }
+    }
+
     fn get_all_balances(&self) -> Option<Balances> {
         self.state.lock().unwrap().balances.clone()
     }
@@ -300,6 +310,8 @@ fn process_incoming_message(
                 shared_state.lock().unwrap().is_authenticated = true;
                 shared_state_changed.notify_one();
             }
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
         }
         KolliderApiResponse::PositionStates(position_state) => {
             shared_state
@@ -308,6 +320,8 @@ fn process_incoming_message(
                 .position_states
                 .insert(position_state.symbol.clone(), *position_state);
             shared_state_changed.notify_one();
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
         }
         KolliderApiResponse::Balances(balances) => {
             shared_state.lock().unwrap().balances = Some(balances);
@@ -328,6 +342,8 @@ fn process_incoming_message(
         KolliderApiResponse::TradableSymbols(tradable_symbols) => {
             shared_state.lock().unwrap().tradable_symbols = tradable_symbols.symbols;
             shared_state_changed.notify_one();
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
         }
         KolliderApiResponse::SettlementRequest(_settlement_request) => {
             let msg = Message::KolliderApiResponse(response);

@@ -25,7 +25,7 @@ The dealer is an OTC desk that works on the behalf of the bank to hedge the bank
 
 Currently supported fiat currencies:
 - [x] USD 💵
-- [ ] EUR 💶
+- [x] EUR 💶
 - [ ] GBP 💷
 - [ ] ?
  
