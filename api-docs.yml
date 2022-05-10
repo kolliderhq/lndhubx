@@ -1,0 +1,129 @@
+openapi: '3.0.2'
+info:
+  title: LndHubX  
+  version: '1.0'
+servers:
+  - url: https://lndhubx.kollider.xyz
+paths:
+  /create:
+    post:
+      summary: Creates a new user.
+      requestBody:
+        description: Optional description in *Markdown*
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/CreateUser'
+      responses:
+        '200':
+          description: OK
+  /auth:
+    post:
+      summary: Logs in a new user.
+      requestBody:
+        description: Optional description in *Markdown*
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/CreateUser'
+      responses:
+        '200':
+          description: OK
+  /addinvoice:
+    get:
+      summary: Creates a new invoice.
+      parameters:
+        - in: query
+          name: amount
+          schema:
+            type: integer
+          required: true
+          description: The amount of sats the invoice is generated for.
+        - in: query
+          name: meta 
+          schema:
+            type: string 
+          required: false
+          description: The amount of sats the invoice is generated for.
+        - in: query
+          name: account_id
+          schema:
+            type: string 
+          required: false
+          description: The amount of sats the invoice is generated for.
+      responses:
+        '200':
+          description: OK
+  /payinvoice:
+    post:
+      summary: Pay an invoice.
+      requestBody:
+        description: Optional description in *Markdown*
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/PayInvoice'
+      responses:
+        '200':
+          description: OK
+  /swap:
+    post:
+      summary: Swap one currency for another.
+      requestBody:
+        description: Optional description in *Markdown*
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/Swap'
+      responses:
+        '200':
+          description: OK
+  /quote:
+    post:
+      summary: Get a quote for a currency swap.
+      requestBody:
+        description: Optional description in *Markdown*
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/Swap'
+      responses:
+        '200':
+          description: OK
+
+
+components:
+  requestBodies:
+    CreateUser:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Message text
+        password:
+          type: string
+          description: Message text
+    PayInvoice:
+      type: object
+      properties:
+        payment_request:
+          type: string
+          description: Message text
+    Swap:
+      type: object
+      properties:
+        from_currency:
+          type: string
+          description: Message text
+        to_currency:
+          type: string
+          description: Message text
+        amount:
+          type: string
+          description: Message text
+  
