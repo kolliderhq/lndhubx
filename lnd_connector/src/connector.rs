@@ -108,6 +108,8 @@ impl LndConnector {
 
         // Max fee is always a percentage of amount.
         let max_fee = (amount_in_sats * max_fee).round_dp(0).to_i64().unwrap();
+        // Never send a payment with lower fee than 10.
+        let max_fee = std::cmp::max(max_fee, 10);
 
         let limit = tonic_lnd::rpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_lnd::rpc::FeeLimit { limit: Some(limit) };
