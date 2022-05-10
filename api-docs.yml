@@ -3,7 +3,7 @@ info:
   title: LndHubX  
   version: '1.0'
 servers:
-  - url: https://lndhubx.kollider.xyz
+  - url: https://lndhubx.kollider.xyz/api/
 paths:
   /create:
     post:
@@ -89,18 +89,38 @@ paths:
         '200':
           description: OK
   /quote:
-    post:
+    get:
       summary: Get a quote for a currency swap.
-      requestBody:
-        description: Optional description in *Markdown*
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/requestBodies/Swap'
+      parameters:
+        - in: query
+          name: from_currency
+          schema:
+            type: string 
+          required: true
+          description: The currency you want to sell.
+        - in: query
+          name: to_currency
+          schema:
+            type: string 
+          required: true
+          description: The currency you want to buy.
+        - in: query
+          name: amount
+          schema:
+            type: integer
+          required: true
+          description: The amount you want to swap. Note BTC is denominated in BTC not Sats.
       responses:
         '200':
           description: OK
+
+  /getavailablecurrencies:
+    get:
+      summary: Shows you all available currencies to swap into.
+      responses:
+        '200':
+          description: OK
+
 
 
 components:
