@@ -57,6 +57,10 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Balances'
   /addinvoice:
     get:
       summary: Creates a new invoice.
