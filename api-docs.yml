@@ -31,6 +31,12 @@ paths:
       responses:
         '200':
           description: OK
+  /balance:
+    get:
+      summary: Get user balance.
+      responses:
+        '200':
+          description: OK
   /addinvoice:
     get:
       summary: Creates a new invoice.
