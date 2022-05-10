@@ -1,7 +1,7 @@
 openapi: '3.0.2'
 info:
   title: LndHubX  
-  version: '1.0 (Alpha)'
+  version: '1.0 Alpha'
 servers:
   - url: https://lndhubx.kollider.xyz/api/
 paths:
