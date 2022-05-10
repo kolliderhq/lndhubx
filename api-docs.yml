@@ -133,7 +133,7 @@ components:
           description: A unique username.
         password:
           type: string
-          description: A unquie strong password.
+          description: A unique strong password.
     PayInvoice:
       type: object
       properties:
