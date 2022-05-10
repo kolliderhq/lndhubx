@@ -28,20 +28,20 @@ Currently supported fiat currencies:
 - [x] EUR 💶
 - [ ] GBP 💷
 - [ ] ?
+
+### Live Deploymnet at https://lndhubx.kollider.xyz
  
 ---
  
 ### Known issues
 - No integration tests.
 - Blocking on making a lightning payment. Which allows anyone to ddos the bank with a Hodl invoice.
-- Fee drain attacks are possible because bank pays for fees.
 ---
 ### TODO
 - Add spread configuration to the dealer RFQ system to charge users for currency conversions.
 - Insurance fund for the dealer. 
 - Add more parameters to the Dealer to improve its strategy.
 - No prevention or monitoring of fee ransom attacks.
-- Add logging
 - API rate limiting
 - Add a fee model to the bank so the bank can charge transaction fees on top of the network fees.
 - Add lnurl auth. For users as well as the Dealer to login over lnurl auth rather than API Keys.
