@@ -9,7 +9,7 @@ paths:
     post:
       summary: Creates a new user.
       requestBody:
-        description: Optional description in *Markdown*
+        description: This creates a new unique user on LndhubX.
         required: true
         content:
           application/json:
@@ -22,7 +22,7 @@ paths:
     post:
       summary: Logs in a new user.
       requestBody:
-        description: Optional description in *Markdown*
+        description: This will log a user and in an return the JWT tokens.
         required: true
         content:
           application/json:
@@ -52,13 +52,13 @@ paths:
           schema:
             type: string 
           required: false
-          description: The amount of sats the invoice is generated for.
+          description: Some optional meta data to include in the invoice.
         - in: query
           name: account_id
           schema:
             type: string 
           required: false
-          description: The amount of sats the invoice is generated for.
+          description: If you want to generate the invoice for a specific account otherwise your default account is used.
       responses:
         '200':
           description: OK
@@ -66,7 +66,7 @@ paths:
     post:
       summary: Pay an invoice.
       requestBody:
-        description: Optional description in *Markdown*
+        description: This will pay an invoice. Internal payments are possible but no self payments.
         required: true
         content:
           application/json:
@@ -79,7 +79,7 @@ paths:
     post:
       summary: Swap one currency for another.
       requestBody:
-        description: Optional description in *Markdown*
+        description: This will swap any two currencies with each other.
         required: true
         content:
           application/json:
@@ -130,26 +130,26 @@ components:
       properties:
         username:
           type: string
-          description: Message text
+          description: A unique username.
         password:
           type: string
-          description: Message text
+          description: A unquie strong password.
     PayInvoice:
       type: object
       properties:
         payment_request:
           type: string
-          description: Message text
+          description: The LN payment request to be paid.
     Swap:
       type: object
       properties:
         from_currency:
           type: string
-          description: Message text
+          description: The currency you want to sell.
         to_currency:
           type: string
-          description: Message text
+          description: The currency you wan to buy.
         amount:
           type: string
-          description: Message text
+          description: The amount you want to swap.
   
