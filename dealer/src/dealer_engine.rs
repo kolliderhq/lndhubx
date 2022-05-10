@@ -418,7 +418,7 @@ impl DealerEngine {
                     level2_state
                         .bids
                         .iter()
-                        .for_each(|(price, volume)| match 0.cmp(volume) {
+                        .for_each(|(price, volume)| match volume.cmp(&0) {
                             Ordering::Less => {}
                             Ordering::Equal => {
                                 book.bids.remove(price);
@@ -430,7 +430,7 @@ impl DealerEngine {
                     level2_state
                         .asks
                         .iter()
-                        .for_each(|(price, volume)| match 0.cmp(volume) {
+                        .for_each(|(price, volume)| match volume.cmp(&0) {
                             Ordering::Less => {}
                             Ordering::Equal => {
                                 book.asks.remove(price);
