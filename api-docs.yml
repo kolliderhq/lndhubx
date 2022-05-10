@@ -24,6 +24,12 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                items:
+                  $ref: '#/components/schemas/User'
   /auth:
     post:
       summary: Logs in a new user.
@@ -36,7 +42,14 @@ paths:
               $ref: '#/components/requestBodies/CreateUser'
       responses:
         '200':
-          description: OK
+          description: Returns an object of accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                items:
+                  $ref: '#/components/schemas/Auth'
+
   /balance:
     get:
       summary: Get user balance.
@@ -68,6 +81,12 @@ paths:
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                items:
+                  $ref: '#/components/schemas/AddInvoice'
   /payinvoice:
     post:
       summary: Pay an invoice.
@@ -141,6 +160,35 @@ paths:
 
 
 components:
+  schemas:
+    Balances:
+      type: object
+      properties:
+        account_id:
+          type: string 
+        account_type:
+          type: string 
+        balance:
+          type: integer 
+        currency:
+          type: string
+    User:
+      type: object
+      properties:
+        username:
+          type: string 
+    Auth:
+      type: object
+      properties:
+        access_token:
+          type: string 
+        refresh_token:
+          type: string
+    AddInvoice:
+      type: object
+      properties:
+        payment_request:
+          type: string 
   requestBodies:
     CreateUser:
       type: object
