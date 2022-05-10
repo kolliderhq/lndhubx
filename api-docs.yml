@@ -2,6 +2,7 @@ openapi: '3.0.2'
 info:
   title: LndHubX  
   version: '1.0 Alpha'
+  description: LndhubX is a Lightning Bitcoin bank that allows users to swap into synthetic fiat.
 servers:
   - url: https://lndhubx.kollider.xyz/api
 paths:
