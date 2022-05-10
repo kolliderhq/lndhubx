@@ -27,9 +27,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                items:
-                  $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/User'
   /auth:
     post:
       summary: Logs in a new user.
@@ -46,9 +44,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                items:
-                  $ref: '#/components/schemas/Auth'
+                $ref: '#/components/schemas/Auth'
 
   /balance:
     get:
@@ -84,9 +80,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                items:
-                  $ref: '#/components/schemas/AddInvoice'
+                $ref: '#/components/schemas/AddInvoice'
   /payinvoice:
     post:
       summary: Pay an invoice.
