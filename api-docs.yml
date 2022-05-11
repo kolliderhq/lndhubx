@@ -3,9 +3,9 @@ info:
   title: LndHubX  
   version: '1.0 Alpha'
   description: | 
-   LndhubX is a Lightning Bitcoin bank that allows users to swap into synthetic fiat.
+   LndhubX is a Lightning Bitcoin bank that allows users to swap into synthetic fiat and back.
 
-   Project Available on Github: [https://github.com/kolliderhq/lndhubx]
+   Learn more about the project on Github: https://github.com/kolliderhq/lndhubx
 
 servers:
   - url: https://lndhubx.kollider.xyz/api
