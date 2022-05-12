@@ -220,6 +220,16 @@ components:
       properties:
         payment_request:
           type: string 
+        amount:
+          type: string
+        account_id:
+          type: string
+        meta:
+          type: string
+        rate:
+          type: string
+        currency:
+          type: string
     Quote:
       type: object
       properties:
