@@ -76,6 +76,12 @@ paths:
           required: true
           description: The amount of sats the invoice is generated for.
         - in: query
+          name: currency 
+          schema:
+            type: string 
+          required: false
+          description: The currency you want to deposit.
+        - in: query
           name: meta 
           schema:
             type: string 
