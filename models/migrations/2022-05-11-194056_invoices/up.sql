@@ -14,5 +14,6 @@ account_id TEXT NOT NULL,
 uid integer NOT NULL DEFAULT 0 references "users" (uid),
 incoming BOOLEAN NOT NULL,
 owner integer references "users" (uid),
-fees BIGINT
+fees BIGINT,
+currency TEXT
 );

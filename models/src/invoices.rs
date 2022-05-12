@@ -24,6 +24,7 @@ pub struct Invoice {
     pub incoming: bool,
     pub owner: Option<i32>,
     pub fees: Option<i64>,
+    pub currency: Option<String>,
 }
 
 impl Invoice {
@@ -71,6 +72,7 @@ pub struct InsertableInvoice {
     pub incoming: bool,
     pub owner: Option<i32>,
     pub fees: Option<i64>,
+    pub currency: Option<String>
 }
 
 impl InsertableInvoice {

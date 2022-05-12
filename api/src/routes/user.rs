@@ -110,9 +110,10 @@ pub async fn pay_invoice(
 
 #[derive(Deserialize, Debug)]
 pub struct CreateInvoiceParams {
-    pub amount: u64,
+    pub amount: Decimal,
     pub meta: Option<String>,
     pub account_id: Option<Uuid>,
+    pub currency: Option<Currency>,
 }
 
 #[get("/addinvoice")]
@@ -130,13 +131,18 @@ pub async fn add_invoice(
         None => "Create invoice".to_string(),
     };
 
+    let currency = match &query.currency {
+        Some(c) => c.clone(),
+        None => Currency::BTC
+    };
+
     let invoice_request = InvoiceRequest {
         req_id,
         meta,
         uid,
         account_id: query.account_id,
-        amount: Some(query.amount),
-        currency: Currency::BTC,
+        amount: query.amount,
+        currency: currency,
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(

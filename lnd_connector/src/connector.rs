@@ -98,6 +98,7 @@ impl LndConnector {
                 account_id: account_id.to_string(),
                 incoming: true,
                 fees: None,
+                currency: None,
             };
             return Ok(invoice);
         }
