@@ -74,7 +74,7 @@ paths:
           schema:
             type: integer
           required: true
-          description: The amount of sats the invoice is generated for.
+          description: The amount of the specified currency. NOTE BTC is not denominated in Sats but in BTC.
         - in: query
           name: currency 
           schema:
