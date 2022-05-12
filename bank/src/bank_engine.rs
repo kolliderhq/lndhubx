@@ -161,7 +161,7 @@ impl BankEngine {
             fee_structure: FeeStructure::new(),
             conn_pool,
             lnd_connector,
-            available_currencies: Vec::new(),
+            available_currencies: vec![Currency::BTC],
             internal_tx_fee: settings.internal_tx_fee,
             external_tx_fee: settings.external_tx_fee,
             ln_network_fee_margin: settings.ln_network_fee_margin,
@@ -452,6 +452,68 @@ impl BankEngine {
                         listener(msg, ServiceIdentity::Dealer)
                     }
                 }
+                Dealer::FiatDepositResponse(msg) => {
+                    slog::info!(self.logger, "Received fiat deposit response: {:?}", msg);
+                    if msg.error.is_some() {
+                        return
+                    }
+                    let rate = match msg.rate {
+                        Some(r) => r,
+                        None => return
+                    };
+
+                    let (mut inbound_account, inbound_uid) = {
+                        let user_account = self
+                            .ledger
+                            .user_accounts
+                            .entry(msg.uid as u64)
+                            .or_insert_with(|| UserAccount::new(msg.uid as u64));
+
+                        let account = user_account.get_default_account(msg.currency);
+
+                        (account, user_account.owner)
+                    };
+
+                    let mut external_account = self.ledger.external_account.clone();
+                    let value = msg.amount;
+
+                    // Making the transaction and inserting it into the DB.
+                    if self
+                        .make_tx(
+                            &mut external_account,
+                            BANK_UID,
+                            &mut inbound_account,
+                            inbound_uid,
+                            value,
+                            rate,
+                        )
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    // Safe to unwrap as we created this account above.
+                    let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
+
+                    // Updating cache.
+                    user_account
+                        .accounts
+                        .insert(inbound_account.account_id, inbound_account.clone());
+
+                    // Updating cache of external account.
+                    self.ledger.external_account = external_account.clone();
+
+                    // Updating db of internal account.
+                    self.update_account(&inbound_account, inbound_uid);
+
+                    // Updating db of internal account.
+                    self.update_account(&external_account, BANK_UID);
+
+                    let bank_state = self.get_bank_state();
+                    let msg = Message::Dealer(Dealer::BankState(bank_state));
+                    listener(msg, ServiceIdentity::Dealer);
+
+                }
                 _ => {}
             },
             Message::Deposit(msg) => {
@@ -480,6 +542,23 @@ impl BankEngine {
                     // Exchange rate of the deposit.
                     let rate = dec!(1);
 
+                    let currency = match invoice.currency {
+                        Some(c) => Currency::from_str(&c).unwrap(),
+                        None => Currency::BTC
+                    };
+
+                    // If its not a fiat deposit we need to get the current rate.
+                    if currency != Currency::BTC {
+                        let fiat_deposit_request = FiatDepositRequest {
+                            currency,
+                            uid: invoice.uid as u64,
+                            req_id: Uuid::new_v4(),
+                            amount: value,
+                        };
+                        let msg = Message::Dealer(Dealer::FiatDepositRequest(fiat_deposit_request));
+                        listener(msg, ServiceIdentity::Dealer);
+                    }
+
                     let (mut inbound_account, inbound_uid) = {
                         let user_account = self
                             .ledger
@@ -487,7 +566,7 @@ impl BankEngine {
                             .entry(invoice.uid as u64)
                             .or_insert_with(|| UserAccount::new(invoice.uid as u64));
 
-                        let account = user_account.get_default_account(Currency::BTC);
+                        let account = user_account.get_default_account(currency);
 
                         (account, user_account.owner)
                     };
@@ -530,6 +609,7 @@ impl BankEngine {
             Message::Api(msg) => match msg {
                 Api::InvoiceRequest(msg) => {
                     slog::info!(self.logger, "Received invoice request: {:?}", msg);
+
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
@@ -546,7 +626,15 @@ impl BankEngine {
                         }
                     };
 
-                    let amount = msg.amount.unwrap_or(0);
+                    let amount = msg.amount;
+                    let currency = msg.currency;
+
+                    // If user wants to deposit another currency we have to go through the dealer.
+                    if currency != Currency::BTC {
+                        let msg = Message::Api(Api::InvoiceRequest(msg));
+                        listener(msg, ServiceIdentity::Dealer);
+                        return
+                    }
 
                     let user_account = self
                         .ledger
@@ -561,11 +649,14 @@ impl BankEngine {
                             target_account = acc.clone();
                         } else {
                             let invoice_response = InvoiceResponse {
+                                amount,
                                 req_id: msg.req_id,
                                 uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
-                                account_id: target_account.account_id,
+                                account_id: Some(target_account.account_id),
                                 error: Some(InvoiceResponseError::AccountDoesNotExist),
                             };
                             let msg = Message::Api(Api::InvoiceResponse(invoice_response));
@@ -578,22 +669,118 @@ impl BankEngine {
                         target_account = account;
                     }
 
-                    if let Ok(invoice) = self
+                    let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0)).to_u64().unwrap();
+
+                    if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount, msg.meta, msg.uid, target_account.account_id)
+                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id)
                         .await
                     {
+                        invoice.currency = Some(msg.currency.to_string());
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
                             return;
                         }
 
                         let invoice_response = InvoiceResponse {
+                            amount,
                             req_id: msg.req_id,
                             uid: msg.uid,
+                            meta:  msg.meta,
+                            rate: None,
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
-                            account_id: target_account.account_id,
+                            account_id: Some(target_account.account_id),
+                            error: None,
+                        };
+
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api)
+                    }
+                }
+                Api::InvoiceResponse(ref msg) => {
+                    let rate = match msg.rate {
+                        Some(r) => r,
+                        None => {
+                            let mut m = msg.clone();
+                            m.error = Some(InvoiceResponseError::RateNotAvailable);
+                            let msg = Message::Api(Api::InvoiceResponse(m));
+                            listener(msg, ServiceIdentity::Api);
+                            return
+                        }
+                    };
+                    let amount_in_btc = msg.amount / rate;
+                    let amount_in_sats = (amount_in_btc * Decimal::new(SATS_IN_BITCOIN as i64, 0)).round_dp_with_strategy(0, RoundingStrategy::AwayFromZero).to_u64().unwrap();
+
+                    let conn = match &self.conn_pool {
+                        Some(conn) => conn,
+                        None => {
+                            slog::error!(self.logger, "No database provided.");
+                            return;
+                        }
+                    };
+
+                    let c = match conn.get() {
+                        Ok(psql_connection) => psql_connection,
+                        Err(_) => {
+                            slog::error!(self.logger, "Couldn't get psql connection.");
+                            return;
+                        }
+                    };
+
+                    let user_account = self
+                        .ledger
+                        .user_accounts
+                        .entry(msg.uid)
+                        .or_insert_with(|| UserAccount::new(msg.uid));
+
+                    let mut target_account = Account::new(Currency::BTC, AccountType::Internal);
+
+                    if let Some(account_id) = msg.account_id {
+                        if let Some(acc) = user_account.accounts.get(&account_id) {
+                            target_account = acc.clone();
+                        } else {
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                account_id: Some(target_account.account_id),
+                                error: Some(InvoiceResponseError::AccountDoesNotExist),
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
+                        }
+                    } else {
+                        // If user does not specify an account_id we select or create one for him.
+                        let account = user_account.get_default_account(Currency::BTC);
+                        target_account = account;
+                    }
+
+                    if let Ok(mut invoice) = self
+                        .lnd_connector
+                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id)
+                        .await
+                    {
+                        invoice.currency = Some(msg.currency.to_string());
+                        if let Err(_err) = invoice.insert(&c) {
+                            slog::error!(self.logger, "Error inserting invoice.");
+                            return;
+                        }
+
+                        let invoice_response = InvoiceResponse {
+                            amount: msg.amount,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            meta: msg.meta.clone(),
+                            rate: msg.rate,
+                            payment_request: Some(invoice.payment_request),
+                            currency: msg.currency,
+                            account_id: Some(target_account.account_id),
                             error: None,
                         };
 
@@ -648,6 +835,7 @@ impl BankEngine {
                                 owner: None,
                                 fees: None,
                                 incoming: false,
+                                currency: None,
                             };
                             invoice
                                 .insert(&psql_connection)

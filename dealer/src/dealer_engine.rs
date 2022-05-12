@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError, AvailableCurrenciesResponse};
+use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError, AvailableCurrenciesResponse, InvoiceResponse, InvoiceResponseError};
 use msgs::dealer::*;
 use msgs::kollider_client::*;
 use msgs::Message;
@@ -122,7 +122,7 @@ impl DealerEngine {
 
     pub fn sweep_excess_funds<F: FnMut(Message)>(&self, listener: &mut F) {
         if let Some(balances) = self.ws_client.get_all_balances() {
-            if balances.cash > dec!(1) {
+            if balances.cash > dec!(100) {
                 let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
                     amount: balances.cash.to_i64().unwrap() as u64,
@@ -182,7 +182,7 @@ impl DealerEngine {
                 continue;
             }
 
-            slog::debug!(self.logger, "{:?}", bank_state);
+            slog::info!(self.logger, "{:?}", bank_state);
 
             let symbol = Symbol::from(currency);
             let denom = Denom::from_currency(currency);
@@ -257,7 +257,7 @@ impl DealerEngine {
                     match swap_request.quote_id {
                         None => {
                             let conversion_info = ConversionInfo::new(swap_request.from, swap_request.to);
-                            let rate = self.get_rate(swap_request.amount, conversion_info);
+                            let rate = self.get_rate(Some(swap_request.amount), None, conversion_info);
                             if rate.is_some() {
                                 swap_response.rate = rate;
                             } else {
@@ -295,7 +295,7 @@ impl DealerEngine {
                         error: None,
                     };
                     let conversion_info = ConversionInfo::new(quote_request.from, quote_request.to);
-                    let rate = self.get_rate(quote_request.amount, conversion_info);
+                    let rate = self.get_rate(Some(quote_request.amount), None, conversion_info);
                     if rate.is_some() {
                         let time_now = SystemTime::now();
                         let quote_id = time_now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
@@ -330,8 +330,30 @@ impl DealerEngine {
                         req_id: available_currencies_request.req_id,
                         error: None,
                     };
-
                     let msg = Message::Api(Api::AvailableCurrenciesResponse(response));
+                    listener(msg);
+                }
+                Api::InvoiceRequest(invoice_request) => {
+                    let conversion_info = ConversionInfo::new(Currency::BTC, invoice_request.currency);
+                    // We assume user specifies the value not the amount.
+                    let rate = self.get_rate(None, Some(invoice_request.amount), conversion_info);
+                    let mut invoice_response = InvoiceResponse {
+                        rate: None,
+                        amount: invoice_request.amount,
+                        req_id: invoice_request.req_id,
+                        uid: invoice_request.uid,
+                        meta: invoice_request.meta,
+                        currency: invoice_request.currency,
+                        payment_request: None,
+                        account_id: None,
+                        error: None,
+                    };
+                    if rate.is_none() {
+                        invoice_response.error = Some(InvoiceResponseError::RateNotAvailable);
+                    } else {
+                        invoice_response.rate = rate
+                    }
+                    let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                     listener(msg);
                 }
                 _ => {}
@@ -402,6 +424,30 @@ impl DealerEngine {
                     )
                     .expect("Failed to make a withdrawal");
             }
+            Message::Dealer(Dealer::FiatDepositRequest(msg)) => {
+                let conversion_info = ConversionInfo::new(Currency::BTC, msg.currency);
+                // We assume user specifies the value not the amount.
+                let rate = self.get_rate(None, Some(msg.amount), conversion_info);
+
+                let mut fiat_deposit_response = FiatDepositResponse {
+                    req_id: msg.req_id,
+                    uid: msg.uid,
+                    amount: msg.amount,
+                    currency: msg.currency,
+                    rate: None,
+                    error: None,
+                };
+
+                if rate.is_none() {
+                    fiat_deposit_response.error = Some(FiatDepositResponseError::CurrencyNotAvailable);
+                } else {
+                    fiat_deposit_response.rate = rate;
+                }
+
+                let msg = Message::Dealer(Dealer::FiatDepositResponse(fiat_deposit_response));
+                listener(msg);
+
+            }
             _ => {}
         }
     }
@@ -448,6 +494,14 @@ impl DealerEngine {
 
     fn update_quotes(&mut self, symbol: &Symbol) {
         const QUANTITIES: [u64; 9] = [10, 100, 1_000, 2_000, 3_000, 5_000, 10_000, 100_000, 1_000_000];
+
+        let tradable_symbols = self.ws_client.get_tradable_symbols();
+        let contract = match tradable_symbols.get(symbol) {
+            Some(c) => c,
+            None => return
+        };
+
+        let dp = contract.price_dp;
 
         let book = match self.level2_data.get(symbol) {
             Some(l2_data) => l2_data,
@@ -517,24 +571,28 @@ impl DealerEngine {
             }
             if bid_to_match == 0 {
                 let mut price = (bid_num / Decimal::new(bid_quantity_so_far as i64, 0)).ceil();
-                price.set_scale(1).expect("Could not set scale");
+                price.set_scale(dp).expect("Could not set scale");
                 let quotes = self.bid_quotes.entry(symbol.clone()).or_default();
                 quotes.insert(qty, price);
             }
             if ask_to_match == 0 {
                 let mut price = (ask_num / Decimal::new(ask_quantity_so_far as i64, 0)).floor();
-                price.set_scale(1).expect("Could not set scale");
+                price.set_scale(dp).expect("Could not set scale");
                 let quotes = self.ask_quotes.entry(symbol.clone()).or_default();
                 quotes.insert(qty, price);
             }
         }
     }
 
-    fn get_rate(&self, amount: Decimal, conversion_info: ConversionInfo) -> Option<Decimal> {
+    fn get_rate(&self, amount: Option<Decimal>, value: Option<Decimal>, conversion_info: ConversionInfo) -> Option<Decimal> {
         let maybe_quotes = match conversion_info.side {
             Side::Bid => self.bid_quotes.get(&conversion_info.symbol),
             Side::Ask => self.ask_quotes.get(&conversion_info.symbol),
         };
+        // Either vlaue or amount needs to be some.
+        if amount.is_none() && value.is_none() {
+            return None
+        }
         match maybe_quotes {
             None => None,
             Some(quotes) => {
@@ -543,8 +601,10 @@ impl DealerEngine {
                 } else {
                     dec!(1.0)
                 };
-                let value = {
-                    let value = amount * best_price;
+                let value = if let Some(v) = value {
+                    v.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
+                } else {
+                    let value = amount.unwrap() * best_price;
                     value.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
                 };
                 let lookup_quantity = value.to_i64().unwrap() as u64;

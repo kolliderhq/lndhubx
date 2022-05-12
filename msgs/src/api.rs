@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InvoiceResponseError {
     AccountDoesNotExist,
+    RateNotAvailable
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +35,7 @@ pub enum AvailableCurrenciesResponseError {
 pub struct InvoiceRequest {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub amount: Option<u64>,
+    pub amount: Decimal,
     pub meta: String,
     pub currency: Currency,
     pub account_id: Option<Uuid>,
@@ -45,8 +46,11 @@ pub struct InvoiceResponse {
     pub req_id: RequestId,
     pub uid: UserId,
     pub payment_request: Option<String>,
+    pub meta: String,
+    pub amount: Decimal,
+    pub rate: Option<Decimal>,
     pub currency: Currency,
-    pub account_id: Uuid,
+    pub account_id: Option<Uuid>,
     pub error: Option<InvoiceResponseError>,
 }
 

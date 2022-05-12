@@ -61,6 +61,29 @@ pub struct DealerHealth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FiatDepositRequest {
+    pub req_id: RequestId,
+    pub amount: Decimal,
+    pub currency: Currency,
+    pub uid: UserId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FiatDepositResponseError {
+    CurrencyNotAvailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FiatDepositResponse {
+    pub req_id: RequestId,
+    pub amount: Decimal,
+    pub rate: Option<Decimal>,
+    pub currency: Currency,
+    pub uid: UserId,
+    pub error: Option<FiatDepositResponseError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Dealer {
     BankStateRequest(BankStateRequest),
     BankStateResponse(BankStateResponse),
@@ -69,4 +92,6 @@ pub enum Dealer {
     PayInvoice(PayInvoice),
     CreateInvoiceRequest(CreateInvoiceRequest),
     CreateInvoiceResponse(CreateInvoiceResponse),
+    FiatDepositRequest(FiatDepositRequest),
+    FiatDepositResponse(FiatDepositResponse),
 }
