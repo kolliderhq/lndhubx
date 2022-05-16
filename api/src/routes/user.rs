@@ -293,6 +293,7 @@ pub async fn quote(
 pub struct TransactionsParams {
     pub from: Option<i64>,
     pub to: Option<i64>,
+    pub currency: Option<Currency>,
 }
 
 #[get("/gettxs")]
@@ -303,6 +304,13 @@ pub async fn get_txs(
 ) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    if let Some(currency) = query.currency {
+        let transactions = match Transaction::get_historical_by_uid_and_currency(&conn, uid as i32, currency.to_string(), query.from, query.to) {
+            Ok(i) => i,
+            Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
+        };
+        return Ok(HttpResponse::Ok().json(&transactions))
+    }
     let transactions = match Transaction::get_historical_by_uid(&conn, uid as i32, query.from, query.to) {
         Ok(i) => i,
         Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
