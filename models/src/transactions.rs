@@ -55,6 +55,30 @@ impl Transaction {
             .load(conn)
     }
 
+    pub fn get_historical_by_uid_and_currency(
+        conn: &diesel::PgConnection,
+        uid: i32,
+        currency: String,
+        from: Option<i64>,
+        to: Option<i64>,
+    ) -> Result<Vec<Self>, DieselError> {
+        let from = from.unwrap_or(0);
+        let to = to.unwrap_or(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as i64,
+        );
+        let owning_transactions = transactions::outbound_uid.eq(uid).or(transactions::inbound_uid.eq(uid)).and(transactions::outbound_currency.eq(currency.clone())).or(transactions::inbound_currency.eq(currency.clone()));
+        transactions::dsl::transactions
+            .filter(
+                owning_transactions
+                    .and(transactions::created_at.ge(from))
+                    .and(transactions::created_at.le(to)),
+            )
+            .load(conn)
+    }
+
     pub fn insert(&self, conn: &diesel::PgConnection) -> Result<String, DieselError> {
         diesel::insert_into(transactions::table)
             .values(self)

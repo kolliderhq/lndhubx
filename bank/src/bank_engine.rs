@@ -317,8 +317,8 @@ impl BankEngine {
         outbound_account.balance -= outbound_amount;
         inbound_account.balance += inbound_amount;
 
-        let outbound_amount_str = amount.to_string();
-        let inbound_amount_str = amount.to_string();
+        let outbound_amount_str = outbound_amount.to_string();
+        let inbound_amount_str = inbound_amount.to_string();
         let rate_str = rate.to_string();
 
         let outbound_amount_bigdec = match BigDecimal::from_str(&outbound_amount_str) {
