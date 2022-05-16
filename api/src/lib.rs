@@ -4,6 +4,7 @@ use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use serde::{Deserialize, Serialize};
+use actix_cors::Cors;
 
 use tokio::sync::mpsc;
 
@@ -45,6 +46,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Cors::permissive())
             .app_data(Data::new(pool.clone()))
             .app_data(Data::new(tx.clone()))
             .service(routes::auth::create)

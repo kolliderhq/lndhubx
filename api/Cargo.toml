@@ -10,6 +10,7 @@ actix-http = "3.0.4"
 actix-web = { version = "^4"}
 actix-web-httpauth = { version = "0.6.0"  }
 actix-service = "^2"
+actix-cors = "0.6.1"
 chrono = { version = "0.4.10", features = ["serde"] }
 derive_more = "0.99.2"
 diesel = { version = "1.4.2", features = ["postgres","uuidv07", "r2d2", "chrono"] }
