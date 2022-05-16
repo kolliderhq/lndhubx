@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError, AvailableCurrenciesResponse, InvoiceResponse, InvoiceResponseError};
+use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError, AvailableCurrenciesResponse, InvoiceResponse, InvoiceResponseError, PaymentResponse, PaymentResponseError};
 use msgs::dealer::*;
 use msgs::kollider_client::*;
 use msgs::Message;
@@ -354,6 +354,19 @@ impl DealerEngine {
                         invoice_response.rate = rate
                     }
                     let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                    listener(msg);
+                }
+                Api::PaymentRequest(mut msg) => {
+                    let conversion_info = ConversionInfo::new(msg.currency, Currency::BTC);
+                    // We assume user specifies the value not the amount.
+                    let amount = msg.amount.unwrap();
+                    let rate = self.get_rate(None, Some(amount), conversion_info);
+                    if rate.is_none() {
+                        return
+                    } else {
+                        msg.rate = rate;
+                    }
+                    let msg = Message::Api(Api::PaymentRequest(msg));
                     listener(msg);
                 }
                 _ => {}
