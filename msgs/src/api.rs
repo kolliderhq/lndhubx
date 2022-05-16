@@ -60,7 +60,8 @@ pub struct PaymentRequest {
     pub uid: UserId,
     pub payment_request: String,
     pub currency: Currency,
-    pub amount: Option<u64>,
+    pub amount: Option<Decimal>,
+    pub rate: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +70,7 @@ pub enum PaymentResponseError {
     InsufficientFundsForFees,
     InvoiceAlreadyPaid,
     SelfPayment,
+    RateNotAvailable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,7 +80,9 @@ pub struct PaymentResponse {
     pub success: bool,
     pub currency: Currency,
     pub payment_request: String,
+    pub amount: Decimal,
     pub fees: Decimal,
+    pub rate: Decimal,
     pub error: Option<PaymentResponseError>,
 }
 

@@ -63,6 +63,7 @@ pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpR
 #[derive(Deserialize)]
 pub struct PayInvoiceData {
     pub payment_request: String,
+    pub currency: Option<Currency>,
 }
 
 #[post("/payinvoice")]
@@ -75,12 +76,18 @@ pub async fn pay_invoice(
 
     let uid = auth_data.uid as u64;
 
+    let currency = match pay_invoice_data.currency {
+        Some(c) => c,
+        None => Currency::BTC,
+    };
+
     let payment_request = PaymentRequest {
+        currency,
         req_id,
         uid,
         payment_request: pay_invoice_data.payment_request.clone(),
+        rate: None,
         amount: None,
-        currency: Currency::BTC,
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(

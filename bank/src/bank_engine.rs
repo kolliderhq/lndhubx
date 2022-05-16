@@ -11,9 +11,9 @@ use models::{accounts, internal_user_mappings, invoices::Invoice};
 use msgs::api::*;
 use msgs::dealer::*;
 use msgs::*;
-use xerror::bank_engine::*;
 use utils::currencies::{SATS_DECIMALS, SATS_IN_BITCOIN};
 use utils::xlogging::*;
+use xerror::bank_engine::*;
 
 use lnd_connector::connector::LndConnector;
 
@@ -393,22 +393,34 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Dealer::PayInvoice(pay_invoice) => {
-
-                    let decoded = match pay_invoice.payment_request.clone().parse::<lightning_invoice::Invoice>() {
+                    let decoded = match pay_invoice
+                        .payment_request
+                        .clone()
+                        .parse::<lightning_invoice::Invoice>()
+                    {
                         Ok(d) => d,
-                        Err(_)=> return
+                        Err(_) => return,
                     };
 
                     let amount_in_sats = Decimal::new(decoded.amount_milli_satoshis().unwrap() as i64, 0) / dec!(1000);
 
-                    slog::debug!(self.logger, "Dealer requests to pay invoice: {} of amount: {}", pay_invoice.payment_request, amount_in_sats);
+                    slog::debug!(
+                        self.logger,
+                        "Dealer requests to pay invoice: {} of amount: {}",
+                        pay_invoice.payment_request,
+                        amount_in_sats
+                    );
 
                     if let Ok(result) = self
                         .lnd_connector
-                        .pay_invoice(pay_invoice.payment_request.clone(), amount_in_sats, self.ln_network_max_fee)
+                        .pay_invoice(
+                            pay_invoice.payment_request.clone(),
+                            amount_in_sats,
+                            self.ln_network_max_fee,
+                        )
                         .await
                     {
-						slog::debug!(self.logger, "{:?}", result);
+                        slog::debug!(self.logger, "{:?}", result);
                         // let mut outbound_acconut = self.
                         // we have to make a transaction here.
                     }
@@ -455,11 +467,11 @@ impl BankEngine {
                 Dealer::FiatDepositResponse(msg) => {
                     slog::info!(self.logger, "Received fiat deposit response: {:?}", msg);
                     if msg.error.is_some() {
-                        return
+                        return;
                     }
                     let rate = match msg.rate {
                         Some(r) => r,
-                        None => return
+                        None => return,
                     };
 
                     let (mut inbound_account, inbound_uid) = {
@@ -512,7 +524,6 @@ impl BankEngine {
                     let bank_state = self.get_bank_state();
                     let msg = Message::Dealer(Dealer::BankState(bank_state));
                     listener(msg, ServiceIdentity::Dealer);
-
                 }
                 _ => {}
             },
@@ -544,7 +555,7 @@ impl BankEngine {
 
                     let currency = match invoice.currency {
                         Some(c) => Currency::from_str(&c).unwrap(),
-                        None => Currency::BTC
+                        None => Currency::BTC,
                     };
 
                     // If its not a fiat deposit we need to get the current rate.
@@ -557,6 +568,7 @@ impl BankEngine {
                         };
                         let msg = Message::Dealer(Dealer::FiatDepositRequest(fiat_deposit_request));
                         listener(msg, ServiceIdentity::Dealer);
+                        return
                     }
 
                     let (mut inbound_account, inbound_uid) = {
@@ -633,7 +645,7 @@ impl BankEngine {
                     if currency != Currency::BTC {
                         let msg = Message::Api(Api::InvoiceRequest(msg));
                         listener(msg, ServiceIdentity::Dealer);
-                        return
+                        return;
                     }
 
                     let user_account = self
@@ -686,7 +698,7 @@ impl BankEngine {
                             amount,
                             req_id: msg.req_id,
                             uid: msg.uid,
-                            meta:  msg.meta,
+                            meta: msg.meta,
                             rate: None,
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
@@ -706,11 +718,14 @@ impl BankEngine {
                             m.error = Some(InvoiceResponseError::RateNotAvailable);
                             let msg = Message::Api(Api::InvoiceResponse(m));
                             listener(msg, ServiceIdentity::Api);
-                            return
+                            return;
                         }
                     };
                     let amount_in_btc = msg.amount / rate;
-                    let amount_in_sats = (amount_in_btc * Decimal::new(SATS_IN_BITCOIN as i64, 0)).round_dp_with_strategy(0, RoundingStrategy::AwayFromZero).to_u64().unwrap();
+                    let amount_in_sats = (amount_in_btc * Decimal::new(SATS_IN_BITCOIN as i64, 0))
+                        .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
+                        .to_u64()
+                        .unwrap();
 
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
@@ -788,7 +803,7 @@ impl BankEngine {
                         listener(msg, ServiceIdentity::Api)
                     }
                 }
-                Api::PaymentRequest(msg) => {
+                Api::PaymentRequest(mut msg) => {
                     slog::info!(self.logger, "Received payment request: {:?}", msg);
 
                     let conn = match &self.conn_pool {
@@ -809,120 +824,143 @@ impl BankEngine {
 
                     let uid = msg.uid;
 
-                    // First we decode the payment request to create a new invoice in our database.
-                    if let Ok(decoded) = msg.payment_request.clone().parse::<lightning_invoice::Invoice>() {
-                        let invoice = if let Ok(invoice) = models::invoices::Invoice::get_by_invoice_hash(
-                            &psql_connection,
-                            msg.payment_request.clone(),
-                        ) {
-                            Some(invoice)
-                        } else {
-                            let invoice = models::invoices::Invoice {
-                                payment_request: msg.payment_request.clone(),
-                                rhash: decoded.payment_hash().to_string(),
-                                payment_hash: decoded.payment_hash().to_string(),
-                                created_at: utils::time::time_now() as i64,
-                                value: Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000) as i64, 0)
-                                    .to_i64()
-                                    .unwrap(),
-                                value_msat: decoded.amount_milli_satoshis().unwrap() as i64,
-                                expiry: decoded.expiry_time().as_secs() as i64,
-                                settled: false,
-                                add_index: -1,
-                                settled_date: 0,
-                                uid: uid as i32,
-                                account_id: Uuid::default().to_string(),
-                                owner: None,
-                                fees: None,
-                                incoming: false,
-                                currency: None,
-                            };
-                            invoice
-                                .insert(&psql_connection)
-                                .expect("Failed to insert psql connection");
-                            Some(invoice)
-                        };
+                    let decoded = match msg.payment_request.clone().parse::<lightning_invoice::Invoice>() {
+                        Ok(d) => d,
+                        Err(_) => return,
+                    };
 
-                        // If we couldn't create an invoice we cannot proceed with the payment.
-                        let mut invoice = match invoice {
-                            None => {
-                                slog::error!(self.logger, "Couldn't create invoice. Can't make payment.");
-                                return
-                            },
-                            Some(inv) => inv,
-                        };
+                    let value = (decoded.amount_milli_satoshis().unwrap() / 1000) as u64;
+                    let amount_in_sats = Decimal::new(value as i64, 0);
+                    let amount_in_btc = amount_in_sats / Decimal::new(SATS_IN_BITCOIN as i64, 0);
 
-                        // Preparing a generic response.
-                        let mut payment_response = PaymentResponse {
-                            req_id: msg.req_id,
-                            uid,
-                            success: false,
+                    msg.amount = Some(amount_in_btc);
+
+                    if msg.currency != Currency::BTC && msg.rate.is_none() {
+                        let msg = Message::Api(Api::PaymentRequest(msg));
+                        listener(msg, ServiceIdentity::Dealer);
+                        return;
+                    }
+
+                    if msg.currency == Currency::BTC {
+                        msg.rate = Some(dec!(1));
+                    }
+
+                    let rate = msg.rate.unwrap();
+
+                    let invoice = if let Ok(invoice) =
+                        models::invoices::Invoice::get_by_invoice_hash(&psql_connection, msg.payment_request.clone())
+                    {
+                        Some(invoice)
+                    } else {
+                        let invoice = models::invoices::Invoice {
                             payment_request: msg.payment_request.clone(),
-                            currency: Currency::BTC,
-                            fees: dec!(0),
-                            error: None,
+                            rhash: decoded.payment_hash().to_string(),
+                            payment_hash: decoded.payment_hash().to_string(),
+                            created_at: utils::time::time_now() as i64,
+                            value: Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000) as i64, 0)
+                                .to_i64()
+                                .unwrap(),
+                            value_msat: decoded.amount_milli_satoshis().unwrap() as i64,
+                            expiry: decoded.expiry_time().as_secs() as i64,
+                            settled: false,
+                            add_index: -1,
+                            settled_date: 0,
+                            uid: uid as i32,
+                            account_id: Uuid::default().to_string(),
+                            owner: None,
+                            fees: None,
+                            incoming: false,
+                            currency: Some(msg.currency.to_string()),
+                        };
+                        invoice
+                            .insert(&psql_connection)
+                            .expect("Failed to insert psql connection");
+                        Some(invoice)
+                    };
+
+                    // If we couldn't create an invoice we cannot proceed with the payment.
+                    let mut invoice = match invoice {
+                        None => {
+                            slog::error!(self.logger, "Couldn't create invoice. Can't make payment.");
+                            return;
+                        }
+                        Some(inv) => inv,
+                    };
+
+                    // Preparing a generic response.
+                    let mut payment_response = PaymentResponse {
+                        amount: amount_in_btc,
+                        req_id: msg.req_id,
+                        uid,
+                        success: false,
+                        payment_request: msg.payment_request.clone(),
+                        currency: msg.currency,
+                        fees: dec!(0),
+                        rate: msg.rate.unwrap(),
+                        error: None,
+                    };
+
+                    if let Some(owner) = invoice.owner {
+                        if uid == owner as u64 {
+                            slog::info!(self.logger, "User tried to make self payment. Not allowed.");
+                            payment_response.error = Some(PaymentResponseError::SelfPayment);
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
+                        }
+                    }
+
+                    // If invoice was already paid we reject this the payment request.
+                    if invoice.settled {
+                        slog::info!(self.logger, "Invoice is already settled.");
+                        payment_response.error = Some(PaymentResponseError::InvoiceAlreadyPaid);
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
+                    // We could be dealing with an internal transaction in which case we cannot borrow two accounts
+                    // as mutable. Hence we have to work with local scoping. We first deal with the payer.
+
+                    let mut outbound_account = {
+                        let user_account = match self.ledger.user_accounts.get_mut(&uid) {
+                            Some(ua) => ua,
+                            None => return,
                         };
 
-                        if let Some(owner) = invoice.owner {
-                            if uid == owner as u64 {
-                                slog::info!(self.logger, "User tried to make self payment. Not allowed.");
-                                payment_response.error = Some(PaymentResponseError::SelfPayment);
-                                let msg = Message::Api(Api::PaymentResponse(payment_response));
-                                listener(msg, ServiceIdentity::Api);
-                                return;
-                            }
-                        }
+                        user_account.get_default_account(msg.currency).clone()
+                    };
 
-                        // If invoice was already paid we reject this the payment request.
-                        if invoice.settled {
-                            slog::info!(self.logger, "Invoice is already settled.");
-                            payment_response.error = Some(PaymentResponseError::InvoiceAlreadyPaid);
-                            let msg = Message::Api(Api::PaymentResponse(payment_response));
-                            listener(msg, ServiceIdentity::Api);
-                            return;
-                        }
+                    let amount_in_outbound_currency = amount_in_btc * rate;
 
-                        let amount_in_sats = Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000 ) as i64, 0);
-                        let amount_in_btc = amount_in_sats / Decimal::new(SATS_IN_BITCOIN as i64, 0);
-                        let rate = dec!(1);
+                    if outbound_account.balance < amount_in_outbound_currency {
+                        payment_response.error = Some(PaymentResponseError::InsufficientFunds);
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
 
-                        // We could be dealing with an internal transaction in which case we cannot borrow two accounts
-                        // as mutable. Hence we have to work with local scoping. We first deal with the payer.
+                    if (outbound_account.balance * (dec!(1) + self.ln_network_fee_margin)) < amount_in_outbound_currency
+                    {
+                        payment_response.error = Some(PaymentResponseError::InsufficientFundsForFees);
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
 
-                        let mut outbound_account = {
-                            let user_account = match self.ledger.user_accounts.get_mut(&uid) {
-                                Some(ua) => ua,
-                                None => return,
-                            };
-
-                            user_account.get_default_account(Currency::BTC).clone()
-                        };
-
-                        if outbound_account.balance < amount_in_btc {
-                            payment_response.error = Some(PaymentResponseError::InsufficientFunds);
-                            let msg = Message::Api(Api::PaymentResponse(payment_response));
-                            listener(msg, ServiceIdentity::Api);
-                            return;
-                        }
-
-                        if (outbound_account.balance * (dec!(1) + self.ln_network_fee_margin)) < amount_in_btc {
-                            payment_response.error = Some(PaymentResponseError::InsufficientFundsForFees);
-                            let msg = Message::Api(Api::PaymentResponse(payment_response));
-                            listener(msg, ServiceIdentity::Api);
-                            return;
-                        }
-
-                        // If the invoice has a known owner that means that the invoice was generated by us and
-                        // we are dealing with an internal transaction. If not we are doing an external transaction.
-                        if invoice.owner.is_none() {
-                            if let Ok(result) = self
-                                .lnd_connector
-                                .pay_invoice(msg.payment_request.clone(), amount_in_sats, self.ln_network_max_fee)
-                                .await
-                            {
+                    // If the invoice has a known owner that means that the invoice was generated by us and
+                    // we are dealing with an internal transaction. If not we are doing an external transaction.
+                    if invoice.owner.is_none() {
+                        match self
+                            .lnd_connector
+                            .pay_invoice(msg.payment_request.clone(), amount_in_sats, self.ln_network_max_fee)
+                            .await
+                        {
+                            Ok(result) => {
                                 let mut external_account = self.ledger.external_account.clone();
-                                let fee_btc = Decimal::new(result.fee as i64, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0);
-                                let total_amount_debit = amount_in_btc + fee_btc;
+                                let fee =
+                                    Decimal::new(result.fee as i64, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0) / rate;
+                                let total_amount_debit = amount_in_outbound_currency + fee;
 
                                 // If the total amount of tx (including fees) is larger than what user has. Bank fee acount takes
                                 // a hit.
@@ -958,7 +996,7 @@ impl BankEngine {
 
                                 let mut outbound_acconut = self.ledger.insurance_fund_account.clone();
                                 let mut inbound_account = self.ledger.external_fee_account.clone();
-                                
+
                                 // Taking care of any excess value.
                                 if excess_value > dec!(0) {
                                     if self
@@ -983,55 +1021,81 @@ impl BankEngine {
                                 }
 
                                 payment_response.success = true;
-                                payment_response.fees = fee_btc;
+                                payment_response.fees = fee;
                                 invoice.settled = true;
 
                                 if invoice.update(&psql_connection).is_err() {
                                     slog::error!(self.logger, "Error updating updating invoices!");
                                 }
-
                                 let msg = Message::Api(Api::PaymentResponse(payment_response));
                                 listener(msg, ServiceIdentity::Api);
                                 return;
                             }
-                            payment_response.success = false;
-                            let msg = Message::Api(Api::PaymentResponse(payment_response));
-                            listener(msg, ServiceIdentity::Api);
-                            return;
+                            Err(err) => {
+                                slog::info!(self.logger, "Error paying invoice: {:?}", err);
+                                payment_response.success = false;
+                                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
                         }
+                    }
 
-                        let owner = invoice.owner.unwrap() as u64;
+                    let owner = invoice.owner.unwrap() as u64;
 
-                        let mut invoice_owner_account = {
-                            let user_account = self
-                                .ledger
-                                .user_accounts
-                                .entry(owner as u64)
-                                .or_insert_with(|| UserAccount::new(owner as u64));
-                            user_account.get_default_account(Currency::BTC)
-                        };
+                    let mut invoice_owner_account = {
+                        let user_account = self
+                            .ledger
+                            .user_accounts
+                            .entry(owner as u64)
+                            .or_insert_with(|| UserAccount::new(owner as u64));
+                        user_account.get_default_account(Currency::BTC)
+                    };
 
-                        let mut invoice_payer_account = {
-                            let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                            user_account.get_default_account(Currency::BTC)
-                        };
+                    let mut invoice_payer_account = {
+                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
+                        user_account.get_default_account(Currency::BTC)
+                    };
 
-                        let internal_tx_fee = amount_in_btc * self.internal_tx_fee;
+                    let internal_tx_fee = amount_in_btc * self.internal_tx_fee;
 
-                        if internal_tx_fee + amount_in_btc > invoice_payer_account.balance {
-                            slog::info!(self.logger, "User: {} doesn't have enough funds to cover tx fee of {}", uid, internal_tx_fee);
-                            payment_response.success = false;
-                            let msg = Message::Api(Api::PaymentResponse(payment_response));
-                            listener(msg, ServiceIdentity::Api);
-                            return
-                        }
+                    if internal_tx_fee + amount_in_btc > invoice_payer_account.balance {
+                        slog::info!(
+                            self.logger,
+                            "User: {} doesn't have enough funds to cover tx fee of {}",
+                            uid,
+                            internal_tx_fee
+                        );
+                        payment_response.success = false;
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
 
+                    if self
+                        .make_tx(
+                            &mut invoice_payer_account,
+                            uid,
+                            &mut invoice_owner_account,
+                            owner,
+                            amount_in_btc,
+                            rate,
+                        )
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    let mut fee_account = self.ledger.fee_account.clone();
+
+                    // Deducting internal fees
+                    if internal_tx_fee > dec!(0) {
                         if self
                             .make_tx(
                                 &mut invoice_payer_account,
                                 uid,
-                                &mut invoice_owner_account,
-                                owner,
+                                &mut fee_account,
+                                BANK_UID,
                                 amount_in_btc,
                                 rate,
                             )
@@ -1039,59 +1103,40 @@ impl BankEngine {
                         {
                             return;
                         }
-
-                        let mut fee_account = self.ledger.fee_account.clone();
-
-                        // Deducting internal fees
-                        if internal_tx_fee > dec!(0) {
-                            if self
-                                .make_tx(
-                                    &mut invoice_payer_account,
-                                    uid,
-                                    &mut fee_account,
-                                    BANK_UID,
-                                    amount_in_btc,
-                                    rate,
-                                )
-                                .is_err()
-                            {
-                                return;
-                            }
-                        }
-
-                        self.ledger.fee_account = fee_account;
-
-                        {
-                            let owner_user_account = self.ledger.user_accounts.get_mut(&owner).unwrap();
-                            owner_user_account
-                                .accounts
-                                .insert(invoice_owner_account.account_id, invoice_owner_account.clone());
-                        }
-
-                        {
-                            let payer_user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                            payer_user_account
-                                .accounts
-                                .insert(invoice_payer_account.account_id, invoice_payer_account.clone());
-                        }
-
-                        // Update DB.
-                        self.update_account(&invoice_payer_account, uid as u64);
-                        self.update_account(&invoice_owner_account, owner as u64);
-
-                        // Update Invoice
-                        invoice.settled = true;
-                        if invoice.update(&psql_connection).is_err() {
-                            slog::error!(self.logger, "Couldn't update invoice.");
-                            return;
-                        }
-
-                        payment_response.success = true;
-                        payment_response.fees = internal_tx_fee;
-
-                        let msg = Message::Api(Api::PaymentResponse(payment_response));
-                        listener(msg, ServiceIdentity::Api);
                     }
+
+                    self.ledger.fee_account = fee_account;
+
+                    {
+                        let owner_user_account = self.ledger.user_accounts.get_mut(&owner).unwrap();
+                        owner_user_account
+                            .accounts
+                            .insert(invoice_owner_account.account_id, invoice_owner_account.clone());
+                    }
+
+                    {
+                        let payer_user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
+                        payer_user_account
+                            .accounts
+                            .insert(invoice_payer_account.account_id, invoice_payer_account.clone());
+                    }
+
+                    // Update DB.
+                    self.update_account(&invoice_payer_account, uid as u64);
+                    self.update_account(&invoice_owner_account, owner as u64);
+
+                    // Update Invoice
+                    invoice.settled = true;
+                    if invoice.update(&psql_connection).is_err() {
+                        slog::error!(self.logger, "Couldn't update invoice.");
+                        return;
+                    }
+
+                    payment_response.success = true;
+                    payment_response.fees = internal_tx_fee;
+
+                    let msg = Message::Api(Api::PaymentResponse(payment_response));
+                    listener(msg, ServiceIdentity::Api);
                 }
 
                 Api::SwapRequest(msg) => {
@@ -1161,7 +1206,12 @@ impl BankEngine {
                     };
 
                     if outbound_account.balance < swap_amount {
-                        slog::info!(self.logger, "User: {} has not enough available balance. Available: {}", uid, outbound_account.balance);
+                        slog::info!(
+                            self.logger,
+                            "User: {} has not enough available balance. Available: {}",
+                            uid,
+                            outbound_account.balance
+                        );
                         return;
                     }
 
@@ -1235,7 +1285,7 @@ impl BankEngine {
                         lnd_node_info,
                         ln_network_fee_margin: self.ln_network_fee_margin,
                         ln_network_max_fee: self.ln_network_max_fee,
-                        internal_tx_fee: self.internal_tx_fee, 
+                        internal_tx_fee: self.internal_tx_fee,
                         external_tx_fee: self.external_tx_fee,
                         reserve_ratio: self.reserve_ratio,
                     };
@@ -1252,6 +1302,5 @@ impl BankEngine {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn test_create_bank_manager() {
-    }
+    async fn test_create_bank_manager() {}
 }
