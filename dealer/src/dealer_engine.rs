@@ -54,11 +54,11 @@ pub struct DealerEngine {
     risk_tolerances: HashMap<Currency, u64>,
     // timestamp in microseconds is used as quote id
     guaranteed_quotes: BTreeMap<u128, QuoteResponse>,
-    last_bank_state: Option<BankState>,
     has_received_init_data: bool,
     has_received_symbols: bool,
     is_kollider_authenticated: bool,
     logger: slog::Logger,
+    pub last_bank_state: Option<BankState>,
     pub last_bank_state_update: Option<Instant>,
 }
 
@@ -122,7 +122,8 @@ impl DealerEngine {
 
     pub fn sweep_excess_funds<F: FnMut(Message)>(&self, listener: &mut F) {
         if let Some(balances) = self.ws_client.get_all_balances() {
-            if balances.cash > dec!(100) {
+            slog::info!(self.logger, "Sweeping: {:?}", balances);
+            if balances.cash > dec!(1000) {
                 let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
                     amount: balances.cash.to_i64().unwrap() as u64,
@@ -170,7 +171,7 @@ impl DealerEngine {
     }
 
     pub fn check_risk<F: FnMut(Message)>(&mut self, bank_state: BankState, listener: &mut F) {
-        slog::debug!(self.logger, "Checking Risk");
+        slog::info!(self.logger, "Checking Risk.");
 
         if !self.has_received_init_data {
             slog::info!(self.logger, "Not received all data. Skip checking risk.");
@@ -399,9 +400,10 @@ impl DealerEngine {
                         }));
                         listener(msg);
                     }
-                    KolliderApiResponse::PositionStates(_) => {
-                        if let Some(last_bank_state) = self.last_bank_state.clone() {
-                            self.check_risk(last_bank_state, listener);
+                    KolliderApiResponse::PositionStates(position_states) => {
+                        slog::info!(self.logger, "Position states: {:?}", position_states);
+                        if let Some(_last_bank_state) = self.last_bank_state.clone() {
+                            // self.check_risk(last_bank_state, listener);
                         }
                     }
                     KolliderApiResponse::Level2State(level2state) => {
