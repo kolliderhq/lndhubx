@@ -32,6 +32,7 @@ pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: 
 
     let mut last_health_check = Instant::now();
     let mut last_house_keeping = Instant::now();
+    let mut last_risk_check = Instant::now();
 
     // Before we start the main loop we have to have received at lease one bank state message.
     while synth_dealer.last_bank_state_update.is_none() {
@@ -55,12 +56,19 @@ pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: 
             synth_dealer.process_msg(message, &mut listener);
         }
 
+        if last_risk_check.elapsed().as_secs() > 10 {
+            if let Some(last_bank_state) = synth_dealer.last_bank_state.clone() {
+                synth_dealer.check_risk(last_bank_state, &mut listener);
+                last_risk_check = Instant::now();
+            }
+        }
+
         if last_health_check.elapsed().as_secs() > 5 {
             synth_dealer.check_health(&mut listener);
             last_health_check = Instant::now();
         }
 
-        if last_house_keeping.elapsed().as_secs() > 5 {
+        if last_house_keeping.elapsed().as_secs() > 30 {
             last_house_keeping = Instant::now();
             synth_dealer.sweep_excess_funds(&mut listener);
         }
