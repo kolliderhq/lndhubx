@@ -931,7 +931,7 @@ impl BankEngine {
                         user_account.get_default_account(msg.currency).clone()
                     };
 
-                    let amount_in_outbound_currency = amount_in_btc * rate;
+                    let amount_in_outbound_currency = amount_in_btc / rate;
 
                     if outbound_account.balance < amount_in_outbound_currency {
                         payment_response.error = Some(PaymentResponseError::InsufficientFunds);
