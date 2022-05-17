@@ -69,7 +69,8 @@ impl Transaction {
                 .unwrap()
                 .as_millis() as i64,
         );
-        let owning_transactions = transactions::outbound_uid.eq(uid).or(transactions::inbound_uid.eq(uid)).and(transactions::outbound_currency.eq(currency.clone())).or(transactions::inbound_currency.eq(currency.clone()));
+        dbg!(&uid);
+        let owning_transactions = transactions::outbound_uid.eq(uid).or(transactions::inbound_uid.eq(uid)).and(transactions::outbound_currency.eq(currency.clone()).or(transactions::inbound_currency.eq(currency.clone())));
         transactions::dsl::transactions
             .filter(
                 owning_transactions
