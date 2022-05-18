@@ -35,6 +35,7 @@ pub struct BankEngineSettings {
     pub internal_tx_fee: Decimal,
     pub external_tx_fee: Decimal,
     pub reserve_ratio: Decimal,
+    pub withdrawal_only: bool,
     pub logging_settings: LoggingSettings,
 }
 
@@ -144,6 +145,7 @@ pub struct BankEngine {
     pub internal_tx_fee: Decimal,
     pub external_tx_fee: Decimal,
     pub reserve_ratio: Decimal,
+    pub withdrawal_only: bool,
     pub logger: slog::Logger,
     pub tx_seq: u64,
 }
@@ -167,6 +169,7 @@ impl BankEngine {
             ln_network_fee_margin: settings.ln_network_fee_margin,
             reserve_ratio: settings.reserve_ratio,
             ln_network_max_fee: settings.ln_network_max_fee,
+            withdrawal_only: settings.withdrawal_only,
             logger,
             tx_seq: 0,
         }
@@ -622,6 +625,24 @@ impl BankEngine {
                 Api::InvoiceRequest(msg) => {
                     slog::info!(self.logger, "Received invoice request: {:?}", msg);
 
+                    if self.withdrawal_only {
+                        slog::info!(self.logger, "Bank is in withdrawal only mode");
+                        let invoice_response = InvoiceResponse {
+                            amount: msg.amount,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            meta: msg.meta,
+                            rate: None,
+                            payment_request: None,
+                            currency: msg.currency,
+                            account_id: None,
+                            error: Some(InvoiceResponseError::WithdrawalOnly),
+                        };
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return
+                    }
+
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
@@ -654,7 +675,7 @@ impl BankEngine {
                         .entry(msg.uid)
                         .or_insert_with(|| UserAccount::new(msg.uid));
 
-                    let mut target_account = Account::new(Currency::BTC, AccountType::Internal);
+                    let mut target_account = Account::new(msg.currency, AccountType::Internal);
 
                     if let Some(account_id) = msg.account_id {
                         if let Some(acc) = user_account.accounts.get(&account_id) {

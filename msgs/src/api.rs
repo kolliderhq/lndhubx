@@ -8,7 +8,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InvoiceResponseError {
     AccountDoesNotExist,
-    RateNotAvailable
+    RateNotAvailable,
+    WithdrawalOnly,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
