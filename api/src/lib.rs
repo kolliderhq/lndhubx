@@ -51,6 +51,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .app_data(Data::new(tx.clone()))
             .service(routes::auth::create)
             .service(routes::auth::auth)
+            .service(routes::auth::whoami)
             .service(routes::user::balance)
             .service(routes::user::add_invoice)
             .service(routes::user::pay_invoice)

@@ -55,7 +55,6 @@ pub async fn start(
         // Receiving msgs from the api.
         if let Ok(frame) = api_recv.recv_msg(1) {
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                dbg!(&message);
                 bank_engine.process_msg(message, &mut listener).await;
             };
         }

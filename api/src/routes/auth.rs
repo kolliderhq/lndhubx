@@ -1,4 +1,4 @@
-use actix_web::{post, web::Json, HttpResponse};
+use actix_web::{post, get, web::Json, HttpResponse};
 use diesel::result::DatabaseErrorKind;
 use diesel::result::Error as DieselError;
 use serde::Deserialize;
@@ -80,4 +80,19 @@ pub async fn auth(pool: WebDbPool, login_data: Json<LoginData>) -> Result<HttpRe
     // InsertableApiTokenFull::new(Uuid::new_v4().to_string(), Some(refresh.clone()), user.uid as i32).insert(&conn)?;
 
     Ok(HttpResponse::Ok().json(json!({"token": token, "refresh": refresh})))
+}
+
+#[get("/whoami")]
+pub async fn whoami(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+    
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    let uid = auth_data.uid as u64;
+
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+
+    Ok(HttpResponse::Ok().json(json!({"username": user.username, "uid": user.uid})))
 }

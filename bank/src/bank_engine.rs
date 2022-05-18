@@ -568,7 +568,7 @@ impl BankEngine {
                         };
                         let msg = Message::Dealer(Dealer::FiatDepositRequest(fiat_deposit_request));
                         listener(msg, ServiceIdentity::Dealer);
-                        return
+                        return;
                     }
 
                     let (mut inbound_account, inbound_uid) = {
@@ -1041,6 +1041,22 @@ impl BankEngine {
                         }
                     }
 
+                    let invoice_currency = invoice.currency.clone().unwrap();
+
+                    if Currency::from_str(&invoice_currency).unwrap() != msg.currency {
+                        slog::info!(self.logger, "Cannot send internal tx between two different currency accounts");
+                        payment_response.success = false;
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
+                    if msg.currency != Currency::BTC && msg.rate.is_none() {
+                        let msg = Message::Api(Api::PaymentRequest(msg));
+                        listener(msg, ServiceIdentity::Dealer);
+                        return;
+                    }
+
                     let owner = invoice.owner.unwrap() as u64;
 
                     let mut invoice_owner_account = {
@@ -1049,17 +1065,24 @@ impl BankEngine {
                             .user_accounts
                             .entry(owner as u64)
                             .or_insert_with(|| UserAccount::new(owner as u64));
-                        user_account.get_default_account(Currency::BTC)
+                        user_account.get_default_account(msg.currency)
                     };
 
                     let mut invoice_payer_account = {
                         let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                        user_account.get_default_account(Currency::BTC)
+                        user_account.get_default_account(msg.currency)
                     };
 
-                    let internal_tx_fee = amount_in_btc * self.internal_tx_fee;
 
-                    if internal_tx_fee + amount_in_btc > invoice_payer_account.balance {
+                    let mut rate = msg.rate.unwrap();
+                    let amount = amount_in_btc / rate;
+
+                    // we are resetting the rate because we made the conversions
+                    rate = dec!(1);
+
+                    let internal_tx_fee = amount * self.internal_tx_fee;
+
+                    if internal_tx_fee + amount > invoice_payer_account.balance {
                         slog::info!(
                             self.logger,
                             "User: {} doesn't have enough funds to cover tx fee of {}",
@@ -1078,7 +1101,7 @@ impl BankEngine {
                             uid,
                             &mut invoice_owner_account,
                             owner,
-                            amount_in_btc,
+                            amount,
                             rate,
                         )
                         .is_err()
@@ -1089,6 +1112,7 @@ impl BankEngine {
                     let mut fee_account = self.ledger.fee_account.clone();
 
                     // Deducting internal fees
+                    // TODO: This is wrong./
                     if internal_tx_fee > dec!(0) {
                         if self
                             .make_tx(
@@ -1128,7 +1152,7 @@ impl BankEngine {
                     // Update Invoice
                     invoice.settled = true;
                     if invoice.update(&psql_connection).is_err() {
-                        slog::error!(self.logger, "Couldn't update invoice.");
+                        slog::info!(self.logger, "Couldn't update invoice.");
                         return;
                     }
 
