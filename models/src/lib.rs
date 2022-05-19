@@ -11,6 +11,7 @@ mod schema;
 pub mod transactions;
 pub mod users;
 pub mod internal_user_mappings;
+pub mod pre_signups;
 
 cfg_if::cfg_if! {
     if #[cfg(debug_assertions)] {
