@@ -44,6 +44,14 @@ table! {
 }
 
 table! {
+    pre_signups (uid) {
+        uid -> Int4,
+        created_at -> Nullable<Timestamp>,
+        email -> Text,
+    }
+}
+
+table! {
     transactions (txid) {
         txid -> Text,
         created_at -> Int8,
@@ -84,6 +92,7 @@ allow_tables_to_appear_in_same_query!(
     clients,
     internal_user_mappings,
     invoices,
+    pre_signups,
     transactions,
     user_types,
     users,
