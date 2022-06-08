@@ -394,6 +394,7 @@ impl DealerEngine {
                         listener(msg)
                     }
                     KolliderApiResponse::SettlementRequest(settlement_request) => {
+                        slog::info!(self.logger, "Received settlement request trying to withdraw.");
                         let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                             req_id: Uuid::new_v4(),
                             amount: settlement_request.amount.parse().unwrap(),
@@ -432,6 +433,7 @@ impl DealerEngine {
             }
 
             Message::Dealer(Dealer::CreateInvoiceResponse(ref create_invoice_response)) => {
+                slog::info!(self.logger, "Dealer trying to withdrawal.");
                 self.ws_client
                     .make_withdrawal(
                         create_invoice_response.amount,
