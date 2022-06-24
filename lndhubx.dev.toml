@@ -11,6 +11,8 @@ bank_zmq_publish_address = "tcp://10.11.0.4:5556"
 bank_dealer_pull_address = "tcp://10.11.0.4:5557"
 bank_dealer_push_address = "tcp://10.11.0.5:5558"
 
+deposit_limit = 0.001
+
 tls_path = "/config/tls.cert"
 macaroon_path = "/config/admin.macaroon"
 node_url = "your node url"
@@ -42,6 +44,12 @@ kollider_api_passphrase = "redacted"
 USD = 1
 EUR = 1
 GBP = 1
+
+[deposit_limits]
+USD = 5
+EUR = 5
+BTC = 0.00025
+GBP = 5
 
 ## Logging
 [logging_settings]

@@ -37,6 +37,7 @@ pub struct BankEngineSettings {
     pub reserve_ratio: Decimal,
     pub withdrawal_only: bool,
     pub logging_settings: LoggingSettings,
+    pub deposit_limits: HashMap<String, Decimal>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -146,6 +147,7 @@ pub struct BankEngine {
     pub external_tx_fee: Decimal,
     pub reserve_ratio: Decimal,
     pub withdrawal_only: bool,
+    pub deposit_limits: HashMap<Currency, Decimal>,
     pub logger: slog::Logger,
     pub tx_seq: u64,
 }
@@ -170,6 +172,9 @@ impl BankEngine {
             reserve_ratio: settings.reserve_ratio,
             ln_network_max_fee: settings.ln_network_max_fee,
             withdrawal_only: settings.withdrawal_only,
+            deposit_limits: settings.deposit_limits.into_iter().map(|(currency, limit)| {
+                return (Currency::from_str(&currency).unwrap(), limit)
+            }).collect::<HashMap<Currency, Decimal>>(),
             logger,
             tx_seq: 0,
         }
@@ -702,6 +707,25 @@ impl BankEngine {
                         target_account = account;
                     }
 
+                    let deposit_limit = self.deposit_limits.get(&currency).unwrap();
+                    // Check whether deposit limit is exceeded.
+                    if target_account.balance + amount > *deposit_limit {
+                        let invoice_response = InvoiceResponse {
+                            amount,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            rate: None,
+                            meta: msg.meta.clone(),
+                            payment_request: None,
+                            currency: msg.currency,
+                            account_id: Some(target_account.account_id),
+                            error: Some(InvoiceResponseError::DepositLimitExceeded),
+                        };
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
                     let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0)).to_u64().unwrap();
 
                     if let Ok(mut invoice) = self
@@ -795,6 +819,26 @@ impl BankEngine {
                         // If user does not specify an account_id we select or create one for him.
                         let account = user_account.get_default_account(Currency::BTC);
                         target_account = account;
+                    }
+
+                    let deposit_limit = self.deposit_limits.get(&msg.currency).unwrap();
+
+                    // Check whether deposit limit is exceeded.
+                    if target_account.balance + msg.amount > *deposit_limit {
+                        let invoice_response = InvoiceResponse {
+                            amount: amount_in_btc,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            rate: None,
+                            meta: msg.meta.clone(),
+                            payment_request: None,
+                            currency: msg.currency,
+                            account_id: Some(target_account.account_id),
+                            error: Some(InvoiceResponseError::DepositLimitExceeded),
+                        };
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
                     }
 
                     if let Ok(mut invoice) = self
