@@ -10,6 +10,7 @@ pub enum InvoiceResponseError {
     AccountDoesNotExist,
     RateNotAvailable,
     WithdrawalOnly,
+    DepositLimitExceeded,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
