@@ -18,6 +18,7 @@ pub enum SwapResponseError {
     Invalid,
     CurrencyNotAvailable,
     InvalidQuoteId,
+    NotEnoughAvailableBalance,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

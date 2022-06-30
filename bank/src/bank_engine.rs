@@ -1233,7 +1233,7 @@ impl BankEngine {
                     let msg = Message::Api(Api::SwapRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
                 }
-                Api::SwapResponse(msg) => {
+                Api::SwapResponse(mut msg) => {
                     slog::debug!(self.logger, "Received swap response: {:?}", msg);
                     if msg.error.is_some() || !msg.success {
                         let msg = Message::Api(Api::SwapResponse(msg));
@@ -1301,6 +1301,10 @@ impl BankEngine {
                             uid,
                             outbound_account.balance
                         );
+                        msg.success = false;
+                        msg.error = Some(SwapResponseError::NotEnoughAvailableBalance);
+                        let msg = Message::Api(Api::SwapResponse(msg));
+                        listener(msg, ServiceIdentity::Api);
                         return;
                     }
 
