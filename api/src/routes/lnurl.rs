@@ -162,7 +162,7 @@ pub async fn pay_lnurl_withdrawal(
 		Ok(Some(Ok(Message::Api(Api::PayLnurlWithdrawalResponse(response))))) => {
 			return Ok(HttpResponse::Ok().json(&response))
 		}
-		Ok(Some(Ok(Message::Api(Api::PaymentResponse(response))))) => return Ok(HttpResponse::Ok().json(&response)),
+		Ok(Some(Ok(Message::Api(Api::PaymentResponse(_))))) => return Ok(HttpResponse::Ok().json(json!({}))),
 		_ => {}
 	};
 	Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
