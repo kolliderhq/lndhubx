@@ -82,15 +82,12 @@ pub struct GetLnurlWithdrawalParams {
 
 #[get("/lnurl_withdrawal/request")]
 pub async fn get_lnurl_withdrawal(
-	auth_data: AuthData,
 	query: Query<GetLnurlWithdrawalParams>,
 	web_sender: WebSender,
 ) -> Result<HttpResponse, ApiError> {
 	let req_id = query.q;
 
-	let uid = auth_data.uid as u64;
-
-	let request = GetLnurlWithdrawalRequest { uid, req_id };
+	let request = GetLnurlWithdrawalRequest { req_id };
 
 	let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
 		move |message| matches!(message, Message::Api(Api::GetLnurlWithdrawalResponse(response)) if response.req_id == req_id),
@@ -133,16 +130,12 @@ pub struct PayLnurlWithdrawalParams {
 
 #[get("/lnurl_withdrawal/pay")]
 pub async fn pay_lnurl_withdrawal(
-	auth_data: AuthData,
 	query: Query<PayLnurlWithdrawalParams>,
 	web_sender: WebSender,
 ) -> Result<HttpResponse, ApiError> {
 	let req_id = query.k1;
 
-	let uid = auth_data.uid as u64;
-
 	let request = PayLnurlWithdrawalRequest {
-		uid,
 		req_id,
 		payment_request: query.pr.clone(),
 	};

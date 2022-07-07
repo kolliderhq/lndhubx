@@ -208,7 +208,6 @@ pub struct CreateLnurlWithdrawalResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetLnurlWithdrawalRequest {
     pub req_id: RequestId,
-    pub uid: UserId,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,7 +224,6 @@ pub struct GetLnurlWithdrawalResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PayLnurlWithdrawalRequest {
     pub req_id: RequestId,
-    pub uid: UserId,
     pub payment_request: String,
 }
 
