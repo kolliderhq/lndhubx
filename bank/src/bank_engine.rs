@@ -1448,8 +1448,9 @@ impl BankEngine {
                     };
                     if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get(&msg.req_id) {
                         if let Some(a) = payment_request.amount {
+                            let a = a * dec!(100000000);
                             if let Some(ma) = a.to_u64() {
-                                response.max_withdrawable = ma * 100000000;
+                                response.max_withdrawable = ma;
                                 let msg = Message::Api(Api::GetLnurlWithdrawalResponse(response));
                                 listener(msg, ServiceIdentity::Api);
                                 return;
