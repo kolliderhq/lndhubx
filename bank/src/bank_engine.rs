@@ -1465,7 +1465,8 @@ impl BankEngine {
                     if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get_mut(&msg.req_id) {
                         payment_request.payment_request = msg.payment_request;
                         let msg = Message::Api(Api::PaymentRequest(payment_request.clone()));
-                        listener(msg, ServiceIdentity::Api);
+                        listener(msg, ServiceIdentity::Loopback);
+                        return
                     }
                     let response = PayLnurlWithdrawalResponse {
                         req_id: msg.req_id,
