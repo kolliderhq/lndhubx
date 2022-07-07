@@ -1419,7 +1419,7 @@ impl BankEngine {
                     let mut payment_request = PaymentRequest {
                         uid: msg.uid,
                         req_id: msg.req_id,
-                        amount: Some(msg.amount * dec!(100000000)),
+                        amount: Some(msg.amount),
                         currency: msg.currency,
                         rate: None,
                         payment_request: String::from(""),
@@ -1449,7 +1449,7 @@ impl BankEngine {
                     if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get(&msg.req_id) {
                         if let Some(a) = payment_request.amount {
                             if let Some(ma) = a.to_u64() {
-                                response.max_withdrawable = ma;
+                                response.max_withdrawable = ma * 100000000;
                                 let msg = Message::Api(Api::GetLnurlWithdrawalResponse(response));
                                 listener(msg, ServiceIdentity::Api);
                                 return;
