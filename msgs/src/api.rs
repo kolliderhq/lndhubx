@@ -14,6 +14,21 @@ pub enum InvoiceResponseError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CreateLnurlWithdrawalError {
+    InsufficientFunds,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GetLnurlWithdrawalError {
+    RequestNotFound,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PayLnurlWithdrawalError {
+    RequestNotFound,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SwapResponseError {
     Invalid,
     CurrencyNotAvailable,
@@ -175,6 +190,50 @@ pub struct GetNodeInfoResponse {
     pub internal_tx_fee: Decimal,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateLnurlWithdrawalRequest {
+    pub req_id: RequestId,
+    pub uid: UserId,
+    pub amount: Decimal,
+    pub currency: Currency,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateLnurlWithdrawalResponse {
+    pub req_id: RequestId,
+    pub lnurl: Option<String>,
+    pub error: Option<CreateLnurlWithdrawalError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetLnurlWithdrawalRequest {
+    pub req_id: RequestId,
+    pub uid: UserId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetLnurlWithdrawalResponse {
+    pub req_id: RequestId,
+    pub max_withdrawable: u64,
+    pub min_withdrawable: u64,
+    pub default_description: String,
+    pub tag: String,
+    pub callback: String,
+    pub error: Option<GetLnurlWithdrawalError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PayLnurlWithdrawalRequest {
+    pub req_id: RequestId,
+    pub uid: UserId,
+    pub payment_request: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PayLnurlWithdrawalResponse {
+    pub req_id: RequestId,
+    pub error: Option<PayLnurlWithdrawalError>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
@@ -192,4 +251,10 @@ pub enum Api {
     AvailableCurrenciesResponse(AvailableCurrenciesResponse),
     GetNodeInfoRequest(GetNodeInfoRequest),
     GetNodeInfoResponse(GetNodeInfoResponse),
+    CreateLnurlWithdrawalRequest(CreateLnurlWithdrawalRequest),
+    CreateLnurlWithdrawalResponse(CreateLnurlWithdrawalResponse),
+    GetLnurlWithdrawalRequest(GetLnurlWithdrawalRequest),
+    GetLnurlWithdrawalResponse(GetLnurlWithdrawalResponse),
+    PayLnurlWithdrawalRequest(PayLnurlWithdrawalRequest),
+    PayLnurlWithdrawalResponse(PayLnurlWithdrawalResponse),
 }

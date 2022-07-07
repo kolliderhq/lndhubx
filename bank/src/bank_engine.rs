@@ -2,7 +2,7 @@ use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
 use bigdecimal::BigDecimal;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 use core_types::*;
@@ -150,6 +150,7 @@ pub struct BankEngine {
     pub deposit_limits: HashMap<Currency, Decimal>,
     pub logger: slog::Logger,
     pub tx_seq: u64,
+    pub lnurl_withdrawal_requests: HashMap<Uuid, (u64, PaymentRequest)>,
 }
 
 impl BankEngine {
@@ -172,11 +173,14 @@ impl BankEngine {
             reserve_ratio: settings.reserve_ratio,
             ln_network_max_fee: settings.ln_network_max_fee,
             withdrawal_only: settings.withdrawal_only,
-            deposit_limits: settings.deposit_limits.into_iter().map(|(currency, limit)| {
-                return (Currency::from_str(&currency).unwrap(), limit)
-            }).collect::<HashMap<Currency, Decimal>>(),
+            deposit_limits: settings
+                .deposit_limits
+                .into_iter()
+                .map(|(currency, limit)| return (Currency::from_str(&currency).unwrap(), limit))
+                .collect::<HashMap<Currency, Decimal>>(),
             logger,
             tx_seq: 0,
+            lnurl_withdrawal_requests: HashMap::new(),
         }
     }
 
@@ -645,7 +649,7 @@ impl BankEngine {
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
-                        return
+                        return;
                     }
 
                     let conn = match &self.conn_pool {
@@ -1109,7 +1113,10 @@ impl BankEngine {
                     let invoice_currency = invoice.currency.clone().unwrap();
 
                     if Currency::from_str(&invoice_currency).unwrap() != msg.currency {
-                        slog::info!(self.logger, "Cannot send internal tx between two different currency accounts");
+                        slog::info!(
+                            self.logger,
+                            "Cannot send internal tx between two different currency accounts"
+                        );
                         payment_response.success = false;
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
                         listener(msg, ServiceIdentity::Api);
@@ -1137,7 +1144,6 @@ impl BankEngine {
                         let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
                         user_account.get_default_account(msg.currency)
                     };
-
 
                     let mut rate = msg.rate.unwrap();
                     let amount = amount_in_btc / rate;
@@ -1383,6 +1389,88 @@ impl BankEngine {
                         reserve_ratio: self.reserve_ratio,
                     };
                     let msg = Message::Api(Api::GetNodeInfoResponse(response));
+                    listener(msg, ServiceIdentity::Api);
+                }
+                Api::CreateLnurlWithdrawalRequest(msg) => {
+                    let uid = msg.uid;
+
+                    let outbound_account = {
+                        let user_account = match self.ledger.user_accounts.get_mut(&uid) {
+                            Some(ua) => ua,
+                            None => return,
+                        };
+
+                        user_account.get_default_account(msg.currency).clone()
+                    };
+                    let mut response = CreateLnurlWithdrawalResponse {
+                        req_id: msg.req_id,
+                        lnurl: None,
+                        error: None,
+                    };
+
+                    if outbound_account.balance < msg.amount {
+                        response.error = Some(CreateLnurlWithdrawalError::InsufficientFunds);
+                        let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+                    let now = utils::time::time_now();
+
+                    let mut payment_request = PaymentRequest {
+                        uid: msg.uid,
+                        req_id: msg.req_id,
+                        amount: Some(msg.amount),
+                        currency: msg.currency,
+                        rate: None,
+                        payment_request: String::from(""),
+                    };
+
+                    let lnurl_path = String::from("https://lndhubx.kollider.xyz/api/lnurl_withdrawal/request");
+                    let q = msg.req_id;
+                    let lnurl = utils::lnurl::encode(lnurl_path, Some(q.to_string()));
+                    response.lnurl = Some(lnurl);
+                    self.lnurl_withdrawal_requests
+                        .insert(payment_request.req_id, (now, payment_request));
+
+                    let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
+                    listener(msg, ServiceIdentity::Api);
+                }
+                Api::GetLnurlWithdrawalRequest(msg) => {
+                    let callback = String::from("https://lndhubx.kollider.xyz/api/lnurl_withdrawal/pay");
+                    let mut response = GetLnurlWithdrawalResponse {
+                        callback,
+                        req_id: msg.req_id,
+                        max_withdrawable: 0,
+                        default_description: String::from("Lndhubx Withdrawal"),
+                        min_withdrawable: 1,
+                        tag: String::from("withdrawalRequest"),
+                        error: None,
+                    };
+                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get(&msg.req_id) {
+                        if let Some(a) = payment_request.amount {
+                            if let Some(ma) = a.to_u64() {
+                                response.max_withdrawable = ma;
+                                let msg = Message::Api(Api::GetLnurlWithdrawalResponse(response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
+                        }
+                    }
+                    response.error = Some(GetLnurlWithdrawalError::RequestNotFound);
+                    let msg = Message::Api(Api::GetLnurlWithdrawalResponse(response));
+                    listener(msg, ServiceIdentity::Api);
+                }
+                Api::PayLnurlWithdrawalRequest(msg) => {
+                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get_mut(&msg.req_id) {
+                        payment_request.payment_request = msg.payment_request;
+                        let msg = Message::Api(Api::PaymentRequest(payment_request.clone()));
+                        listener(msg, ServiceIdentity::Api);
+                    }
+                    let response = PayLnurlWithdrawalResponse {
+                        req_id: msg.req_id,
+                        error: Some(PayLnurlWithdrawalError::RequestNotFound)
+                    };
+                    let msg = Message::Api(Api::PayLnurlWithdrawalResponse(response));
                     listener(msg, ServiceIdentity::Api);
                 }
                 _ => {}
