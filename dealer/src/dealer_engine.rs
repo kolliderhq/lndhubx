@@ -123,10 +123,11 @@ impl DealerEngine {
     pub fn sweep_excess_funds<F: FnMut(Message)>(&self, listener: &mut F) {
         if let Some(balances) = self.ws_client.get_all_balances() {
             slog::info!(self.logger, "Sweeping: {:?}", balances);
-            if balances.cash > dec!(1000) {
+            let sat_balance = balances.cash.get(&Symbol::from("SAT")).unwrap();
+            if *sat_balance > dec!(1000) {
                 let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
-                    amount: balances.cash.to_i64().unwrap() as u64,
+                    amount: sat_balance.to_i64().unwrap() as u64,
                 }));
                 listener(msg);
             }
@@ -606,6 +607,7 @@ impl DealerEngine {
             Side::Bid => self.bid_quotes.get(&conversion_info.symbol),
             Side::Ask => self.ask_quotes.get(&conversion_info.symbol),
         };
+        dbg!(&maybe_quotes);
         // Either vlaue or amount needs to be some.
         if amount.is_none() && value.is_none() {
             return None

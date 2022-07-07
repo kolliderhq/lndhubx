@@ -160,6 +160,7 @@ pub enum ServiceIdentity {
     LndConnector,
     BankEngine,
     Dealer,
+    Loopback,
 }
 
 #[derive(Debug)]

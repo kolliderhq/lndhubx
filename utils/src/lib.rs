@@ -1,6 +1,7 @@
 pub mod config;
 pub mod xzmq;
 pub mod xlogging;
+pub mod lnurl;
 
 pub mod time {
     use serde::Serializer;

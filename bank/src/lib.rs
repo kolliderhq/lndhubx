@@ -27,6 +27,7 @@ pub async fn start(
     let mut lnd_connector_invoices = LndConnector::new(lnd_connector_settings).await;
 
     let (invoice_tx, invoice_rx) = bounded(1024);
+    let (priority_tx, priority_rx) = bounded(1024);
 
     let invoice_task = {
         async move {
@@ -35,6 +36,7 @@ pub async fn start(
     };
 
     tokio::spawn(invoice_task);
+
 
     let mut bank_engine = BankEngine::new(Some(pool), lnd_connector, settings).await;
     bank_engine.init_accounts();
@@ -47,6 +49,9 @@ pub async fn start(
         ServiceIdentity::Dealer => {
             let payload = bincode::serialize(&msg).unwrap();
             dealer_sender.send(payload, 0x00).unwrap();
+        }
+        ServiceIdentity::Loopback => {
+            priority_tx.send(msg).unwrap();
         }
         _ => {}
     };
@@ -69,6 +74,10 @@ pub async fn start(
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
                 bank_engine.process_msg(message, &mut listener).await;
             };
+        }
+
+        if let Ok(msg) = priority_rx.try_recv() {
+            bank_engine.process_msg(msg, &mut listener).await;
         }
     }
 }

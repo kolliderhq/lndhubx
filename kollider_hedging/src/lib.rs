@@ -246,7 +246,12 @@ impl WsClient for KolliderHedgingClient {
             }
         } else {
             match self.state.lock().unwrap().balances {
-                Some(ref balance) => Ok(balance.cash),
+                Some(ref balance) =>
+                {
+                    let symbol = Symbol::from("SAT");
+                    let sats_balance = balance.cash.get(&symbol).unwrap();
+                    Ok(*sats_balance)
+                }
                 None => Err(KolliderClientError::BalanceNotAvailable),
             }
         }
