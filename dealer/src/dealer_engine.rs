@@ -620,7 +620,6 @@ impl DealerEngine {
             Side::Bid => self.bid_quotes.get(&conversion_info.symbol),
             Side::Ask => self.ask_quotes.get(&conversion_info.symbol),
         };
-        dbg!(&maybe_quotes);
         // Either vlaue or amount needs to be some.
         if amount.is_none() && value.is_none() {
             return None
@@ -644,9 +643,9 @@ impl DealerEngine {
                     None => None,
                     Some((_level_vol, price)) => {
                         if conversion_info.base == conversion_info.from {
-                            Some(*price)
+                            Some(*price * dec!(0.995))
                         } else {
-                            Some(dec!(1) / price)
+                            Some(dec!(1) / (price * dec!(1.005)))
                         }
                     }
                 }
