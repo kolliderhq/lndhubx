@@ -196,6 +196,7 @@ pub struct CreateLnurlWithdrawalRequest {
     pub uid: UserId,
     pub amount: Decimal,
     pub currency: Currency,
+    pub rate: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
