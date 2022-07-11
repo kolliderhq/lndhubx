@@ -1423,14 +1423,14 @@ impl BankEngine {
                     }
                     let now = utils::time::time_now();
 
-                    let mut amount = msg.amount;
+                    let amount = msg.amount;
 
                     let payment_request = PaymentRequest {
                         uid: msg.uid,
                         req_id: msg.req_id,
                         amount: Some(amount),
                         currency: msg.currency,
-                        rate: None,
+                        rate: msg.rate,
                         payment_request: String::from(""),
                     };
 
