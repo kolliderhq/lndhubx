@@ -1402,6 +1402,13 @@ impl BankEngine {
 
                         user_account.get_default_account(msg.currency).clone()
                     };
+
+                    if msg.currency != Currency::BTC && msg.rate.is_none() {
+                        let msg = Message::Api(Api::CreateLnurlWithdrawalRequest(msg));
+                        listener(msg, ServiceIdentity::Dealer);
+                        return;
+                    }
+
                     let mut response = CreateLnurlWithdrawalResponse {
                         req_id: msg.req_id,
                         lnurl: None,
@@ -1416,10 +1423,12 @@ impl BankEngine {
                     }
                     let now = utils::time::time_now();
 
-                    let mut payment_request = PaymentRequest {
+                    let mut amount = msg.amount;
+
+                    let payment_request = PaymentRequest {
                         uid: msg.uid,
                         req_id: msg.req_id,
-                        amount: Some(msg.amount),
+                        amount: Some(amount),
                         currency: msg.currency,
                         rate: None,
                         payment_request: String::from(""),
@@ -1448,6 +1457,10 @@ impl BankEngine {
                     };
                     if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get(&msg.req_id) {
                         if let Some(a) = payment_request.amount {
+                            let a = match payment_request.rate {
+                                Some(r) => a * r,
+                                None => a
+                            };
                             let a = a * dec!(100000000);
                             if let Some(ma) = a.to_u64() {
                                 response.max_withdrawable = ma;

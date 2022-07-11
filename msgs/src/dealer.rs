@@ -6,6 +6,7 @@ use rust_decimal::prelude::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BankStateRequest {
     pub req_id: RequestId,

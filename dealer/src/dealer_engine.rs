@@ -371,6 +371,19 @@ impl DealerEngine {
                     let msg = Message::Api(Api::PaymentRequest(msg));
                     listener(msg);
                 }
+                Api::CreateLnurlWithdrawalRequest(mut msg) => {
+                    let conversion_info = ConversionInfo::new(msg.currency, Currency::BTC);
+                    // We assume user specifies the value not the amount.
+                    let amount = msg.amount;
+                    let rate = self.get_rate(None, Some(amount), conversion_info);
+                    if rate.is_none() {
+                        return
+                    } else {
+                        msg.rate = rate;
+                    }
+                    let msg = Message::Api(Api::CreateLnurlWithdrawalRequest(msg));
+                    listener(msg);
+                }
                 _ => {}
             },
             Message::KolliderApiResponse(msg) => {
