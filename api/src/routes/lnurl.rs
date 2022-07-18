@@ -21,10 +21,7 @@ use msgs::*;
 
 use crate::comms::*;
 use crate::jwt::*;
-use crate::WebDbPool;
 use crate::WebSender;
-
-use models::invoices::*;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateLnurlWithdrawalParams {

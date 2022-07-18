@@ -44,6 +44,23 @@ table! {
 }
 
 table! {
+    ln_challenge_maps (challenge) {
+        challenge -> Text,
+        uid -> Int4,
+    }
+}
+
+table! {
+    ln_users (pub_key) {
+        created_at -> Nullable<Timestamp>,
+        pub_key -> Text,
+        uid -> Int4,
+        prevent_delete -> Bool,
+        alias -> Nullable<Text>,
+    }
+}
+
+table! {
     pre_signups (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -92,6 +109,8 @@ allow_tables_to_appear_in_same_query!(
     clients,
     internal_user_mappings,
     invoices,
+    ln_challenge_maps,
+    ln_users,
     pre_signups,
     transactions,
     user_types,

@@ -17,6 +17,12 @@ pub enum AuthError {
     UserExists,
     #[error(display = "Incorrect password supplied.")]
     IncorrectPassword,
+    #[error(display = "Invalid LnAuth.")]
+    InvalidLNAuth,
+    #[error(display = "LNURL processing error.")]
+    LNURLError,
+    #[error(display = "Internal Error.")]
+    InternalError,
 }
 
 #[derive(Debug, Error, Serialize)]
