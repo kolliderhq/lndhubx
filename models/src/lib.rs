@@ -9,6 +9,7 @@ mod error;
 pub mod invoices;
 mod schema;
 pub mod transactions;
+pub mod ln_users;
 pub mod users;
 pub mod internal_user_mappings;
 pub mod pre_signups;
