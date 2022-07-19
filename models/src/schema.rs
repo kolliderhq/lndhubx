@@ -9,6 +9,16 @@ table! {
 }
 
 table! {
+    api_tokens (id) {
+        id -> Int4,
+        name -> Text,
+        key -> Nullable<Text>,
+        uid -> Int4,
+        revoked -> Nullable<Bool>,
+    }
+}
+
+table! {
     clients (id) {
         id -> Int4,
         name -> Text,
@@ -106,6 +116,7 @@ joinable!(internal_user_mappings -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
+    api_tokens,
     clients,
     internal_user_mappings,
     invoices,

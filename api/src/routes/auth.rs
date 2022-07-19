@@ -13,7 +13,10 @@ use bech32::{self, ToBase32};
 use secp256k1::{Message, PublicKey, Secp256k1, Signature};
 use rand::Rng;
 use models::users::*;
-use models::ln_users::InsertableLnChallengeMap;
+use models::{
+    ln_users::{InsertableLnChallengeMap, InsertableLnUser, LnChallengeMap, LnUser},
+    users::{InsertableApiTokenFull},
+};
 use std::str::FromStr;
 
 use crate::jwt::*;
@@ -22,6 +25,9 @@ use crate::WebDbPool;
 // use serde_json::*;
 
 const PREFIX: &str = "lnurl";
+
+static ACCESS_EXPIRY: i64 = 60 * 60 * 12;
+static REFRESH_EXPIRY: i64 = 60 * 60 * 24 * 3;
 
 #[derive(Deserialize)]
 pub struct RegisterData {
@@ -198,41 +204,26 @@ pub async fn get_lnauth_login(
     };
 
     let mut user = User::get_by_id(&conn, uid).unwrap();
-    let light_user_type_id = UserType::get_by_name(&conn, "light");
-    let light_user_type_id = light_user_type_id
-        .map_err(|e| match e {
-            DieselError::NotFound => ApiError::Auth(AuthError::UserTypeNotFound),
-            _ => ApiError::Auth(AuthError::InternalError),
-        })?
-        .uid;
-
-    let ln_user_type_id = UserType::get_by_name(&conn, "lnuser");
-    let ln_user_type_id = ln_user_type_id
-        .map_err(|e| match e {
-            DieselError::NotFound => ApiError::AuthError(AuthError::UserTypeNotFound),
-            _ => ApiError::Auth(AuthError::InternalError),
-        })?
-        .uid;
-
+    // TODO: creating users
     // if the user is light, create a new one
-    if user.user_type_id == light_user_type_id {
-        let random_string = uuid::Uuid::new_v4().to_string();
+    // if user.user_type_id == light_user_type_id {
+    //     let random_string = uuid::Uuid::new_v4().to_string();
 
-        let email = format!("{}-lnurl-auth@kollider.xyz", random_string);
-        let hashed_password = hash(&email, &args.k1);
+    //     let email = format!("{}-lnurl-auth@kollider.xyz", random_string);
+    //     let hashed_password = hash(&email, &args.k1);
 
-        let new_user = InsertableUser {
-            username: Some(random_string),
-            password: Some(hashed_password),
-            email: Some(email),
-            client_id: Some(1),
-            user_type_id: Some(ln_user_type_id),
-        };
-        let uid = new_user.insert(&conn)?;
+    //     let new_user = InsertableUser {
+    //         username: Some(random_string),
+    //         password: Some(hashed_password),
+    //         email: Some(email),
+    //         client_id: Some(1),
+    //         user_type_id: Some(ln_user_type_id),
+    //     };
+    //     let uid = new_user.insert(&conn)?;
 
-        // update the user with the created one
-        user = User::get_by_id(&conn, uid).unwrap();
-    }
+    //     // update the user with the created one
+    //     user = User::get_by_id(&conn, uid).unwrap();
+    // }
 
     let ln_user = InsertableLnUser {
         uid: user.uid,
@@ -242,20 +233,11 @@ pub async fn get_lnauth_login(
 
     ln_user.insert(&conn)?;
 
-    log::info!(logger, "User {} logged in.", &user.uid);
+    let access_expiry = ACCESS_EXPIRY;
+    let refresh_expiry = REFRESH_EXPIRY;
 
-    let refresh_expiry = match user.user_type_id {
-        1 => LIGHT_USER_REFRESH_EXPIRY,
-        _ => REFRESH_EXPIRY,
-    };
-
-    let access_expiry = match user.user_type_id {
-        1 => LIGHT_USER_ACCESS_EXPIRY,
-        _ => ACCESS_EXPIRY,
-    };
-
-    let token = jwt_generate(user.uid, None, UserRoles::MasterToken, user.user_type_id, access_expiry);
-    let refresh = jwt_generate_refresh_token(user.uid, UserRoles::MasterToken, user.user_type_id, refresh_expiry);
+    let token = jwt_generate(user.uid, None, UserRoles::MasterToken, access_expiry);
+    let refresh = jwt_generate_refresh_token(user.uid, UserRoles::MasterToken, refresh_expiry);
     InsertableApiTokenFull::new(Uuid::new_v4().to_string(), Some(refresh.clone()), user.uid as i32).insert(&conn)?;
 
     // let msg = Message::External(ExternalMessage::LnurlAuthCredentials(LnurlAuthCredentials {

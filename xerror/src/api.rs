@@ -19,10 +19,10 @@ pub enum AuthError {
     IncorrectPassword,
     #[error(display = "Invalid LnAuth.")]
     InvalidLNAuth,
-    #[error(display = "LNURL processing error.")]
-    LNURLError,
     #[error(display = "Internal Error.")]
     InternalError,
+    #[error(display = "User type not found.")]
+    UserTypeNotFound,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -78,6 +78,15 @@ impl error::ResponseError for ApiError {
                 AuthError::UserExists => HttpResponse::Conflict().json("There was a conflict with your request."),
                 AuthError::IncorrectPassword => {
                     HttpResponse::Unauthorized().json("You have supplied the wrong password.")
+                },
+                AuthError::InternalError => {
+                    HttpResponse::BadRequest().json("Internal server error.")
+                },
+                AuthError::InvalidLNAuth => {
+                    HttpResponse::Unauthorized().json("Invalid LNURL auth.")
+                },
+                AuthError::UserTypeNotFound => {
+                    HttpResponse::Conflict().json("User type not found.")
                 }
             },
             ApiError::Db(db) => match db {
@@ -103,6 +112,8 @@ impl error::ResponseError for ApiError {
             ApiError::Auth(auth) => match auth {
                 AuthError::UserExists => StatusCode::CONFLICT,
                 AuthError::IncorrectPassword => StatusCode::UNAUTHORIZED,
+                AuthError::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
+                AuthError::InvalidLNAuth => StatusCode::UNAUTHORIZED,
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => StatusCode::INTERNAL_SERVER_ERROR,
