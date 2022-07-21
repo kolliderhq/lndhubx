@@ -1,6 +1,6 @@
 # 🏦 LndHubX ⚡
  
-##### A lightning bank with fiat accounts
+##### A lightning accounts infrastructure with synthetic fiat gateway
 LndhubX is a reimplementation of [LndHub](https://github.com/BlueWallet/LndHub) originally created by [BlueWallet](https://bluewallet.io/). This project is meant to be an improvement as well as an enhancement of the original one. The focus lies on the following areas:
  
 🦀 Use of a **strongly type programming language (Rust)** to ensure type safety and performance.
