@@ -19,7 +19,7 @@ use rust_decimal::prelude::*;
 pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
 
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
-    let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
+    let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("EURUSD.PERP"));
 
     let points = vec![influxdb2::models::DataPoint::builder("dealer_states")
         // .tag("host", "server01")
