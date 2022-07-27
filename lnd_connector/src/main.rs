@@ -18,17 +18,17 @@ async fn main() {
         .expect("Failed to create an invoice");
 
     // Connecting to LND requires only address, cert file, and macaroon file
-    // let mut client = tonic_lnd::connect(address, cert_file, macaroon_file)
+    // let mut client = tonic_openssl_lnd::connect(address, cert_file, macaroon_file)
     //     .await
     //     .expect("failed to connect");
 
     // let info = client
     // // All calls require at least empty parameter
-    //     .get_info(tonic_lnd::rpc::GetInfoRequest {})
+    //     .get_info(tonic_openssl_lnd::lnrpc::GetInfoRequest {})
     //     .await
     //     .expect("failed to get info");
 
-    // while let Ok(inv) = client.subscribe_invoices(tonic_lnd::rpc::InvoiceSubscription{add_index: 0, settle_index: 0}).await {
+    // while let Ok(inv) = client.subscribe_invoices(tonic_openssl_lnd::lnrpc::InvoiceSubscription{add_index: 0, settle_index: 0}).await {
     //     if let Ok(msg) = inv.into_inner().message().await {
     //         dbg!(&msg);
     //     }

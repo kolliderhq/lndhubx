@@ -1,5 +1,10 @@
 ### API Config
-psql_url = "postgres://postgres:changeme@10.11.0.2:5432/lndhubx"
+psql_url = ""
+
+influx_host = "http://localhost:8086"
+influx_org = ""
+influx_bucket = ""
+influx_token = ""
 
 api_zmq_push_address = "tcp://0.0.0.0:5555"
 api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
@@ -13,10 +18,13 @@ bank_dealer_push_address = "tcp://0.0.0.0:5558"
 
 deposit_limit = 0.001
 
+withdrawal_only = false
+
 ## Lnd Node specific config settings.
-tls_path = "path/to/your/tls.cert"
-macaroon_path = "path/to/your/admin.macaroon"
-node_url = "your node url"
+tls_path = "tls.cert"
+macaroon_path = "admin.macaroon"
+host = "http://lnd.staging.kollider.internal"
+port = 10009
 ## The margin users have to keep on their account to account
 ## for network fees.
 ln_network_fee_margin = 0.005
@@ -35,10 +43,12 @@ reserve_ratio = 0.75
 dealer_bank_push_address = "tcp://0.0.0.0:5557"
 dealer_bank_pull_address = "tcp://0.0.0.0:5558"
 
-kollider_ws_url = "wss://api.kollider.xyz/v1/ws/"
+kollider_ws_url = ""
 kollider_api_key = ""
 kollider_api_secret = ""
 kollider_api_passphrase = ""
+
+spread = 0.01
 
 # Risk the dealer is willing to take before hedging.
 [risk_tolerances]
@@ -55,6 +65,6 @@ GBP = 5
 ## Logging
 [logging_settings]
 log_path = "lndhubx.log"
-stdout = true
+stdout = false
 level = "debug"
 name = "lndhub"

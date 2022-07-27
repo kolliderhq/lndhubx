@@ -1,6 +1,11 @@
 ### API Config
 psql_url = "postgres://postgres:changeme@10.11.0.2:5432/lndhubx"
 
+influx_host = "http://localhost:8086"
+influx_org = ""
+influx_bucket = ""
+influx_token = ""
+
 api_zmq_push_address = "tcp://10.11.0.4:5555"
 api_zmq_subscribe_address = "tcp://10.11.0.4:5556"
 
@@ -39,6 +44,8 @@ kollider_ws_url = "ws://api.kollider.xyz/v1/ws/"
 kollider_api_key = "redacted"
 kollider_api_secret = "redacted"
 kollider_api_passphrase = "redacted"
+
+spread = 0.01
 
 [risk_tolerances]
 USD = 1

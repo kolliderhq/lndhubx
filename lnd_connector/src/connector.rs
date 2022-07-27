@@ -10,6 +10,7 @@ use rust_decimal_macros::*;
 
 use core_types::*;
 use uuid::Uuid;
+use futures_util::{stream, Future};
 
 #[derive(Debug, Clone)]
 pub struct PayResponse {
@@ -19,20 +20,33 @@ pub struct PayResponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LndConnectorSettings {
-    pub node_url: String,
+    pub host: String,
+    pub port: u32,
     pub macaroon_path: String,
     pub tls_path: String,
 }
 
+
 pub struct LndConnector {
     _settings: LndConnectorSettings,
-    client: tonic_lnd::Client,
+    ln_client: tonic_openssl_lnd::LndLightningClient,
+    router_client: tonic_openssl_lnd::LndRouterClient,
 }
 
 impl LndConnector {
     pub async fn new(settings: LndConnectorSettings) -> Self {
-        let client = tonic_lnd::connect(
-            settings.node_url.clone(),
+        let ln_client = tonic_openssl_lnd::connect_lightning(
+            settings.host.clone(),
+            settings.port.clone(),
+            settings.tls_path.clone(),
+            settings.macaroon_path.clone(),
+        )
+        .await
+        .expect("failed to connect");
+
+        let router_client = tonic_openssl_lnd::connect_router(
+            settings.host.clone(),
+            settings.port.clone(),
             settings.tls_path.clone(),
             settings.macaroon_path.clone(),
         )
@@ -41,22 +55,23 @@ impl LndConnector {
 
         Self {
             _settings: settings,
-            client,
+            ln_client,
+            router_client
         }
     }
 
     pub async fn sub_invoices(&mut self, listener: Sender<Message>) {
         while let Ok(inv) = self
-            .client
-            .subscribe_invoices(tonic_lnd::rpc::InvoiceSubscription {
+            .ln_client
+            .subscribe_invoices(tonic_openssl_lnd::lnrpc::InvoiceSubscription {
                 add_index: 0,
                 settle_index: 0,
             })
             .await
         {
             if let Ok(Some(invoice)) = inv.into_inner().message().await {
-                let invoice_state = tonic_lnd::rpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
-                if invoice_state == tonic_lnd::rpc::invoice::InvoiceState::Settled {
+                let invoice_state = tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
+                if invoice_state == tonic_openssl_lnd::lnrpc::invoice::InvoiceState::Settled {
                     let deposit = Deposit {
                         payment_request: invoice.payment_request,
                     };
@@ -74,13 +89,13 @@ impl LndConnector {
         uid: UserId,
         account_id: Uuid,
     ) -> Result<Invoice, LndConnectorError> {
-        let invoice = tonic_lnd::rpc::Invoice {
+        let invoice = tonic_openssl_lnd::lnrpc::Invoice {
             value: amount as i64,
             memo,
             expiry: 86400,
             ..Default::default()
         };
-        if let Ok(resp) = self.client.add_invoice(invoice).await {
+        if let Ok(resp) = self.ln_client.add_invoice(invoice).await {
             let add_invoice = resp.into_inner();
             let invoice = Invoice {
                 uid: uid as i32,
@@ -112,15 +127,16 @@ impl LndConnector {
         // Never send a payment with lower fee than 10.
         let max_fee = std::cmp::max(max_fee, 10);
 
-        let limit = tonic_lnd::rpc::fee_limit::Limit::Fixed(max_fee);
-        let fee_limit = tonic_lnd::rpc::FeeLimit { limit: Some(limit) };
-        let send_payment = tonic_lnd::rpc::SendRequest {
+        let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
+        let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
+        let send_payment = tonic_openssl_lnd::lnrpc::SendRequest {
             payment_request,
             fee_limit: Some(fee_limit),
             allow_self_payment: true,
             ..Default::default()
         };
-        if let Ok(resp) = self.client.send_payment_sync(send_payment).await {
+
+        if let Ok(resp) = self.ln_client.send_payment_sync(send_payment).await {
             let r = resp.into_inner();
             if !r.payment_error.is_empty() {
                 return Err(LndConnectorError::FailedToSendPayment);
@@ -137,12 +153,13 @@ impl LndConnector {
             };
             return Ok(response);
         }
+
         Err(LndConnectorError::FailedToSendPayment)
     }
 
     pub async fn get_node_info(&mut self) -> Result<LndNodeInfo, LndConnectorError> {
-        let get_info = tonic_lnd::rpc::GetInfoRequest::default();
-        match self.client.get_info(get_info).await {
+        let get_info = tonic_openssl_lnd::lnrpc::GetInfoRequest::default();
+        match self.ln_client.get_info(get_info).await {
             Ok(ni) => {
                 let resp = ni.into_inner();
                 let lnd_node_info = LndNodeInfo {
