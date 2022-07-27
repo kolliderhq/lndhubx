@@ -40,7 +40,7 @@ external_tx_fee = 0
 ## The minimum of liabilities the bank has to keep.
 reserve_ratio = 0.75
 
-kollider_ws_url = "ws://api.kollider.xyz/v1/ws/"
+kollider_ws_url = "wss://api.kollider.xyz/v1/ws/"
 kollider_api_key = "redacted"
 kollider_api_secret = "redacted"
 kollider_api_passphrase = "redacted"
