@@ -994,6 +994,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde 1.0.140",
  "slog",
+ "tokio 1.20.0",
  "utils",
  "uuid 0.8.2",
  "ws_client",
