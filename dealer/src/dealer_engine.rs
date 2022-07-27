@@ -104,9 +104,8 @@ impl DealerEngine {
         let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
             Some(p) => match p.side {
                 None => dec!(0),
-                Some(side) => {
-                    let side_sign = Decimal::new(side.to_sign(), 0);
-                    side_sign * p.quantity
+                Some(_) => {
+                    p.quantity
                 }
             },
             None => dec!(0),
