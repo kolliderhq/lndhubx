@@ -17,6 +17,8 @@ slog = "2.5.2"
 
 log = { version = "0.4.16" }
 
+tokio = { version = "1.17.0", features = ["full"] }
+
 influxdb2 = "0.1.1"
 futures = "0.3.21"
 

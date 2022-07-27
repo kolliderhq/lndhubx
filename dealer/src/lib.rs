@@ -31,7 +31,7 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     client.write(bucket, stream::iter(points)).await.unwrap();
 }
 
-pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
+pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
     let (kollider_client_tx, kollider_client_rx) = bounded(2024);
 
     let ws_client = KolliderHedgingClient::connect(
@@ -83,7 +83,7 @@ pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: 
                 synth_dealer.check_risk(last_bank_state, &mut listener);
                 last_risk_check = Instant::now();
             }
-            insert_dealer_state(&synth_dealer, &influx_client, &settings.clone().influx_bucket);
+            insert_dealer_state(&synth_dealer, &influx_client, &settings.influx_bucket.clone()).await;
         }
 
         if last_health_check.elapsed().as_secs() > 5 {
