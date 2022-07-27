@@ -43,6 +43,10 @@ pub struct DealerEngineSettings {
     pub kollider_ws_url: String,
     pub logging_settings: LoggingSettings,
     // pub hedge_settings: HashMap<Currency, HedgeSettings>,
+    pub influx_host: String,
+    pub influx_org: String,
+    pub influx_bucket: String,
+    pub influx_token: String,
 }
 
 pub struct DealerEngine {
@@ -60,6 +64,8 @@ pub struct DealerEngine {
     logger: slog::Logger,
     pub last_bank_state: Option<BankState>,
     pub last_bank_state_update: Option<Instant>,
+
+    pub hedged_qtys: HashMap<Symbol, Decimal>,
 }
 
 impl DealerEngine {
@@ -74,6 +80,8 @@ impl DealerEngine {
         settings.logging_settings.name = String::from("Dealer");
         let logger = init_log(&settings.logging_settings);
 
+        let hedged_qtys = HashMap::new();
+
         Self {
             risk_tolerances,
             ws_client: Box::new(ws_client),
@@ -87,8 +95,23 @@ impl DealerEngine {
             is_kollider_authenticated: false,
             guaranteed_quotes: BTreeMap::new(),
             last_bank_state_update: None,
+            hedged_qtys,
             logger,
         }
+    }
+
+    pub fn get_hedged_quantity(&self, symbol: Symbol) -> Decimal {
+        let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
+            Some(p) => match p.side {
+                None => dec!(0),
+                Some(side) => {
+                    let side_sign = Decimal::new(side.to_sign(), 0);
+                    side_sign * p.quantity
+                }
+            },
+            None => dec!(0),
+        };
+        currently_hedged_qty
     }
 
     pub fn check_has_received_initial_data(&mut self) {
@@ -207,6 +230,8 @@ impl DealerEngine {
                 },
                 None => dec!(0),
             };
+
+            self.hedged_qtys.insert(symbol.clone(), currently_hedged_qty);
 
             slog::info!(self.logger, "Current number of cotracts: {}", currently_hedged_qty);
 

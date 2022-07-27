@@ -19,6 +19,8 @@ use lnd_connector::connector::LndConnector;
 
 use serde::{Deserialize, Serialize};
 
+use influxdb2::Client as InfluxClient;
+
 const BANK_UID: u64 = 23193913;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,12 +40,16 @@ pub struct BankEngineSettings {
     pub withdrawal_only: bool,
     pub logging_settings: LoggingSettings,
     pub deposit_limits: HashMap<String, Decimal>,
+    pub influx_host: String,
+    pub influx_org: String,
+    pub influx_bucket: String,
+    pub influx_token: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UserAccount {
     owner: UserId,
-    accounts: HashMap<AccountId, Account>,
+    pub accounts: HashMap<AccountId, Account>,
     invoices: Vec<String>,
 }
 

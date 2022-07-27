@@ -23,6 +23,9 @@ tokio = { version = "1.17.0", features = ["full"] }
 r2d2 = "0.8.8"
 diesel = { version = "1.4.2", features = ["postgres","uuidv07", "r2d2", "chrono"] }
 
+influxdb2 = "0.1.1"
+futures = "0.3.21"
+
 serde = { version = "1.0.110", features = ["derive"] }
 log = "0.4"
 

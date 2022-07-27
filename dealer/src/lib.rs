@@ -11,6 +11,26 @@ use uuid::Uuid;
 
 use kollider_hedging::KolliderHedgingClient;
 
+use futures::prelude::*;
+use influxdb2::Client;
+use core_types::*;
+use rust_decimal::prelude::*;
+
+pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
+
+    let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
+    let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
+
+    let points = vec![influxdb2::models::DataPoint::builder("dealer_states")
+        // .tag("host", "server01")
+        .field("usd_hedged_quantity", usd_hedged_qty.to_f64().unwrap())
+        .field("eur_hedged_quantity", eur_hedged_qty.to_f64().unwrap())
+        .build()
+        .unwrap()];
+
+    client.write(bucket, stream::iter(points)).await.unwrap();
+}
+
 pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
     let (kollider_client_tx, kollider_client_rx) = bounded(2024);
 
@@ -23,7 +43,9 @@ pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: 
     )
     .unwrap();
 
-    let mut synth_dealer = DealerEngine::new(settings, ws_client);
+    let mut synth_dealer = DealerEngine::new(settings.clone(), ws_client);
+
+    let influx_client = Client::new(settings.influx_host.clone(), settings.influx_org.clone(), settings.influx_token.clone());
 
     let mut listener = |msg: Message| {
         let payload = bincode::serialize(&msg).unwrap();
@@ -61,6 +83,7 @@ pub fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: 
                 synth_dealer.check_risk(last_bank_state, &mut listener);
                 last_risk_check = Instant::now();
             }
+            insert_dealer_state(&synth_dealer, &influx_client, &settings.clone().influx_bucket);
         }
 
         if last_health_check.elapsed().as_secs() > 5 {
