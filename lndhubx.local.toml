@@ -23,7 +23,7 @@ withdrawal_only = false
 ## Lnd Node specific config settings.
 tls_path = "tls.cert"
 macaroon_path = "admin.macaroon"
-host = "http://lnd.staging.kollider.internal"
+host = ""
 port = 10009
 ## The margin users have to keep on their account to account
 ## for network fees.
