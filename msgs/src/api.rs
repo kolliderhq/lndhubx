@@ -94,6 +94,7 @@ pub enum PaymentResponseError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentResponse {
     pub req_id: RequestId,
+    pub payment_hash: String,
     pub uid: UserId,
     pub success: bool,
     pub currency: Currency,
