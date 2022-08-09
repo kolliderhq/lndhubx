@@ -2,3 +2,4 @@
 *.macaroon
 target/
 *.log
+*.test.toml
