@@ -16,6 +16,7 @@ use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
 use influxdb2::Client;
+use futures::stream::FuturesUnordered;
 
 pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str) {
     let mut btc_balance = dec!(0);
@@ -68,7 +69,7 @@ pub async fn start(
         .expect("Failed to create pool.");
 
     let lnd_connector = LndConnector::new(lnd_connector_settings.clone()).await;
-    let mut lnd_connector_invoices = LndConnector::new(lnd_connector_settings).await;
+    let mut lnd_connector_invoices = LndConnector::new(lnd_connector_settings.clone()).await;
 
     let influx_client = Client::new(
         settings.influx_host.clone(),
@@ -87,7 +88,16 @@ pub async fn start(
 
     tokio::spawn(invoice_task);
 
-    let mut bank_engine = BankEngine::new(Some(pool), lnd_connector, settings.clone()).await;
+    let (payment_thread_tx, payment_thread_rx) = crossbeam_channel::bounded(2024);
+
+    let mut bank_engine = BankEngine::new(
+        Some(pool),
+        lnd_connector,
+        settings.clone(),
+        lnd_connector_settings,
+        payment_thread_tx,
+    )
+    .await;
     bank_engine.init_accounts();
 
     let mut state_insertion_interval = Instant::now();
@@ -110,6 +120,9 @@ pub async fn start(
     };
 
     loop {
+        if let Ok(msg) = payment_thread_rx.try_recv() {
+            bank_engine.process_msg(msg, &mut listener).await;
+        }
         // Receiving msgs from the api.
         if let Ok(frame) = api_recv.recv_msg(1) {
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
@@ -136,6 +149,12 @@ pub async fn start(
         if state_insertion_interval.elapsed().as_secs() > 5 {
             insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
             state_insertion_interval = Instant::now();
+            // Cleaning up the payment threads.
+            bank_engine.payment_threads = bank_engine
+                .payment_threads
+                .into_iter()
+                .filter(|t| t.is_finished())
+                .collect::<FuturesUnordered<tokio::task::JoinHandle<()>>>();
         }
     }
 }
