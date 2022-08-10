@@ -15,6 +15,7 @@ use msgs::*;
 use utils::currencies::{SATS_DECIMALS, SATS_IN_BITCOIN};
 use utils::xlogging::*;
 use xerror::bank_engine::*;
+use std::iter::Iterator;
 
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
