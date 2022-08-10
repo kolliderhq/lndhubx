@@ -16,6 +16,7 @@ use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
 use influxdb2::Client;
+use futures::stream::FuturesUnordered;
 
 pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str) {
     let mut btc_balance = dec!(0);
@@ -89,7 +90,14 @@ pub async fn start(
 
     let (payment_thread_tx, payment_thread_rx) = crossbeam_channel::bounded(2024);
 
-    let mut bank_engine = BankEngine::new(Some(pool), lnd_connector, settings.clone(), lnd_connector_settings, payment_thread_tx).await;
+    let mut bank_engine = BankEngine::new(
+        Some(pool),
+        lnd_connector,
+        settings.clone(),
+        lnd_connector_settings,
+        payment_thread_tx,
+    )
+    .await;
     bank_engine.init_accounts();
 
     let mut state_insertion_interval = Instant::now();
@@ -141,6 +149,12 @@ pub async fn start(
         if state_insertion_interval.elapsed().as_secs() > 5 {
             insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
             state_insertion_interval = Instant::now();
+            // Cleaning up the payment threads.
+            bank_engine.payment_threads = bank_engine
+                .payment_threads
+                .into_iter()
+                .filter(|t| t.is_finished())
+                .collect::<FuturesUnordered<tokio::task::JoinHandle<()>>>();
         }
     }
 }
