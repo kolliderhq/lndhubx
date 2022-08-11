@@ -62,8 +62,10 @@ pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpR
 
 #[derive(Deserialize)]
 pub struct PayInvoiceData {
-    pub payment_request: String,
+    pub payment_request: Option<String>,
     pub currency: Option<Currency>,
+    pub receipient: Option<String>,
+    pub amount: Option<Decimal>,
 }
 
 #[post("/payinvoice")]
@@ -87,8 +89,13 @@ pub async fn pay_invoice(
         uid,
         payment_request: pay_invoice_data.payment_request.clone(),
         rate: None,
-        amount: None,
+        amount: pay_invoice_data.amount,
+        receipient: pay_invoice_data.receipient.clone(),
     };
+
+    if pay_invoice_data.payment_request.is_none() && pay_invoice_data.receipient.is_none() {
+        return Ok(HttpResponse::Ok().json(json!({"error": "You have to specify either an invoice or a receipient"})));
+    }
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
         move |message| matches!(message, Message::Api(Api::PaymentResponse(response)) if response.req_id == req_id),

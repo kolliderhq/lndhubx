@@ -76,8 +76,9 @@ pub struct InvoiceResponse {
 pub struct PaymentRequest {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub payment_request: String,
+    pub payment_request: Option<String>,
     pub currency: Currency,
+    pub receipient: Option<String>,
     pub amount: Option<Decimal>,
     pub rate: Option<Decimal>,
 }
@@ -89,6 +90,7 @@ pub enum PaymentResponseError {
     InvoiceAlreadyPaid,
     SelfPayment,
     RateNotAvailable,
+    UserDoesNotExist,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,7 +100,7 @@ pub struct PaymentResponse {
     pub uid: UserId,
     pub success: bool,
     pub currency: Currency,
-    pub payment_request: String,
+    pub payment_request: Option<String>,
     pub amount: Decimal,
     pub fees: Decimal,
     pub rate: Decimal,

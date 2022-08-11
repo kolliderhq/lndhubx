@@ -6,16 +6,16 @@ use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 use core_types::*;
-use models::{accounts, internal_user_mappings, invoices::Invoice};
+use models::{accounts, internal_user_mappings, invoices::Invoice, users::User};
 
 use msgs::api::*;
 use msgs::bank::*;
 use msgs::dealer::*;
 use msgs::*;
+use std::iter::Iterator;
 use utils::currencies::{SATS_DECIMALS, SATS_IN_BITCOIN};
 use utils::xlogging::*;
 use xerror::bank_engine::*;
-use std::iter::Iterator;
 
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
@@ -408,6 +408,119 @@ impl BankEngine {
         }
 
         Ok(())
+    }
+
+    pub fn make_internal_tx<F: FnMut(Message, ServiceIdentity)>(
+        &mut self,
+        payment_request: PaymentRequest,
+        listener: &mut F,
+    ) {
+        let conn = match &self.conn_pool {
+            Some(conn) => conn,
+            None => {
+                slog::error!(self.logger, "No database provided.");
+                return;
+            }
+        };
+
+        let c = match conn.get() {
+            Ok(psql_connection) => psql_connection,
+            Err(_) => {
+                slog::error!(self.logger, "Couldn't get psql connection.");
+                return;
+            }
+        };
+
+        let username = payment_request.receipient.unwrap();
+        let outbound_uid = payment_request.uid;
+        let amount = payment_request.amount.unwrap();
+        let rate = dec!(1);
+
+        let mut payment_response = PaymentResponse {
+            amount: payment_request.amount.unwrap(),
+            payment_hash: Uuid::new_v4().to_string(),
+            req_id: payment_request.req_id,
+            uid: outbound_uid,
+            success: false,
+            payment_request: None,
+            currency: payment_request.currency,
+            fees: dec!(0),
+            error: None,
+            rate,
+        };
+
+        let inbound_user = match User::get_by_username(&c, username) {
+            Ok(u) => u,
+            Err(_) => {
+                payment_response.error = Some(PaymentResponseError::UserDoesNotExist);
+                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                listener(msg, ServiceIdentity::Api);
+                return;
+            }
+        };
+
+        let inbound_uid = inbound_user.uid as u64;
+
+        let mut outbound_account = {
+            let user_account = match self.ledger.user_accounts.get_mut(&outbound_uid) {
+                Some(ua) => ua,
+                None => return,
+            };
+
+            user_account.get_default_account(payment_request.currency).clone()
+        };
+
+        let mut inbound_account = {
+            let user_account = self
+                .ledger
+                .user_accounts
+                .entry(inbound_uid)
+                .or_insert_with(|| UserAccount::new(inbound_uid));
+            user_account.get_default_account(payment_request.currency)
+        };
+
+        if outbound_account.balance < amount {
+            payment_response.error = Some(PaymentResponseError::InsufficientFunds);
+            let msg = Message::Api(Api::PaymentResponse(payment_response));
+            listener(msg, ServiceIdentity::Api);
+            return;
+        }
+
+        if self
+            .make_tx(
+                &mut outbound_account,
+                outbound_uid,
+                &mut inbound_account,
+                inbound_uid,
+                amount,
+                rate,
+            )
+            .is_err()
+        {
+            return;
+        }
+
+        {
+            let inbound_user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
+            inbound_user_account
+                .accounts
+                .insert(inbound_account.account_id, inbound_account.clone());
+        }
+
+        {
+            let outbound_user_account = self.ledger.user_accounts.get_mut(&outbound_uid).unwrap();
+            outbound_user_account
+                .accounts
+                .insert(outbound_account.account_id, outbound_account.clone());
+        }
+
+        // Update DB.
+        self.update_account(&outbound_account, outbound_uid);
+        self.update_account(&inbound_account, inbound_uid);
+
+        payment_response.success = true;
+        let msg = Message::Api(Api::PaymentResponse(payment_response));
+        listener(msg, ServiceIdentity::Api);
     }
 
     pub async fn process_msg<F: FnMut(Message, ServiceIdentity)>(&mut self, msg: Message, listener: &mut F) {
@@ -896,6 +1009,12 @@ impl BankEngine {
                 Api::PaymentRequest(mut msg) => {
                     slog::info!(self.logger, "Received payment request: {:?}", msg);
 
+                    // If user specified a username then we attempt to make an internal transaction.
+                    if !msg.receipient.is_none() {
+                        self.make_internal_tx(msg, listener);
+                        return;
+                    }
+
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
@@ -914,7 +1033,9 @@ impl BankEngine {
 
                     let uid = msg.uid;
 
-                    let decoded = match msg.payment_request.clone().parse::<lightning_invoice::Invoice>() {
+                    let payment_request = msg.clone().payment_request.unwrap();
+
+                    let decoded = match payment_request.parse::<lightning_invoice::Invoice>() {
                         Ok(d) => d,
                         Err(_) => return,
                     };
@@ -939,14 +1060,13 @@ impl BankEngine {
                     }
 
                     let rate = msg.rate.unwrap();
-
                     let invoice = if let Ok(invoice) =
-                        models::invoices::Invoice::get_by_invoice_hash(&psql_connection, msg.payment_request.clone())
+                        models::invoices::Invoice::get_by_invoice_hash(&psql_connection, payment_request.clone())
                     {
                         Some(invoice)
                     } else {
                         let invoice = models::invoices::Invoice {
-                            payment_request: msg.payment_request.clone(),
+                            payment_request: payment_request.clone(),
                             rhash: decoded.payment_hash().to_string(),
                             payment_hash: decoded.payment_hash().to_string(),
                             created_at: utils::time::time_now() as i64,
@@ -987,7 +1107,7 @@ impl BankEngine {
                         req_id: msg.req_id,
                         uid,
                         success: false,
-                        payment_request: msg.payment_request.clone(),
+                        payment_request: Some(payment_request.clone()),
                         currency: msg.currency,
                         fees: dec!(0),
                         rate: msg.rate.unwrap(),
@@ -1082,7 +1202,7 @@ impl BankEngine {
 
                         let settings = self.lnd_connector_settings.clone();
                         let req_id = msg.req_id.clone();
-                        let payment_req = msg.payment_request.clone();
+                        let payment_req = payment_request.clone();
                         let aib = amount_in_btc.clone();
                         let currency = msg.currency;
 
@@ -1099,7 +1219,7 @@ impl BankEngine {
                                         currency,
                                         payment_hash: result.payment_hash,
                                         success: true,
-                                        payment_request: payment_req.clone(),
+                                        payment_request: Some(payment_req.clone()),
                                         amount: aib,
                                         fees: Decimal::new(result.fee as i64, 0),
                                         rate: rate,
@@ -1123,7 +1243,7 @@ impl BankEngine {
                                         currency,
                                         payment_hash: String::from(""),
                                         success: false,
-                                        payment_request: payment_req.clone(),
+                                        payment_request: Some(payment_req.clone()),
                                         amount: aib,
                                         fees: dec!(0),
                                         rate: rate,
@@ -1467,7 +1587,8 @@ impl BankEngine {
                         amount: Some(amount),
                         currency: msg.currency,
                         rate: msg.rate,
-                        payment_request: String::from(""),
+                        payment_request: Some(String::from("")),
+                        receipient: None,
                     };
 
                     let lnurl_path = String::from("https://lndhubx.kollider.xyz/api/lnurl_withdrawal/request");
@@ -1512,7 +1633,7 @@ impl BankEngine {
                 }
                 Api::PayLnurlWithdrawalRequest(msg) => {
                     if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get_mut(&msg.req_id) {
-                        payment_request.payment_request = msg.payment_request;
+                        payment_request.payment_request = Some(msg.payment_request);
                         let msg = Message::Api(Api::PaymentRequest(payment_request.clone()));
                         listener(msg, ServiceIdentity::Loopback);
                         return;
@@ -1564,7 +1685,6 @@ impl BankEngine {
                     let mut payment_response = res.payment_response;
 
                     if res.is_success {
-
                         // Fees are recoded in Sats so we need to convert to BTC.
                         let fees_payed_in_btc = payment_response.fees / Decimal::new(SATS_IN_BITCOIN as i64, 0);
 
@@ -1601,21 +1721,20 @@ impl BankEngine {
 
                         payment_response.success = true;
 
-                        let mut invoice = if let Ok(invoice) = models::invoices::Invoice::get_by_invoice_hash(
-                            &psql_connection,
-                            payment_response.payment_request.clone(),
-                        ) {
-                            invoice
-                        } else {
-                            return;
-                        };
+                        let pr = payment_response.clone().payment_request.unwrap();
+
+                        let mut invoice =
+                            if let Ok(invoice) = models::invoices::Invoice::get_by_invoice_hash(&psql_connection, pr) {
+                                invoice
+                            } else {
+                                return;
+                            };
 
                         invoice.settled = true;
 
                         if invoice.update(&psql_connection).is_err() {
                             slog::error!(self.logger, "Error updating updating invoices!");
                         }
-
                     } else {
                         let refund = res.amount;
 
