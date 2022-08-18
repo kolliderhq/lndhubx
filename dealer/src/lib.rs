@@ -11,13 +11,12 @@ use uuid::Uuid;
 
 use kollider_hedging::KolliderHedgingClient;
 
+use core_types::*;
 use futures::prelude::*;
 use influxdb2::Client;
-use core_types::*;
 use rust_decimal::prelude::*;
 
 pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
-
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
     let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCEUR.PERP"));
 
@@ -45,7 +44,11 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
 
     let mut synth_dealer = DealerEngine::new(settings.clone(), ws_client);
 
-    let influx_client = Client::new(settings.influx_host.clone(), settings.influx_org.clone(), settings.influx_token.clone());
+    let influx_client = Client::new(
+        settings.influx_host.clone(),
+        settings.influx_org.clone(),
+        settings.influx_token.clone(),
+    );
 
     let mut listener = |msg: Message| {
         let payload = bincode::serialize(&msg).unwrap();
@@ -56,18 +59,19 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     let mut last_house_keeping = Instant::now();
     let mut last_risk_check = Instant::now();
 
-    // Before we start the main loop we have to have received at lease one bank state message.
-    while synth_dealer.last_bank_state_update.is_none() {
-        let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }));
-        listener(msg);
-        if let Ok(frame) = bank_recv.recv_msg(0) {
-            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                synth_dealer.process_msg(message, &mut listener);
-            };
-        }
-    }
-
     loop {
+        // Before we proceed we have to have received at lease one bank state message.
+        if !synth_dealer.has_bank_state() && synth_dealer.is_ready() {
+            let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }));
+            listener(msg);
+            if let Ok(frame) = bank_recv.recv_msg(0) {
+                if let Ok(message) = bincode::deserialize::<Message>(&frame) {
+                    synth_dealer.process_msg(message, &mut listener);
+                };
+            }
+            continue;
+        }
+
         if let Ok(frame) = bank_recv.recv_msg(1) {
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
                 synth_dealer.process_msg(message, &mut listener);
@@ -79,8 +83,8 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
         }
 
         if last_risk_check.elapsed().as_secs() > 10 {
-            if let Some(last_bank_state) = synth_dealer.last_bank_state.clone() {
-                synth_dealer.check_risk(last_bank_state, &mut listener);
+            if synth_dealer.has_bank_state() {
+                synth_dealer.check_risk(&mut listener);
                 last_risk_check = Instant::now();
             }
             insert_dealer_state(&synth_dealer, &influx_client, &settings.influx_bucket.clone()).await;
