@@ -6,4 +6,6 @@ pub enum KolliderClientError {
     AuthenticationFailed,
     BalanceNotAvailable,
     NonFiatCurrency,
+    CouldNotConnect,
+    NotConnected,
 }

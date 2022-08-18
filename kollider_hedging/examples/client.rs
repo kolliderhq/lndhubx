@@ -1,7 +1,15 @@
 use core_types::Currency;
 use kollider_hedging::KolliderHedgingClient;
+use msgs::kollider_client::{Channel, KolliderApiResponse};
+use msgs::Message;
 use std::time::{Duration, Instant};
 use ws_client::WsClient;
+
+fn subscribe(client: &KolliderHedgingClient) {
+    client
+        .subscribe_all(vec![Channel::PositionStates, Channel::MarkPrices])
+        .expect("Failed to subscribe to channels");
+}
 
 fn main() {
     dotenv::dotenv().ok();
@@ -13,6 +21,7 @@ fn main() {
     let (tx, rx) = crossbeam::channel::unbounded();
     let client = KolliderHedgingClient::connect(&kollider_url, &api_key, &api_secret, &api_passphrase, tx)
         .expect("Failed to create a client");
+    subscribe(&client);
     let begin = Instant::now();
     loop {
         let elapsed_secs = begin.elapsed().as_secs();
@@ -35,7 +44,17 @@ fn main() {
         }
 
         while let Ok(msg) = rx.try_recv() {
-            println!("Received a callback message {:?}", msg);
+            match msg {
+                Message::KolliderApiResponse(KolliderApiResponse::Reconnected(reconnection)) => {
+                    println!("Reconnected at {}", reconnection.timestamp);
+                    println!("Resubscribing channels");
+                    subscribe(&client);
+                }
+                Message::KolliderApiResponse(KolliderApiResponse::Disconnected(disconnection)) => {
+                    println!("Disconnected at {}", disconnection.timestamp)
+                }
+                _ => {}
+            }
         }
 
         std::thread::sleep(Duration::from_millis(1000));
