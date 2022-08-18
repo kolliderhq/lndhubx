@@ -427,6 +427,7 @@ impl DealerEngine {
             },
             Message::KolliderApiResponse(msg) => {
                 match msg {
+                    KolliderApiResponse::Disconnected(_) => self.reset_state(),
                     KolliderApiResponse::Authenticate(auth) => {
                         if auth.success() {
                             slog::info!(self.logger, "Successful Kollider authenticated!");
@@ -691,6 +692,17 @@ impl DealerEngine {
                 }
             }
         }
+    }
+
+    fn reset_state(&mut self) {
+        self.level2_data = HashMap::new();
+        self.bid_quotes = HashMap::new();
+        self.ask_quotes = HashMap::new();
+        self.has_received_init_data = false;
+        self.has_received_symbols = false;
+        self.is_kollider_authenticated = false;
+        self.guaranteed_quotes = BTreeMap::new();
+        self.hedged_qtys = HashMap::new();
     }
 }
 
