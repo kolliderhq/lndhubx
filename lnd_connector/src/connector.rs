@@ -164,10 +164,13 @@ impl LndConnector {
         let max_fee = std::cmp::max(max_fee, 10);
         let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
-        let mut query_routes = tonic_openssl_lnd::lnrpc::QueryRoutesRequest::default();
-        query_routes.pub_key = dest_node_key;
-        query_routes.amt = amount_in_sats.to_i64().unwrap();
-        query_routes.fee_limit = Some(fee_limit);
+        let query_routes = tonic_openssl_lnd::lnrpc::QueryRoutesRequest {
+            pub_key: dest_node_key,
+            amt: amount_in_sats.to_i64().unwrap(),
+            fee_limit: Some(fee_limit),
+            cltv_limit: 144,
+            ..Default::default()
+        };
         match self.ln_client.query_routes(query_routes).await {
             Ok(pr) => {
                 let resp = pr.into_inner();
