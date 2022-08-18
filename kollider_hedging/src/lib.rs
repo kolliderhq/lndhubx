@@ -6,11 +6,13 @@ use msgs::kollider_client::*;
 use msgs::Message;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
+use std::net::TcpStream;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tungstenite::stream::MaybeTlsStream;
+use tungstenite::WebSocket;
 use url::Url;
 use uuid::Uuid;
 use ws_client::{Result, WsClient};
@@ -18,9 +20,11 @@ use xerror::kollider_client::*;
 
 const WS_ACTION_TIMEOUT_SECONDS: u64 = 5;
 const WS_THREAD_SLEEP_MICROSECONDS: u64 = 100;
+const WS_THREAD_RECONNECT_MILLISECONDS: u64 = 5000;
 
 #[derive(Debug)]
 pub struct State {
+    is_connected: bool,
     is_authenticated: bool,
     position_states: HashMap<Symbol, PositionState>,
     mark_prices: HashMap<Symbol, MarkPrice>,
@@ -31,12 +35,17 @@ pub struct State {
 impl State {
     pub fn new() -> Self {
         Self {
+            is_connected: false,
             is_authenticated: false,
             position_states: HashMap::new(),
             mark_prices: HashMap::new(),
             balances: None,
             tradable_symbols: HashMap::new(),
         }
+    }
+
+    pub fn clear(&mut self) {
+        *self = Self::default()
     }
 }
 
@@ -47,6 +56,9 @@ impl Default for State {
 }
 
 pub struct KolliderHedgingClient {
+    api_key: String,
+    api_secret: String,
+    api_passphrase: String,
     state: Arc<Mutex<State>>,
     state_changed: Arc<Condvar>,
     run_flag: Arc<AtomicBool>,
@@ -81,24 +93,27 @@ impl KolliderHedgingClient {
         let shared_state = state.clone();
         let shared_state_changed = state_changed.clone();
         let thread_run_flag = run_flag.clone();
-        let ws_url = url.to_string();
+        let ws_url = Url::parse(url).expect("Could not parse url");
+        let mut socket = Self::open_socket(ws_url.clone())?;
+        shared_state.lock().unwrap().is_connected = true;
         let join_handle = std::thread::spawn(move || {
-            let (mut socket, _response) =
-                tungstenite::connect(Url::parse(&ws_url).unwrap()).expect("Could not connect");
-            {
-                let stream = match socket.get_mut() {
-                    MaybeTlsStream::Plain(stream) => stream,
-                    // MaybeTlsStream::NativeTls(tls_stream) => tls_stream.get_ref(),
-                    MaybeTlsStream::Rustls(tls_stream) => tls_stream.get_ref(),
-                    _ => panic!("Unsupported stream type"),
-                };
-
-                stream
-                    .set_nonblocking(true)
-                    .expect("Non blocking mode could not be set");
-            }
             while thread_run_flag.load(std::sync::atomic::Ordering::SeqCst) {
                 let mut messages_available = false;
+                if !socket.can_read() {
+                    if is_connected(&shared_state) {
+                        set_disconnected(&shared_state, &shared_state_changed, &callback);
+                    }
+                    match Self::open_socket(ws_url.clone()) {
+                        Ok(new_socket) => {
+                            socket = new_socket;
+                            set_reconnected(&shared_state, &shared_state_changed, &callback);
+                        }
+                        Err(_err) => {
+                            std::thread::sleep(Duration::from_millis(WS_THREAD_RECONNECT_MILLISECONDS));
+                        }
+                    }
+                    continue;
+                }
                 if let Ok(msg) = socket.read_message() {
                     messages_available = true;
                     if let tungstenite::Message::Text(txt) = msg {
@@ -111,6 +126,18 @@ impl KolliderHedgingClient {
                         };
                         process_incoming_message(response, &shared_state, &shared_state_changed, &callback);
                     }
+                }
+                if !socket.can_write() {
+                    if is_connected(&shared_state) {
+                        set_disconnected(&shared_state, &shared_state_changed, &callback);
+                    }
+                    match Self::open_socket(ws_url.clone()) {
+                        Ok(new_socket) => socket = new_socket,
+                        Err(_err) => {
+                            std::thread::sleep(Duration::from_millis(WS_THREAD_RECONNECT_MILLISECONDS));
+                        }
+                    }
+                    continue;
                 }
                 if let Ok(msg) = receiver.try_recv() {
                     messages_available = true;
@@ -128,6 +155,9 @@ impl KolliderHedgingClient {
         });
 
         let client = Self {
+            api_key: api_key.to_string(),
+            api_secret: api_secret.to_string(),
+            api_passphrase: api_passphrase.to_string(),
             state,
             state_changed,
             run_flag,
@@ -135,10 +165,33 @@ impl KolliderHedgingClient {
             join_handle: Some(join_handle),
         };
 
-        client.authenticate(api_key.to_string(), api_passphrase.to_string(), api_secret.to_string())?;
-        client.fetch_tradable_symbols()?;
-        client.fetch_balances()?;
+        client.initialise()?;
         Ok(client)
+    }
+
+    fn open_socket(url: Url) -> Result<WebSocket<MaybeTlsStream<TcpStream>>> {
+        let (mut socket, _response) = tungstenite::connect(url).map_err(|_| KolliderClientError::CouldNotConnect)?;
+        let stream = match socket.get_mut() {
+            MaybeTlsStream::Plain(stream) => stream,
+            //MaybeTlsStream::NativeTls(tls_stream) => tls_stream.get_ref(),
+            MaybeTlsStream::Rustls(tls_stream) => tls_stream.get_ref(),
+            _ => panic!("Unsupported stream type"),
+        };
+
+        stream
+            .set_nonblocking(true)
+            .expect("Non blocking mode could not be set");
+        Ok(socket)
+    }
+
+    fn initialise(&self) -> Result<()> {
+        self.authenticate(
+            self.api_key.clone(),
+            self.api_passphrase.clone(),
+            self.api_secret.clone(),
+        )?;
+        self.fetch_tradable_symbols()?;
+        self.fetch_balances()
     }
 
     fn authenticate(&self, token: String, passphrase: String, secret: String) -> Result<()> {
@@ -164,15 +217,28 @@ impl KolliderHedgingClient {
 
     fn fetch_balances(&self) -> Result<()> {
         let fetch_balances = Request::FetchBalances;
-        self.send_request(&fetch_balances)
+        self.checked_send_request(&fetch_balances)
     }
 
     fn fetch_tradable_symbols(&self) -> Result<()> {
         let fetch_tradable_symbols = Request::FetchTradableSymbols;
-        self.send_request(&fetch_tradable_symbols)
+        self.checked_send_request(&fetch_tradable_symbols)
+    }
+
+    fn checked_send_request(&self, request: &Request) -> Result<()> {
+        if !self.is_connected() {
+            return Err(KolliderClientError::NotConnected);
+        }
+        if !self.is_authenticated() {
+            self.initialise()?;
+        }
+        self.send_request(request)
     }
 
     fn send_request(&self, request: &Request) -> Result<()> {
+        if !self.is_connected() {
+            return Err(KolliderClientError::NotConnected);
+        }
         let msg = serde_json::to_string(request).map_err(|_err| KolliderClientError::RequestSerializationFailed)?;
         self.sender
             .send(msg)
@@ -181,13 +247,13 @@ impl KolliderHedgingClient {
 
     pub fn subscribe(&self, channels: Vec<Channel>, symbols: Vec<Symbol>) -> Result<()> {
         let subscription_request = Request::Subscribe(Subscribe { channels, symbols });
-        self.send_request(&subscription_request)
+        self.checked_send_request(&subscription_request)
     }
 
     pub fn subscribe_all(&self, channels: Vec<Channel>) -> Result<()> {
         let symbols = vec![];
         let subscription_request = Request::Subscribe(Subscribe { channels, symbols });
-        self.send_request(&subscription_request)
+        self.checked_send_request(&subscription_request)
     }
 
     fn order(&self, quantity: u64, currency: Currency, side: Side) -> Result<()> {
@@ -196,13 +262,22 @@ impl KolliderHedgingClient {
         }
         let symbol: Symbol = currency.into();
         let order = Request::Order(Order::new(side, quantity, symbol, Some(Uuid::new_v4())));
-        self.send_request(&order)
+        self.checked_send_request(&order)
     }
 }
 
 impl WsClient for KolliderHedgingClient {
     fn is_authenticated(&self) -> bool {
         self.state.lock().unwrap().is_authenticated
+    }
+
+    fn is_connected(&self) -> bool {
+        self.state.lock().unwrap().is_connected
+    }
+
+    fn is_ready(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        state.is_connected && state.is_authenticated
     }
 
     fn get_balance(&self, currency: Currency) -> Result<Decimal> {
@@ -246,8 +321,7 @@ impl WsClient for KolliderHedgingClient {
             }
         } else {
             match self.state.lock().unwrap().balances {
-                Some(ref balance) =>
-                {
+                Some(ref balance) => {
                     let symbol = Symbol::from("SAT");
                     let sats_balance = balance.cash.get(&symbol).unwrap();
                     Ok(*sats_balance)
@@ -284,12 +358,12 @@ impl WsClient for KolliderHedgingClient {
                 payment_request,
             }),
         });
-        self.send_request(&withdrawal_request)
+        self.checked_send_request(&withdrawal_request)
     }
 
     fn make_order(&self, quantity: u64, symbol: Symbol, side: Side) -> Result<()> {
         let order = Request::Order(Order::new(side, quantity, symbol, Some(Uuid::new_v4())));
-        self.send_request(&order)
+        self.checked_send_request(&order)
     }
 
     fn buy(&self, quantity: u64, currency: Currency) -> Result<()> {
@@ -301,6 +375,35 @@ impl WsClient for KolliderHedgingClient {
         // side is opposite because selling fiat is buying inverse contract
         self.order(quantity, currency, Side::Bid)
     }
+}
+
+fn is_connected(shared_state: &Arc<Mutex<State>>) -> bool {
+    shared_state.lock().unwrap().is_connected
+}
+
+fn set_disconnected(shared_state: &Arc<Mutex<State>>, shared_state_changed: &Arc<Condvar>, callback: &Sender<Message>) {
+    let mut state = shared_state.lock().unwrap();
+    state.clear();
+    shared_state_changed.notify_one();
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let msg = Message::KolliderApiResponse(KolliderApiResponse::Disconnected(Disconnected { timestamp }));
+    callback.send(msg).unwrap();
+}
+
+fn set_reconnected(shared_state: &Arc<Mutex<State>>, shared_state_changed: &Arc<Condvar>, callback: &Sender<Message>) {
+    let mut state = shared_state.lock().unwrap();
+    state.is_authenticated = false;
+    state.is_connected = true;
+    shared_state_changed.notify_one();
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let msg = Message::KolliderApiResponse(KolliderApiResponse::Reconnected(Reconnected { timestamp }));
+    callback.send(msg).unwrap();
 }
 
 fn process_incoming_message(

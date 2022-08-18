@@ -105,6 +105,18 @@ pub enum KolliderApiResponse {
     TradableSymbols(TradableSymbols),
     #[serde(rename = "level2state")]
     Level2State(Level2State),
+    Disconnected(Disconnected),
+    Reconnected(Reconnected),
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Disconnected {
+    pub timestamp: u64,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Reconnected {
+    pub timestamp: u64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
