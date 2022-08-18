@@ -157,6 +157,29 @@ impl LndConnector {
         Err(LndConnectorError::FailedToSendPayment)
     }
 
+    pub async fn probe(&mut self, dest_node_key: String, amount_in_sats: Decimal, max_fee: Decimal) -> Result<std::vec::Vec<tonic_openssl_lnd::lnrpc::Route>, LndConnectorError> {
+        // Max fee is always a percentage of amount.
+        let max_fee = (amount_in_sats * max_fee).round_dp(0).to_i64().unwrap();
+        // Never send a payment with lower fee than 10.
+        let max_fee = std::cmp::max(max_fee, 10);
+        let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
+        let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
+        let mut query_routes = tonic_openssl_lnd::lnrpc::QueryRoutesRequest::default();
+        query_routes.pub_key = dest_node_key;
+        query_routes.amt = amount_in_sats.to_i64().unwrap();
+        query_routes.fee_limit = Some(fee_limit);
+        match self.ln_client.query_routes(query_routes).await {
+            Ok(pr) => {
+                let resp = pr.into_inner();
+                Ok(resp.routes)
+            },
+            Err(err) => {
+                dbg!(&err);
+                Err(LndConnectorError::FailedToQueryRoutes)
+            }
+        }
+    }
+
     pub async fn get_node_info(&mut self) -> Result<LndNodeInfo, LndConnectorError> {
         let get_info = tonic_openssl_lnd::lnrpc::GetInfoRequest::default();
         match self.ln_client.get_info(get_info).await {
