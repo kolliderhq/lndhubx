@@ -67,8 +67,8 @@ pub struct DealerEngine {
     has_received_symbols: bool,
     is_kollider_authenticated: bool,
     logger: slog::Logger,
-    pub last_bank_state: Option<BankState>,
-    pub last_bank_state_update: Option<Instant>,
+    last_bank_state: Option<BankState>,
+    last_bank_state_timestamp: Option<Instant>,
 
     pub hedged_qtys: HashMap<Symbol, Decimal>,
 }
@@ -103,10 +103,18 @@ impl DealerEngine {
             has_received_symbols: false,
             is_kollider_authenticated: false,
             guaranteed_quotes: BTreeMap::new(),
-            last_bank_state_update: None,
+            last_bank_state_timestamp: None,
             hedged_qtys,
             logger,
         }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.has_received_init_data
+    }
+
+    pub fn has_bank_state(&self) -> bool {
+        self.last_bank_state.is_some()
     }
 
     pub fn get_hedged_quantity(&self, symbol: Symbol) -> Decimal {
@@ -199,7 +207,13 @@ impl DealerEngine {
         listener(msg);
     }
 
-    pub fn check_risk<F: FnMut(Message)>(&mut self, bank_state: BankState, _listener: &mut F) {
+    pub fn check_risk<F: FnMut(Message)>(&mut self, _listener: &mut F) {
+        if let Some(state) = self.last_bank_state.clone() {
+            self.check_risk_from_bank_state(state, _listener);
+        }
+    }
+
+    fn check_risk_from_bank_state<F: FnMut(Message)>(&mut self, bank_state: BankState, _listener: &mut F) {
         slog::info!(self.logger, "Checking Risk.");
 
         if !self.has_received_init_data {
@@ -222,7 +236,7 @@ impl DealerEngine {
                 Err(_) => continue,
             };
 
-            slog::info!(self.logger, "Target number of cotracts: {}", qty_contracts_required);
+            slog::info!(self.logger, "Target number of contracts: {}", qty_contracts_required);
 
             let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
                 Some(p) => match p.side {
@@ -237,7 +251,7 @@ impl DealerEngine {
 
             self.hedged_qtys.insert(symbol.clone(), currently_hedged_qty);
 
-            slog::info!(self.logger, "Current number of cotracts: {}", currently_hedged_qty);
+            slog::info!(self.logger, "Current number of contracts: {}", currently_hedged_qty);
 
             // If negative we need to sell more and if positive we need to buy more.
             // This works under the assumption that qty_contracts_required is <= 0.
@@ -427,7 +441,23 @@ impl DealerEngine {
             },
             Message::KolliderApiResponse(msg) => {
                 match msg {
-                    KolliderApiResponse::Disconnected(_) => self.reset_state(),
+                    KolliderApiResponse::Disconnected(disconnection) => {
+                        slog::warn!(
+                            self.logger,
+                            "Disconnected from the Kollider exchange at {}",
+                            disconnection.timestamp
+                        );
+                        self.reset_state();
+                    }
+                    KolliderApiResponse::Reconnected(reconnection) => {
+                        slog::info!(
+                            self.logger,
+                            "Re-connected to the Kollider exchange at {}",
+                            reconnection.timestamp
+                        );
+                        slog::info!(self.logger, "Re-subscribing to position states");
+                        self.ws_client.subscribe(vec![Channel::PositionStates], None);
+                    }
                     KolliderApiResponse::Authenticate(auth) => {
                         if auth.success() {
                             slog::info!(self.logger, "Successful Kollider authenticated!");
@@ -478,9 +508,9 @@ impl DealerEngine {
                 }
             }
             Message::Dealer(Dealer::BankState(bank_state)) => {
-                self.last_bank_state_update = Some(Instant::now());
+                self.last_bank_state_timestamp = Some(Instant::now());
                 self.last_bank_state = Some(bank_state.clone());
-                self.check_risk(bank_state, listener);
+                self.check_risk_from_bank_state(bank_state, listener);
             }
 
             Message::Dealer(Dealer::CreateInvoiceResponse(ref create_invoice_response)) => {
@@ -703,6 +733,8 @@ impl DealerEngine {
         self.is_kollider_authenticated = false;
         self.guaranteed_quotes = BTreeMap::new();
         self.hedged_qtys = HashMap::new();
+        self.last_bank_state = None;
+        self.last_bank_state_timestamp = None;
     }
 }
 
