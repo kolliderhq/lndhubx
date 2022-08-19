@@ -20,10 +20,14 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
     let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCEUR.PERP"));
 
+    if usd_hedged_qty.is_err() || eur_hedged_qty.is_err() {
+        return;
+    }
+
     let points = vec![influxdb2::models::DataPoint::builder("dealer_states")
         // .tag("host", "server01")
-        .field("usd_hedged_quantity", usd_hedged_qty.to_f64().unwrap())
-        .field("eur_hedged_quantity", eur_hedged_qty.to_f64().unwrap())
+        .field("usd_hedged_quantity", usd_hedged_qty.unwrap().to_f64().unwrap())
+        .field("eur_hedged_quantity", eur_hedged_qty.unwrap().to_f64().unwrap())
         .build()
         .unwrap()];
 
