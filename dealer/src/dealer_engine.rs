@@ -23,6 +23,7 @@ use utils::currencies::get_base_currency_from_symbol;
 use utils::time::time_now;
 use utils::xlogging::{init_log, LoggingSettings};
 use uuid::Uuid;
+use xerror::kollider_client::KolliderClientError;
 
 const QUOTE_TTL_MS: u64 = 5000;
 const LINEAR_MODIFIER: Decimal = dec!(0.995);
@@ -69,8 +70,7 @@ pub struct DealerEngine {
     logger: slog::Logger,
     last_bank_state: Option<BankState>,
     last_bank_state_timestamp: Option<Instant>,
-
-    pub hedged_qtys: HashMap<Symbol, Decimal>,
+    hedged_qtys: HashMap<Symbol, Decimal>,
 }
 
 impl DealerEngine {
@@ -117,14 +117,16 @@ impl DealerEngine {
         self.last_bank_state.is_some()
     }
 
-    pub fn get_hedged_quantity(&self, symbol: Symbol) -> Decimal {
-        match self.ws_client.get_position_state(&symbol) {
+    pub fn get_hedged_quantity(&self, symbol: Symbol) -> Result<Decimal, KolliderClientError> {
+        let position_state = self.ws_client.get_position_state(&symbol)?;
+        let position = match position_state {
             Some(p) => match p.side {
                 None => dec!(0),
                 Some(_) => p.quantity,
             },
             None => dec!(0),
-        }
+        };
+        Ok(position)
     }
 
     pub fn check_has_received_initial_data(&mut self) {
@@ -239,14 +241,25 @@ impl DealerEngine {
             slog::info!(self.logger, "Target number of contracts: {}", qty_contracts_required);
 
             let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
-                Some(p) => match p.side {
+                Ok(position_state) => match position_state {
+                    Some(p) => match p.side {
+                        None => dec!(0),
+                        Some(side) => {
+                            let side_sign = Decimal::new(side.to_sign(), 0);
+                            side_sign * p.quantity
+                        }
+                    },
                     None => dec!(0),
-                    Some(side) => {
-                        let side_sign = Decimal::new(side.to_sign(), 0);
-                        side_sign * p.quantity
-                    }
                 },
-                None => dec!(0),
+                Err(err) => {
+                    slog::info!(
+                        self.logger,
+                        "Position state is undefined: {:?} - skipping risk calculation for symbol: {}",
+                        err,
+                        symbol
+                    );
+                    continue;
+                }
             };
 
             self.hedged_qtys.insert(symbol.clone(), currently_hedged_qty);
@@ -265,7 +278,7 @@ impl DealerEngine {
             if delta_qty.abs() < Decimal::new(*risk_tolerance as i64, 0) {
                 slog::info!(
                     self.logger,
-                    "Deltaa qty of {} within risk tolerance of {}. NO ACTION.",
+                    "Delta qty of {} within risk tolerance of {}. NO ACTION.",
                     delta_qty,
                     risk_tolerance
                 );
@@ -886,8 +899,8 @@ mod tests {
             Some(self.balances.borrow().clone())
         }
 
-        fn get_position_state(&self, symbol: &Symbol) -> Option<PositionState> {
-            self.position_states.get(symbol).cloned()
+        fn get_position_state(&self, symbol: &Symbol) -> Result<Option<PositionState>, KolliderClientError> {
+            Ok(self.position_states.get(symbol).cloned())
         }
 
         fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol> {
