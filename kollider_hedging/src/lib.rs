@@ -26,6 +26,7 @@ const WS_THREAD_RECONNECT_MILLISECONDS: u64 = 5000;
 pub struct State {
     is_connected: bool,
     is_authenticated: bool,
+    has_received_positions: bool,
     position_states: HashMap<Symbol, PositionState>,
     mark_prices: HashMap<Symbol, MarkPrice>,
     balances: Option<Balances>,
@@ -37,6 +38,7 @@ impl State {
         Self {
             is_connected: false,
             is_authenticated: false,
+            has_received_positions: false,
             position_states: HashMap::new(),
             mark_prices: HashMap::new(),
             balances: None,
@@ -191,6 +193,7 @@ impl KolliderHedgingClient {
             self.api_secret.clone(),
         )?;
         self.fetch_tradable_symbols()?;
+        self.fetch_positions()?;
         self.fetch_balances()
     }
 
@@ -223,6 +226,11 @@ impl KolliderHedgingClient {
     fn fetch_tradable_symbols(&self) -> Result<()> {
         let fetch_tradable_symbols = Request::FetchTradableSymbols;
         self.checked_send_request(&fetch_tradable_symbols)
+    }
+
+    fn fetch_positions(&self) -> Result<()> {
+        let fetch_positions = Request::FetchPositions;
+        self.checked_send_request(&fetch_positions)
     }
 
     fn checked_send_request(&self, request: &Request) -> Result<()> {
@@ -343,8 +351,13 @@ impl WsClient for KolliderHedgingClient {
         self.state.lock().unwrap().balances.clone()
     }
 
-    fn get_position_state(&self, symbol: &Symbol) -> Option<PositionState> {
-        self.state.lock().unwrap().position_states.get(symbol).cloned()
+    fn get_position_state(&self, symbol: &Symbol) -> Result<Option<PositionState>> {
+        let shared_state = self.state.lock().unwrap();
+        if shared_state.has_received_positions {
+            Ok(shared_state.position_states.get(symbol).cloned())
+        } else {
+            Err(KolliderClientError::PositionStateNotAvailable)
+        }
     }
 
     fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol> {
@@ -422,11 +435,22 @@ fn process_incoming_message(
             callback.send(msg).unwrap();
         }
         KolliderApiResponse::PositionStates(position_state) => {
-            shared_state
-                .lock()
-                .unwrap()
-                .position_states
-                .insert(position_state.symbol.clone(), *position_state);
+            {
+                let mut shared_state = shared_state.lock().unwrap();
+                shared_state
+                    .position_states
+                    .insert(position_state.symbol.clone(), *position_state);
+            }
+            shared_state_changed.notify_one();
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
+        }
+        KolliderApiResponse::Positions(positions) => {
+            {
+                let mut shared_state = shared_state.lock().unwrap();
+                shared_state.position_states = positions.positions;
+                shared_state.has_received_positions = true;
+            }
             shared_state_changed.notify_one();
             let msg = Message::KolliderApiResponse(response);
             callback.send(msg).unwrap();

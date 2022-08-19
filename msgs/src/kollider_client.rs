@@ -1,3 +1,4 @@
+use core_types::kollider_client::Positions;
 use core_types::{
     kollider_client::{
         Balances, ExtOrderId, MarginType, MarkPrice, OrderId, OrderType, PositionState, SettlementType, Side,
@@ -24,6 +25,7 @@ pub enum Request {
     Authenticate(AuthenticateRequest),
     FetchBalances,
     FetchTradableSymbols,
+    FetchPositions,
     Subscribe(Subscribe),
     Order(Order),
     WithdrawalRequest(WithdrawalRequest),
@@ -95,6 +97,7 @@ pub enum KolliderApiResponse {
     Success(String),
     Authenticate(Authenticate),
     PositionStates(Box<PositionState>),
+    Positions(Positions),
     Balances(Balances),
     MarkPrices(MarkPrice),
     Received(Received),
