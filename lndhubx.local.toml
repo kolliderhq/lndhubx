@@ -1,10 +1,10 @@
 ### API Config
-psql_url = ""
+psql_url = "postgres://konstantin:konstantinthelegend@localhost:5432/lndhubx"
 
-influx_host = "http://localhost:8086"
-influx_org = ""
-influx_bucket = ""
-influx_token = ""
+influx_host = "http://localhost:8087"
+influx_org = "kollider"
+influx_bucket = "main"
+influx_token = "A72omCpCiCF8yEkeurWJwiLNB27J3LiiRTFXtRiFI4KRdT3gbJpQl_oJ1SBouM4kV9KaouYWOpbGeZFO-1glgw=="
 
 api_zmq_push_address = "tcp://0.0.0.0:5555"
 api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
@@ -17,14 +17,18 @@ bank_dealer_pull_address = "tcp://0.0.0.0:5557"
 bank_dealer_push_address = "tcp://0.0.0.0:5558"
 
 deposit_limit = 0.001
-
 withdrawal_only = false
 
-## Lnd Node specific config settings.
 tls_path = "tls.cert"
 macaroon_path = "admin.macaroon"
 host = ""
 port = 10009
+
+### Dealer Config
+dealer_bank_push_address = "tcp://0.0.0.0:5557"
+dealer_bank_pull_address = "tcp://0.0.0.0:5558"
+
+
 ## The margin users have to keep on their account to account
 ## for network fees.
 ln_network_fee_margin = 0.005
@@ -39,14 +43,10 @@ external_tx_fee = 0
 ## The minimum of liabilities the bank has to keep.
 reserve_ratio = 0.75
 
-### Dealer Config
-dealer_bank_push_address = "tcp://0.0.0.0:5557"
-dealer_bank_pull_address = "tcp://0.0.0.0:5558"
-
-kollider_ws_url = ""
-kollider_api_key = ""
-kollider_api_secret = ""
-kollider_api_passphrase = ""
+kollider_ws_url = "ws://127.0.0.1:8085"
+kollider_api_key = "r6ZLNYt+VS40c5vTpm/jkw=="
+kollider_api_secret = "b+DLMnyEWAPP7wxNBJXCHPlVVPT9MqS9pugHCdDzHKg="
+kollider_api_passphrase = "test"
 
 spread = 0.01
 
@@ -65,6 +65,6 @@ GBP = 5
 ## Logging
 [logging_settings]
 log_path = "lndhubx.log"
-stdout = false
+stdout = true
 level = "debug"
 name = "lndhub"

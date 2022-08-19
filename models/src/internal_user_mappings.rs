@@ -2,12 +2,6 @@ use crate::schema::internal_user_mappings;
 use diesel::prelude::*;
 use diesel::result::Error as DieselError;
 
-
-
-
-
-
-
 #[derive(Queryable, Identifiable, Debug)]
 #[primary_key(username)]
 pub struct InternalUserMapping {

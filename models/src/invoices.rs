@@ -1,10 +1,8 @@
 use crate::schema::invoices;
 
+use diesel::prelude::*;
 use diesel::result::Error as DieselError;
-use diesel::{prelude::*};
 use serde::{Deserialize, Serialize};
-
-
 
 #[derive(Queryable, Insertable, Identifiable, Debug, Serialize, AsChangeset, Deserialize)]
 #[primary_key(payment_request)]
@@ -35,9 +33,7 @@ impl Invoice {
     }
 
     pub fn get_invoices_by_uid(conn: &diesel::PgConnection, uid: i32) -> Result<Vec<Self>, DieselError> {
-        invoices::dsl::invoices
-            .filter(invoices::uid.eq(uid))
-            .load::<Self>(conn)
+        invoices::dsl::invoices.filter(invoices::uid.eq(uid)).load::<Self>(conn)
     }
 
     pub fn insert(&self, conn: &diesel::PgConnection) -> Result<String, DieselError> {
@@ -72,7 +68,7 @@ pub struct InsertableInvoice {
     pub incoming: bool,
     pub owner: Option<i32>,
     pub fees: Option<i64>,
-    pub currency: Option<String>
+    pub currency: Option<String>,
 }
 
 impl InsertableInvoice {

@@ -1,7 +1,7 @@
 use crate::schema::users;
 
+use diesel::prelude::*;
 use diesel::result::Error as DieselError;
-use diesel::{prelude::*};
 use ring::{digest, pbkdf2};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;

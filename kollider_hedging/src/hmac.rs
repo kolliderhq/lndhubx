@@ -17,8 +17,7 @@ pub fn generate_authentication_signature(b64_secret: &str) -> (String, String) {
 
 fn hmac_encrypt_message(b64_secret: &str, message: &str) -> String {
     let decoded_secret = base64::decode(&b64_secret).unwrap();
-    let mut mac =
-        HmacSha256::new_from_slice(&decoded_secret).expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(&decoded_secret).expect("HMAC can take key of any size");
     mac.update(message.as_bytes());
     let result = mac.finalize();
     let code_bytes = result.into_bytes();

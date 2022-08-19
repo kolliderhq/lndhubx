@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use slog::{o, Drain, Logger};
-use serde::{Serialize, Deserialize};
 
 pub use slog;
 
