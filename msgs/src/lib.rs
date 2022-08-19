@@ -1,17 +1,16 @@
-
 use rust_decimal::prelude::*;
 
 use serde::{Deserialize, Serialize};
 
 pub mod api;
+pub mod bank;
 pub mod dealer;
 pub mod kollider_client;
-pub mod bank;
 
 use api::*;
+use bank::*;
 use dealer::*;
 use kollider_client::*;
-use bank::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deposit {
@@ -30,7 +29,7 @@ pub enum Message {
     Deposit(Deposit),
     Dealer(Dealer),
     KolliderApiResponse(KolliderApiResponse),
-    Bank(Bank)
+    Bank(Bank),
 }
 
 #[cfg(test)]

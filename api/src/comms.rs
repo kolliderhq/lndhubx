@@ -7,9 +7,7 @@ pub use zmq::Socket as ZmqSocket;
 
 use tokio::sync::{broadcast, mpsc, Mutex};
 
-
 use msgs::*;
-
 
 use utils::time;
 

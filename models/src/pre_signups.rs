@@ -1,6 +1,6 @@
 use crate::schema::pre_signups;
+use diesel::prelude::*;
 use diesel::result::Error as DieselError;
-use diesel::{prelude::*};
 use serde::{Deserialize, Serialize};
 
 #[derive(Queryable, Identifiable, Debug, Serialize)]
