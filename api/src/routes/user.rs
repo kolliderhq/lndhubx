@@ -146,8 +146,8 @@ pub async fn add_invoice(
     };
 
     let currency = match &query.currency {
-        Some(c) => c.clone(),
-        None => Currency::BTC
+        Some(c) => *c,
+        None => Currency::BTC,
     };
 
     let invoice_request = InvoiceRequest {
@@ -156,7 +156,7 @@ pub async fn add_invoice(
         uid,
         account_id: query.account_id,
         amount: query.amount,
-        currency: currency,
+        currency,
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
@@ -312,11 +312,17 @@ pub async fn get_txs(
     let uid = auth_data.uid as u64;
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
     if let Some(currency) = query.currency {
-        let transactions = match Transaction::get_historical_by_uid_and_currency(&conn, uid as i32, currency.to_string(), query.from, query.to) {
+        let transactions = match Transaction::get_historical_by_uid_and_currency(
+            &conn,
+            uid as i32,
+            currency.to_string(),
+            query.from,
+            query.to,
+        ) {
             Ok(i) => i,
             Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
         };
-        return Ok(HttpResponse::Ok().json(&transactions))
+        return Ok(HttpResponse::Ok().json(&transactions));
     }
     let transactions = match Transaction::get_historical_by_uid(&conn, uid as i32, query.from, query.to) {
         Ok(i) => i,
@@ -326,14 +332,10 @@ pub async fn get_txs(
 }
 
 #[get("/getavailablecurrencies")]
-pub async fn get_available_currencies(
-    web_sender: WebSender,
-) -> Result<HttpResponse, ApiError> {
+pub async fn get_available_currencies(web_sender: WebSender) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
-    let request = AvailableCurrenciesRequest {
-        req_id,
-    };
+    let request = AvailableCurrenciesRequest { req_id };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
         move |message| matches!(message, Message::Api(Api::AvailableCurrenciesResponse(response)) if response.req_id == req_id),
@@ -361,14 +363,10 @@ pub async fn get_available_currencies(
 }
 
 #[get("/nodeinfo")]
-pub async fn get_node_info(
-    web_sender: WebSender,
-) -> Result<HttpResponse, ApiError> {
+pub async fn get_node_info(web_sender: WebSender) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
-    let request = GetNodeInfoRequest{
-        req_id,
-    };
+    let request = GetNodeInfoRequest { req_id };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
         move |message| matches!(message, Message::Api(Api::GetNodeInfoResponse(response)) if response.req_id == req_id),
