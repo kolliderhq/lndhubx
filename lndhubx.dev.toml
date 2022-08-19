@@ -1,20 +1,20 @@
 ### API Config
-psql_url = "postgres://postgres:changeme@10.11.0.2:5432/lndhubx"
+psql_url = "postgres://konstantin:konstantinthelegend@10.11.0.2:5432/lndhubx"
 
 influx_host = "http://localhost:8086"
 influx_org = ""
 influx_bucket = ""
 influx_token = ""
 
-api_zmq_push_address = "tcp://10.11.0.4:5555"
-api_zmq_subscribe_address = "tcp://10.11.0.4:5556"
+api_zmq_push_address = "tcp://127.0.0.1:5555"
+api_zmq_subscribe_address = "tcp://127.0.0.1:5556"
 
 ### Bank Config
-bank_zmq_pull_address = "tcp://10.11.0.4:5555"
-bank_zmq_publish_address = "tcp://10.11.0.4:5556"
+bank_zmq_pull_address = "tcp://127.0.0.1:5555"
+bank_zmq_publish_address = "tcp://127.0.0.1:5556"
 
-bank_dealer_pull_address = "tcp://10.11.0.4:5557"
-bank_dealer_push_address = "tcp://10.11.0.5:5558"
+bank_dealer_pull_address = "tcp://127.0.0.1:5557"
+bank_dealer_push_address = "tcp://127.0.0.1:5558"
 
 deposit_limit = 0.001
 
@@ -23,8 +23,8 @@ macaroon_path = "/config/admin.macaroon"
 node_url = "your node url"
 
 ### Dealer Config
-dealer_bank_push_address = "tcp://10.11.0.4:5557"
-dealer_bank_pull_address = "tcp://10.11.0.5:5558"
+dealer_bank_push_address = "tcp://127.0.0.1:5557"
+dealer_bank_pull_address = "tcp://127.0.0.1:5558"
 
 ## The margin users have to keep on their account to account
 ## for network fees.
@@ -40,10 +40,10 @@ external_tx_fee = 0
 ## The minimum of liabilities the bank has to keep.
 reserve_ratio = 0.75
 
-kollider_ws_url = "wss://api.kollider.xyz/v1/ws/"
-kollider_api_key = "redacted"
-kollider_api_secret = "redacted"
-kollider_api_passphrase = "redacted"
+kollider_ws_url = "ws://127.0.0.1:8084"
+kollider_api_key = "r6ZLNYt+VS40c5vTpm/jkw=="
+kollider_api_secret = "b+DLMnyEWAPP7wxNBJXCHPlVVPT9MqS9pugHCdDzHKg="
+kollider_api_passphrase = "test"
 
 spread = 0.01
 
