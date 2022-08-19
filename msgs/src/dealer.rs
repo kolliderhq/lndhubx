@@ -1,11 +1,9 @@
 use core_types::*;
-use std::collections::HashMap;
 use rust_decimal::prelude::Decimal;
-
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BankStateRequest {
@@ -19,7 +17,7 @@ pub struct BankStateResponse {
     pub amount: Option<u64>,
     pub meta: String,
     pub currency: Currency,
-    pub account_id: Option<Uuid>
+    pub account_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

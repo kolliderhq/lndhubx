@@ -1,14 +1,7 @@
 use err_derive::Error;
 use serde::Serialize;
 
-
-use actix_web::{
-    error,
-    http::{StatusCode},
-    HttpResponse,
-};
-
-
+use actix_web::{error, http::StatusCode, HttpResponse};
 
 #[derive(Debug, Error, Serialize)]
 #[error(display = "An Error has occured when authenticating.")]
@@ -27,9 +20,8 @@ pub enum JWTError {
     #[error(display = "Jwt token that was supplied is invalid.")]
     Invalid,
     #[error(display = "Jwt token that was supplied is invalid.")]
-    Expired
+    Expired,
 }
-
 
 #[derive(Debug, Error, Serialize)]
 #[error(display = "An Error has occured when authenticating.")]
