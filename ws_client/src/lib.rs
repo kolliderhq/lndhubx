@@ -13,7 +13,7 @@ pub trait WsClient {
     fn is_ready(&self) -> bool;
     fn get_balance(&self, currency: Currency) -> Result<Decimal>;
     fn get_all_balances(&self) -> Option<Balances>;
-    fn get_position_state(&self, symbol: &Symbol) -> Option<PositionState>;
+    fn get_position_state(&self, symbol: &Symbol) -> Result<Option<PositionState>>;
     fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol>;
     fn make_withdrawal(&self, amount: u64, payment_request: String) -> Result<()>;
     fn make_order(&self, quantity: u64, symbol: Symbol, side: Side) -> Result<()>;
