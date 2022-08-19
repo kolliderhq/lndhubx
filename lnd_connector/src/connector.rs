@@ -3,14 +3,12 @@ use msgs::*;
 use xerror::lnd_connector::*;
 
 use crossbeam_channel::Sender;
+use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use utils::time::*;
-use rust_decimal::prelude::*;
-use rust_decimal_macros::*;
 
 use core_types::*;
 use uuid::Uuid;
-use futures_util::{stream, Future};
 
 #[derive(Debug, Clone)]
 pub struct PayResponse {
@@ -26,18 +24,17 @@ pub struct LndConnectorSettings {
     pub tls_path: String,
 }
 
-
 pub struct LndConnector {
     _settings: LndConnectorSettings,
     ln_client: tonic_openssl_lnd::LndLightningClient,
-    router_client: tonic_openssl_lnd::LndRouterClient,
+    _router_client: tonic_openssl_lnd::LndRouterClient,
 }
 
 impl LndConnector {
     pub async fn new(settings: LndConnectorSettings) -> Self {
         let ln_client = tonic_openssl_lnd::connect_lightning(
             settings.host.clone(),
-            settings.port.clone(),
+            settings.port,
             settings.tls_path.clone(),
             settings.macaroon_path.clone(),
         )
@@ -46,7 +43,7 @@ impl LndConnector {
 
         let router_client = tonic_openssl_lnd::connect_router(
             settings.host.clone(),
-            settings.port.clone(),
+            settings.port,
             settings.tls_path.clone(),
             settings.macaroon_path.clone(),
         )
@@ -56,7 +53,7 @@ impl LndConnector {
         Self {
             _settings: settings,
             ln_client,
-            router_client
+            _router_client: router_client,
         }
     }
 
@@ -120,8 +117,12 @@ impl LndConnector {
         Err(LndConnectorError::FailedToCreateInvoice)
     }
 
-    pub async fn pay_invoice(&mut self, payment_request: String, amount_in_sats: Decimal, max_fee: Decimal) -> Result<PayResponse, LndConnectorError> {
-
+    pub async fn pay_invoice(
+        &mut self,
+        payment_request: String,
+        amount_in_sats: Decimal,
+        max_fee: Decimal,
+    ) -> Result<PayResponse, LndConnectorError> {
         // Max fee is always a percentage of amount.
         let max_fee = (amount_in_sats * max_fee).round_dp(0).to_i64().unwrap();
         // Never send a payment with lower fee than 10.
@@ -142,10 +143,8 @@ impl LndConnector {
                 return Err(LndConnectorError::FailedToSendPayment);
             }
             let fee = match r.payment_route {
-                Some(pr) => {
-                    pr.total_fees.try_into().unwrap()
-                }
-                None => 0
+                Some(pr) => pr.total_fees.try_into().unwrap(),
+                None => 0,
             };
             let response = PayResponse {
                 fee,
@@ -170,8 +169,8 @@ impl LndConnector {
                     num_peers: resp.num_peers as u64,
                     testnet: resp.testnet,
                 };
-                return Ok(lnd_node_info);
-            },
+                Ok(lnd_node_info)
+            }
             Err(err) => {
                 dbg!(&err);
                 Err(LndConnectorError::FailedToGetNodeInfo)
