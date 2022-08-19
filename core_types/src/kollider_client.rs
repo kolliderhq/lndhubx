@@ -78,6 +78,11 @@ pub struct PositionState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Positions {
+    pub positions: HashMap<Symbol, PositionState>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Balances {
     pub cash: HashMap<Symbol, Decimal>,
     pub isolated_margin: HashMap<Symbol, Decimal>,

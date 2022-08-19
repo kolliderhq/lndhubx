@@ -66,6 +66,7 @@ pub struct DealerEngine {
     guaranteed_quotes: BTreeMap<u128, QuoteResponse>,
     has_received_init_data: bool,
     has_received_symbols: bool,
+    has_received_positions: bool,
     is_kollider_authenticated: bool,
     logger: slog::Logger,
     last_bank_state: Option<BankState>,
@@ -101,6 +102,7 @@ impl DealerEngine {
             last_bank_state: None,
             has_received_init_data: false,
             has_received_symbols: false,
+            has_received_positions: false,
             is_kollider_authenticated: false,
             guaranteed_quotes: BTreeMap::new(),
             last_bank_state_timestamp: None,
@@ -130,7 +132,7 @@ impl DealerEngine {
     }
 
     pub fn check_has_received_initial_data(&mut self) {
-        if self.has_received_symbols && self.is_kollider_authenticated {
+        if self.has_received_positions && self.has_received_symbols && self.is_kollider_authenticated {
             self.has_received_init_data = true;
         } else {
             self.has_received_init_data = false;
@@ -223,12 +225,11 @@ impl DealerEngine {
             return;
         }
 
-        for (currency, exposure) in bank_state.total_exposures.clone().into_iter() {
+        slog::info!(self.logger, "{:?}", bank_state);
+        for (currency, exposure) in bank_state.total_exposures.into_iter() {
             if currency == Currency::BTC {
                 continue;
             }
-
-            slog::info!(self.logger, "{:?}", bank_state);
 
             let symbol = Symbol::from(currency);
             let denom = Denom::from_currency(currency);
@@ -238,7 +239,12 @@ impl DealerEngine {
                 Err(_) => continue,
             };
 
-            slog::info!(self.logger, "Target number of contracts: {}", qty_contracts_required);
+            slog::info!(
+                self.logger,
+                "Target number of {} contracts: {}",
+                symbol,
+                qty_contracts_required
+            );
 
             let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
                 Ok(position_state) => match position_state {
@@ -264,7 +270,12 @@ impl DealerEngine {
 
             self.hedged_qtys.insert(symbol.clone(), currently_hedged_qty);
 
-            slog::info!(self.logger, "Current number of contracts: {}", currently_hedged_qty);
+            slog::info!(
+                self.logger,
+                "Current number of {} contracts: {}",
+                symbol,
+                currently_hedged_qty
+            );
 
             // If negative we need to sell more and if positive we need to buy more.
             // This works under the assumption that qty_contracts_required is <= 0.
@@ -495,11 +506,13 @@ impl DealerEngine {
                         }));
                         listener(msg);
                     }
-                    KolliderApiResponse::PositionStates(position_states) => {
-                        slog::info!(self.logger, "Position states: {:?}", position_states);
-                        if let Some(_last_bank_state) = self.last_bank_state.clone() {
-                            // self.check_risk(last_bank_state, listener);
-                        }
+                    KolliderApiResponse::Positions(_positions) => {
+                        // positions are not stored, however, from this point we know
+                        // that ws client received them too and they can be fetched
+                        // from its state
+                        slog::info!(self.logger, "Received positions");
+                        self.has_received_positions = true;
+                        self.check_has_received_initial_data();
                     }
                     KolliderApiResponse::Level2State(level2state) => {
                         self.process_orderbook_update(level2state);
@@ -743,6 +756,7 @@ impl DealerEngine {
         self.ask_quotes = HashMap::new();
         self.has_received_init_data = false;
         self.has_received_symbols = false;
+        self.has_received_positions = false;
         self.is_kollider_authenticated = false;
         self.guaranteed_quotes = BTreeMap::new();
         self.hedged_qtys = HashMap::new();

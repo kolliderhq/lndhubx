@@ -64,16 +64,19 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     let mut last_risk_check = Instant::now();
 
     loop {
-        // Before we proceed we have to have received at lease one bank state message.
+        // Before we proceed we have to have received a bank state message
         if !synth_dealer.has_bank_state() && synth_dealer.is_ready() {
             let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }));
             listener(msg);
-            if let Ok(frame) = bank_recv.recv_msg(0) {
+            while let Ok(frame) = bank_recv.recv_msg(0) {
                 if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                    synth_dealer.process_msg(message, &mut listener);
+                    if let Message::Dealer(Dealer::BankState(ref _bank_state)) = message {
+                        synth_dealer.process_msg(message, &mut listener);
+                        last_risk_check = Instant::now();
+                        break;
+                    }
                 };
             }
-            continue;
         }
 
         if let Ok(frame) = bank_recv.recv_msg(1) {
