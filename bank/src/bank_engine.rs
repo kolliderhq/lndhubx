@@ -529,7 +529,7 @@ impl BankEngine {
                 Dealer::Health(dealer_health) => {
                     self.available_currencies = dealer_health.available_currencies;
                     if dealer_health.status == HealthStatus::Down {
-                        slog::warn!(self.logger, "Dealer is disconnected!");
+                        slog::warn!(self.logger, "Dealer is disconnected from the exchange!");
                         self.available_currencies = Vec::new();
                     }
                 }
