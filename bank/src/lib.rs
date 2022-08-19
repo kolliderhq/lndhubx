@@ -15,8 +15,8 @@ use lnd_connector::connector::*;
 use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
-use influxdb2::Client;
 use futures::stream::FuturesUnordered;
+use influxdb2::Client;
 
 pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str) {
     let mut btc_balance = dec!(0);

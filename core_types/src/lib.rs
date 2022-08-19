@@ -215,7 +215,6 @@ pub struct LndNodeInfo {
     pub num_pending_channels: u64,
     pub num_peers: u64,
     pub testnet: bool,
-
 }
 
 impl Default for LndNodeInfo {
@@ -230,7 +229,6 @@ impl Default for LndNodeInfo {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

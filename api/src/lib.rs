@@ -1,10 +1,10 @@
 #![feature(drain_filter)]
 
+use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use serde::{Deserialize, Serialize};
-use actix_cors::Cors;
 
 use tokio::sync::mpsc;
 

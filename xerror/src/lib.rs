@@ -1,8 +1,8 @@
 pub mod api;
 pub mod bank_engine;
-pub mod lnd_connector;
-pub mod kollider_client;
 pub mod dealer;
+pub mod kollider_client;
+pub mod lnd_connector;
 
 #[cfg(test)]
 mod tests {
