@@ -8,4 +8,5 @@ pub enum KolliderClientError {
     NonFiatCurrency,
     CouldNotConnect,
     NotConnected,
+    PositionStateNotAvailable,
 }

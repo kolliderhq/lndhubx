@@ -53,6 +53,9 @@ fn main() {
                 Message::KolliderApiResponse(KolliderApiResponse::Disconnected(disconnection)) => {
                     println!("Disconnected at {}", disconnection.timestamp)
                 }
+                Message::KolliderApiResponse(KolliderApiResponse::TradableSymbols(symbols)) => {
+                    println!("TradableSymbols: {:?}", symbols);
+                }
                 _ => {}
             }
         }
