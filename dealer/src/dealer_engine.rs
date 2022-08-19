@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
-use msgs::api::{Api, QuoteResponse, QuoteResponseError, SwapRequest, SwapResponse, SwapResponseError, AvailableCurrenciesResponse, InvoiceResponse, InvoiceResponseError, PaymentResponse, PaymentResponseError};
+use msgs::api::{
+    Api, AvailableCurrenciesResponse, InvoiceResponse, InvoiceResponseError, QuoteResponse, QuoteResponseError,
+    SwapRequest, SwapResponse, SwapResponseError,
+};
 use msgs::dealer::*;
 use msgs::kollider_client::*;
 use msgs::Message;
@@ -16,12 +19,15 @@ use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
 use std::time::{Duration, Instant, SystemTime};
-use utils::time::time_now;
 use utils::currencies::get_base_currency_from_symbol;
+use utils::time::time_now;
+use utils::xlogging::{init_log, LoggingSettings};
 use uuid::Uuid;
-use utils::xlogging::{LoggingSettings, init_log};
+use xerror::kollider_client::KolliderClientError;
 
 const QUOTE_TTL_MS: u64 = 5000;
+const LINEAR_MODIFIER: Decimal = dec!(0.995);
+const INVERSE_MODIFIER: Decimal = dec!(1.005);
 
 pub struct HedgeSettings {
     // The amount of unhedged value to tolerate before a an adjustment.
@@ -60,23 +66,27 @@ pub struct DealerEngine {
     guaranteed_quotes: BTreeMap<u128, QuoteResponse>,
     has_received_init_data: bool,
     has_received_symbols: bool,
+    has_received_positions: bool,
     is_kollider_authenticated: bool,
     logger: slog::Logger,
-    pub last_bank_state: Option<BankState>,
-    pub last_bank_state_update: Option<Instant>,
-
-    pub hedged_qtys: HashMap<Symbol, Decimal>,
+    last_bank_state: Option<BankState>,
+    last_bank_state_timestamp: Option<Instant>,
+    hedged_qtys: HashMap<Symbol, Decimal>,
 }
 
 impl DealerEngine {
     pub fn new(settings: DealerEngineSettings, ws_client: impl WsClient + 'static) -> Self {
-        let mut settings = settings.clone();
+        let mut settings = settings;
 
-        let risk_tolerances = settings.risk_tolerances.into_iter().map(|(c, r)| {
-            let currency = Currency::from_str(&c).unwrap();
-            (currency, r)
-        }).collect::<HashMap<Currency, u64>>();
-        
+        let risk_tolerances = settings
+            .risk_tolerances
+            .into_iter()
+            .map(|(c, r)| {
+                let currency = Currency::from_str(&c).unwrap();
+                (currency, r)
+            })
+            .collect::<HashMap<Currency, u64>>();
+
         settings.logging_settings.name = String::from("Dealer");
         let logger = init_log(&settings.logging_settings);
 
@@ -92,29 +102,37 @@ impl DealerEngine {
             last_bank_state: None,
             has_received_init_data: false,
             has_received_symbols: false,
+            has_received_positions: false,
             is_kollider_authenticated: false,
             guaranteed_quotes: BTreeMap::new(),
-            last_bank_state_update: None,
+            last_bank_state_timestamp: None,
             hedged_qtys,
             logger,
         }
     }
 
-    pub fn get_hedged_quantity(&self, symbol: Symbol) -> Decimal {
-        let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
+    pub fn is_ready(&self) -> bool {
+        self.has_received_init_data
+    }
+
+    pub fn has_bank_state(&self) -> bool {
+        self.last_bank_state.is_some()
+    }
+
+    pub fn get_hedged_quantity(&self, symbol: Symbol) -> Result<Decimal, KolliderClientError> {
+        let position_state = self.ws_client.get_position_state(&symbol)?;
+        let position = match position_state {
             Some(p) => match p.side {
                 None => dec!(0),
-                Some(_) => {
-                    p.quantity
-                }
+                Some(_) => p.quantity,
             },
             None => dec!(0),
         };
-        currently_hedged_qty
+        Ok(position)
     }
 
     pub fn check_has_received_initial_data(&mut self) {
-        if self.has_received_symbols && self.is_kollider_authenticated {
+        if self.has_received_positions && self.has_received_symbols && self.is_kollider_authenticated {
             self.has_received_init_data = true;
         } else {
             self.has_received_init_data = false;
@@ -193,64 +211,100 @@ impl DealerEngine {
         listener(msg);
     }
 
-    pub fn check_risk<F: FnMut(Message)>(&mut self, bank_state: BankState, listener: &mut F) {
+    pub fn check_risk<F: FnMut(Message)>(&mut self, _listener: &mut F) {
+        if let Some(state) = self.last_bank_state.clone() {
+            self.check_risk_from_bank_state(state, _listener);
+        }
+    }
+
+    fn check_risk_from_bank_state<F: FnMut(Message)>(&mut self, bank_state: BankState, _listener: &mut F) {
         slog::info!(self.logger, "Checking Risk.");
 
         if !self.has_received_init_data {
             slog::info!(self.logger, "Not received all data. Skip checking risk.");
-            return
+            return;
         }
 
-        for (currency, exposure) in bank_state.total_exposures.clone().into_iter() {
+        slog::info!(self.logger, "{:?}", bank_state);
+        for (currency, exposure) in bank_state.total_exposures.into_iter() {
             if currency == Currency::BTC {
                 continue;
             }
 
-            slog::info!(self.logger, "{:?}", bank_state);
-
             let symbol = Symbol::from(currency);
             let denom = Denom::from_currency(currency);
 
-            let qty_contracts_required =
-                match self.calc_num_contracts_for_value(exposure, symbol.clone(), denom) {
-                    Ok(q) => dec!(-1) * q,
-                    Err(_) => continue,
-                };
+            let qty_contracts_required = match self.calc_num_contracts_for_value(exposure, symbol.clone(), denom) {
+                Ok(q) => dec!(-1) * q,
+                Err(_) => continue,
+            };
 
-            slog::info!(self.logger, "Target number of cotracts: {}", qty_contracts_required);
+            slog::info!(
+                self.logger,
+                "Target number of {} contracts: {}",
+                symbol,
+                qty_contracts_required
+            );
 
             let currently_hedged_qty = match self.ws_client.get_position_state(&symbol) {
-                Some(p) => match p.side {
+                Ok(position_state) => match position_state {
+                    Some(p) => match p.side {
+                        None => dec!(0),
+                        Some(side) => {
+                            let side_sign = Decimal::new(side.to_sign(), 0);
+                            side_sign * p.quantity
+                        }
+                    },
                     None => dec!(0),
-                    Some(side) => {
-                        let side_sign = Decimal::new(side.to_sign(), 0);
-                        side_sign * p.quantity
-                    }
                 },
-                None => dec!(0),
+                Err(err) => {
+                    slog::info!(
+                        self.logger,
+                        "Position state is undefined: {:?} - skipping risk calculation for symbol: {}",
+                        err,
+                        symbol
+                    );
+                    continue;
+                }
             };
 
             self.hedged_qtys.insert(symbol.clone(), currently_hedged_qty);
 
-            slog::info!(self.logger, "Current number of cotracts: {}", currently_hedged_qty);
+            slog::info!(
+                self.logger,
+                "Current number of {} contracts: {}",
+                symbol,
+                currently_hedged_qty
+            );
 
             // If negative we need to sell more and if positive we need to buy more.
             // This works under the assumption that qty_contracts_required is <= 0.
             let delta_qty = qty_contracts_required - currently_hedged_qty;
 
-            let risk_tolerance = match  self.risk_tolerances.get(&currency) {
+            let risk_tolerance = match self.risk_tolerances.get(&currency) {
                 Some(t) => t,
-                None => continue
+                None => continue,
             };
 
             if delta_qty.abs() < Decimal::new(*risk_tolerance as i64, 0) {
-                slog::info!(self.logger, "Deltaa qty of {} within risk tolerance of {}. NO ACTION.", delta_qty, risk_tolerance);
+                slog::info!(
+                    self.logger,
+                    "Delta qty of {} within risk tolerance of {}. NO ACTION.",
+                    delta_qty,
+                    risk_tolerance
+                );
                 continue;
             }
 
             let trade_side = Side::from_sign(delta_qty.to_i64().unwrap());
 
-            slog::info!(self.logger, "Placing trade on side: {:?} of qty: {} for symbol: {}", trade_side, delta_qty, symbol);
+            slog::info!(
+                self.logger,
+                "Placing trade on side: {:?} of qty: {} for symbol: {}",
+                trade_side,
+                delta_qty,
+                symbol
+            );
 
             self.ws_client
                 .make_order(delta_qty.abs().to_i64().unwrap() as u64, symbol, trade_side)
@@ -341,14 +395,13 @@ impl DealerEngine {
                     listener(msg);
                 }
                 Api::AvailableCurrenciesRequest(available_currencies_request) => {
-
                     let tradable_symbols = self.ws_client.get_tradable_symbols();
-                    let mut currencies = tradable_symbols.into_iter().map(|(s, _)| {
-                        let base_currency = get_base_currency_from_symbol(s).unwrap();
-                        base_currency
-                    }).collect::<HashSet<Currency>>().into_iter().map(|c| {
-                        c
-                    }).collect::<Vec<Currency>>();
+                    let mut currencies = tradable_symbols
+                        .into_iter()
+                        .map(|(s, _)| get_base_currency_from_symbol(s).unwrap())
+                        .collect::<HashSet<Currency>>()
+                        .into_iter()
+                        .collect::<Vec<Currency>>();
                     currencies.push(Currency::from_str("BTC").unwrap());
 
                     let response = AvailableCurrenciesResponse {
@@ -388,7 +441,7 @@ impl DealerEngine {
                     let amount = msg.amount.unwrap();
                     let rate = self.get_rate(None, Some(amount), conversion_info);
                     if rate.is_none() {
-                        return
+                        return;
                     } else {
                         msg.rate = rate;
                     }
@@ -401,7 +454,7 @@ impl DealerEngine {
                     let amount = msg.amount;
                     let rate = self.get_rate(None, Some(amount), conversion_info);
                     if rate.is_none() {
-                        return
+                        return;
                     } else {
                         msg.rate = rate;
                     }
@@ -412,16 +465,30 @@ impl DealerEngine {
             },
             Message::KolliderApiResponse(msg) => {
                 match msg {
+                    KolliderApiResponse::Disconnected(disconnection) => {
+                        slog::warn!(
+                            self.logger,
+                            "Disconnected from the Kollider exchange at {}",
+                            disconnection.timestamp
+                        );
+                        self.reset_state();
+                    }
+                    KolliderApiResponse::Reconnected(reconnection) => {
+                        slog::info!(
+                            self.logger,
+                            "Re-connected to the Kollider exchange at {}",
+                            reconnection.timestamp
+                        );
+                        slog::info!(self.logger, "Re-subscribing to position states");
+                        self.ws_client.subscribe(vec![Channel::PositionStates], None);
+                    }
                     KolliderApiResponse::Authenticate(auth) => {
                         if auth.success() {
                             slog::info!(self.logger, "Successful Kollider authenticated!");
                             self.is_kollider_authenticated = true;
                             self.check_has_received_initial_data();
                         }
-                        self.ws_client.subscribe(
-                            vec![Channel::PositionStates],
-                            None,
-                        );
+                        self.ws_client.subscribe(vec![Channel::PositionStates], None);
                     }
                     KolliderApiResponse::OrderInvoice(order_invoice) => {
                         // Received an order invoice. We need to send this to the bank to pay for it.
@@ -439,11 +506,13 @@ impl DealerEngine {
                         }));
                         listener(msg);
                     }
-                    KolliderApiResponse::PositionStates(position_states) => {
-                        slog::info!(self.logger, "Position states: {:?}", position_states);
-                        if let Some(_last_bank_state) = self.last_bank_state.clone() {
-                            // self.check_risk(last_bank_state, listener);
-                        }
+                    KolliderApiResponse::Positions(_positions) => {
+                        // positions are not stored, however, from this point we know
+                        // that ws client received them too and they can be fetched
+                        // from its state
+                        slog::info!(self.logger, "Received positions");
+                        self.has_received_positions = true;
+                        self.check_has_received_initial_data();
                     }
                     KolliderApiResponse::Level2State(level2state) => {
                         self.process_orderbook_update(level2state);
@@ -458,16 +527,16 @@ impl DealerEngine {
                         self.check_has_received_initial_data();
                         self.ws_client.subscribe(
                             vec![Channel::MarkPrices, Channel::OrderbookLevel2],
-                            Some(available_symbols)
+                            Some(available_symbols),
                         );
                     }
                     _ => {}
                 }
             }
             Message::Dealer(Dealer::BankState(bank_state)) => {
-                self.last_bank_state_update = Some(Instant::now());
+                self.last_bank_state_timestamp = Some(Instant::now());
                 self.last_bank_state = Some(bank_state.clone());
-                self.check_risk(bank_state, listener);
+                self.check_risk_from_bank_state(bank_state, listener);
             }
 
             Message::Dealer(Dealer::CreateInvoiceResponse(ref create_invoice_response)) => {
@@ -501,7 +570,6 @@ impl DealerEngine {
 
                 let msg = Message::Dealer(Dealer::FiatDepositResponse(fiat_deposit_response));
                 listener(msg);
-
             }
             _ => {}
         }
@@ -553,7 +621,7 @@ impl DealerEngine {
         let tradable_symbols = self.ws_client.get_tradable_symbols();
         let contract = match tradable_symbols.get(symbol) {
             Some(c) => c,
-            None => return
+            None => return,
         };
 
         let dp = contract.price_dp;
@@ -639,14 +707,19 @@ impl DealerEngine {
         }
     }
 
-    fn get_rate(&self, amount: Option<Decimal>, value: Option<Decimal>, conversion_info: ConversionInfo) -> Option<Decimal> {
+    fn get_rate(
+        &self,
+        amount: Option<Decimal>,
+        value: Option<Decimal>,
+        conversion_info: ConversionInfo,
+    ) -> Option<Decimal> {
         let maybe_quotes = match conversion_info.side {
             Side::Bid => self.bid_quotes.get(&conversion_info.symbol),
             Side::Ask => self.ask_quotes.get(&conversion_info.symbol),
         };
         // Either vlaue or amount needs to be some.
         if amount.is_none() && value.is_none() {
-            return None
+            return None;
         }
         match maybe_quotes {
             None => None,
@@ -667,14 +740,28 @@ impl DealerEngine {
                     None => None,
                     Some((_level_vol, price)) => {
                         if conversion_info.base == conversion_info.from {
-                            Some(*price * dec!(0.995))
+                            Some(*price * LINEAR_MODIFIER)
                         } else {
-                            Some(dec!(1) / (price * dec!(1.005)))
+                            Some(dec!(1) / (price * INVERSE_MODIFIER))
                         }
                     }
                 }
             }
         }
+    }
+
+    fn reset_state(&mut self) {
+        self.level2_data = HashMap::new();
+        self.bid_quotes = HashMap::new();
+        self.ask_quotes = HashMap::new();
+        self.has_received_init_data = false;
+        self.has_received_symbols = false;
+        self.has_received_positions = false;
+        self.is_kollider_authenticated = false;
+        self.guaranteed_quotes = BTreeMap::new();
+        self.hedged_qtys = HashMap::new();
+        self.last_bank_state = None;
+        self.last_bank_state_timestamp = None;
     }
 }
 
@@ -694,6 +781,7 @@ mod tests {
     use msgs::kollider_client::Channel;
 
     struct MockWsClient {
+        is_connected: bool,
         is_authenticated: bool,
         position_states: HashMap<Symbol, PositionState>,
         mark_prices: HashMap<Symbol, MarkPrice>,
@@ -704,6 +792,7 @@ mod tests {
     impl MockWsClient {
         pub fn new() -> Self {
             Self {
+                is_connected: true,
                 is_authenticated: true,
                 position_states: Default::default(),
                 mark_prices: Default::default(),
@@ -713,7 +802,58 @@ mod tests {
                     order_margin: Default::default(),
                     cross_margin: Default::default(),
                 }),
-                tradable_symbols: Default::default(),
+                tradable_symbols: [
+                    (
+                        Symbol::from("BTCEUR.PERP"),
+                        TradableSymbol {
+                            symbol: Symbol::from("BTCEUR.PERP"),
+                            contract_size: dec!(1.0),
+                            max_leverage: dec!(20.0),
+                            base_margin: dec!(0.01),
+                            maintenance_margin: dec!(0.004),
+                            is_inverse_priced: true,
+                            price_dp: 0,
+                            underlying_symbol: Symbol::from(".BTCEUR"),
+                            last_price: dec!(23058.0),
+                            tick_size: dec!(1.0),
+                            risk_limit: dec!(150000000.0),
+                        },
+                    ),
+                    (
+                        Symbol::from("ETHUSD.PERP"),
+                        TradableSymbol {
+                            symbol: Symbol::from("ETHUSD.PERP"),
+                            contract_size: dec!(1.0),
+                            max_leverage: dec!(10.0),
+                            base_margin: dec!(0.02),
+                            maintenance_margin: dec!(0.01),
+                            is_inverse_priced: false,
+                            price_dp: 2,
+                            underlying_symbol: Symbol::from(".ETHUSD"),
+                            last_price: dec!(1852.17),
+                            tick_size: dec!(0.05),
+                            risk_limit: dec!(150000000.0),
+                        },
+                    ),
+                    (
+                        Symbol::from("BTCUSD.PERP"),
+                        TradableSymbol {
+                            symbol: Symbol::from("BTCUSD.PERP"),
+                            contract_size: dec!(1.0),
+                            max_leverage: dec!(20.0),
+                            base_margin: dec!(0.01),
+                            maintenance_margin: dec!(0.004),
+                            is_inverse_priced: true,
+                            price_dp: 0,
+                            underlying_symbol: Symbol::from(".BTCUSD"),
+                            last_price: dec!(23470),
+                            tick_size: dec!(1.0),
+                            risk_limit: dec!(150000000.0),
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
             }
         }
     }
@@ -757,19 +897,24 @@ mod tests {
                     }
                 }
             } else {
-                Ok(self.balances.borrow().cash)
+                let symbol = Symbol::from("SAT");
+                self.balances
+                    .borrow()
+                    .cash
+                    .get(&symbol)
+                    .cloned()
+                    .ok_or(KolliderClientError::BalanceNotAvailable)
             }
         }
 
-        fn subscribe(&self, channels: Vec<Channel>, symbols: Option<Vec<Symbol>>) {
-        }
+        fn subscribe(&self, _channels: Vec<Channel>, _symbols: Option<Vec<Symbol>>) {}
 
         fn get_all_balances(&self) -> Option<Balances> {
             Some(self.balances.borrow().clone())
         }
 
-        fn get_position_state(&self, symbol: &Symbol) -> Option<PositionState> {
-            self.position_states.get(symbol).cloned()
+        fn get_position_state(&self, symbol: &Symbol) -> Result<Option<PositionState>, KolliderClientError> {
+            Ok(self.position_states.get(symbol).cloned())
         }
 
         fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol> {
@@ -777,7 +922,7 @@ mod tests {
         }
 
         fn make_withdrawal(&self, amount: u64, _payment_request: String) -> ws_client::Result<()> {
-            self.balances.borrow_mut().cash -= Decimal::new(amount as i64, 0);
+            *self.balances.borrow_mut().cash.get_mut(&Symbol::from("SAT")).unwrap() -= Decimal::new(amount as i64, 0);
             Ok(())
         }
 
@@ -791,6 +936,14 @@ mod tests {
 
         fn sell(&self, _quantity: u64, _currency: Currency) -> ws_client::Result<()> {
             Ok(())
+        }
+
+        fn is_connected(&self) -> bool {
+            self.is_connected
+        }
+
+        fn is_ready(&self) -> bool {
+            self.is_connected && self.is_authenticated
         }
     }
 
@@ -806,10 +959,10 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::{BTreeMap, HashMap, VecDeque};
     use std::time::Duration;
+    use utils::xlogging::*;
     use uuid::Uuid;
     use ws_client::WsClient;
     use xerror::kollider_client::KolliderClientError;
-    use utils::xlogging::*;
 
     fn initialise_dealer_engine() -> DealerEngine {
         let settings = DealerEngineSettings {
@@ -825,8 +978,12 @@ mod tests {
                 name: String::from(""),
                 level: String::from("debug"),
                 stdout: false,
-                log_path: None
-            }
+                log_path: None,
+            },
+            influx_host: "".to_string(),
+            influx_org: "".to_string(),
+            influx_bucket: "".to_string(),
+            influx_token: "".to_string(),
         };
         let ws_client = MockWsClient::new();
         let mut dealer = DealerEngine::new(settings, ws_client);
@@ -860,7 +1017,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.001),
+            amount: dec!(0.0001),
             from: Currency::BTC,
             to: Currency::USD,
         };
@@ -872,7 +1029,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate, Some(dec!(4000.0)));
+                assert_eq!(quote_response.rate, Some(dec!(39800.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -881,7 +1038,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(10.0),
+            amount: dec!(9.0),
             from: Currency::USD,
             to: Currency::BTC,
         };
@@ -893,7 +1050,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::USD);
                 assert_eq!(quote_response.to, Currency::BTC);
-                assert_eq!(quote_response.rate, Some(dec!(1) / dec!(3000.0)));
+                assert_eq!(quote_response.rate, Some(dec!(1) / dec!(30150.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -909,7 +1066,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.875),
+            amount: dec!(0.0875),
             from: Currency::BTC,
             to: Currency::USD,
         };
@@ -921,7 +1078,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate, Some(dec!(5200.0)));
+                assert_eq!(quote_response.rate, Some(dec!(51740.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -942,7 +1099,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::USD);
                 assert_eq!(quote_response.to, Currency::BTC);
-                assert_eq!(quote_response.rate, Some(dec!(1) / dec!(1800.0)));
+                assert_eq!(quote_response.rate, Some(dec!(1) / dec!(18090.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -1060,7 +1217,7 @@ mod tests {
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.875),
+            amount: dec!(0.0875),
             from: Currency::BTC,
             to: Currency::USD,
             quote_id: None,
@@ -1073,7 +1230,7 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::BTC);
                 assert_eq!(swap_response.to, Currency::USD);
-                assert_eq!(swap_response.rate, Some(dec!(5200.0)));
+                assert_eq!(swap_response.rate, Some(dec!(51740.0)));
                 assert!(swap_response.error.is_none());
                 break;
             }
@@ -1094,7 +1251,7 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::USD);
                 assert_eq!(swap_response.to, Currency::BTC);
-                assert_eq!(swap_response.rate, Some(dec!(1) / dec!(1800.0)));
+                assert_eq!(swap_response.rate, Some(dec!(1) / dec!(18090.0)));
                 assert!(swap_response.error.is_none());
                 break;
             }
@@ -1109,7 +1266,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.875),
+            amount: dec!(0.0875),
             from: Currency::BTC,
             to: Currency::USD,
         };
@@ -1122,7 +1279,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate, Some(dec!(5200.0)));
+                assert_eq!(quote_response.rate, Some(dec!(51740.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1210,7 +1367,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.875),
+            amount: dec!(0.0875),
             from: Currency::BTC,
             to: Currency::USD,
         };
@@ -1223,7 +1380,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate, Some(dec!(5200.0)));
+                assert_eq!(quote_response.rate, Some(dec!(51740.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1263,7 +1420,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.875),
+            amount: dec!(0.0875),
             from: Currency::BTC,
             to: Currency::USD,
         };
@@ -1276,7 +1433,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate, Some(dec!(5200.0)));
+                assert_eq!(quote_response.rate, Some(dec!(51740.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1360,7 +1517,7 @@ mod tests {
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
-            amount: dec!(0.875),
+            amount: dec!(0.0875),
             from: Currency::BTC,
             to: Currency::USD,
         };
@@ -1373,7 +1530,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate, Some(dec!(5200.0)));
+                assert_eq!(quote_response.rate, Some(dec!(51740.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);

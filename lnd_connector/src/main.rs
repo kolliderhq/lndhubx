@@ -6,9 +6,10 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() {
     let settings = LndConnectorSettings {
+        host: "lnd.staging.kollider.internal".to_string(),
+        port: 10009,
         tls_path: "tls.cert".to_string(),
         macaroon_path: "admin.macaroon".to_string(),
-        node_url: "http://lnd.staging.kollider.internal:10009".to_string(),
     };
 
     let mut lnd_connector = LndConnector::new(settings).await;
