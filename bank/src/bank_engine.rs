@@ -2,7 +2,7 @@ use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
 use bigdecimal::BigDecimal;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use core_types::*;
@@ -21,8 +21,6 @@ use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 
 use serde::{Deserialize, Serialize};
-
-use influxdb2::Client as InfluxClient;
 
 const BANK_UID: u64 = 23193913;
 
@@ -169,11 +167,10 @@ impl BankEngine {
     pub async fn new(
         conn_pool: Option<DbPool>,
         lnd_connector: LndConnector,
-        settings: BankEngineSettings,
+        mut settings: BankEngineSettings,
         lnd_connector_settings: LndConnectorSettings,
         payment_thread_sender: crossbeam_channel::Sender<Message>,
     ) -> Self {
-        let mut settings = settings.clone();
         settings.logging_settings.name = String::from("Bank");
         let logger = init_log(&settings.logging_settings);
 
@@ -194,7 +191,7 @@ impl BankEngine {
             deposit_limits: settings
                 .deposit_limits
                 .into_iter()
-                .map(|(currency, limit)| return (Currency::from_str(&currency).unwrap(), limit))
+                .map(|(currency, limit)| (Currency::from_str(&currency).unwrap(), limit))
                 .collect::<HashMap<Currency, Decimal>>(),
             logger,
             tx_seq: 0,
@@ -467,7 +464,7 @@ impl BankEngine {
                 None => return,
             };
 
-            user_account.get_default_account(payment_request.currency).clone()
+            user_account.get_default_account(payment_request.currency)
         };
 
         let mut inbound_account = {
@@ -1010,7 +1007,7 @@ impl BankEngine {
                     slog::info!(self.logger, "Received payment request: {:?}", msg);
 
                     // If user specified a username then we attempt to make an internal transaction.
-                    if !msg.receipient.is_none() {
+                    if msg.receipient.is_some() {
                         self.make_internal_tx(msg, listener);
                         return;
                     }
@@ -1142,10 +1139,8 @@ impl BankEngine {
                             None => return,
                         };
 
-                        user_account.get_default_account(msg.currency).clone()
+                        user_account.get_default_account(msg.currency)
                     };
-
-                    let amount_in_outbound_currency = amount_in_btc / rate;
 
                     let outbound_balance = outbound_account.balance;
 
@@ -1201,9 +1196,9 @@ impl BankEngine {
                         let payment_task_sender = self.payment_thread_sender.clone();
 
                         let settings = self.lnd_connector_settings.clone();
-                        let req_id = msg.req_id.clone();
-                        let payment_req = payment_request.clone();
-                        let aib = amount_in_btc.clone();
+                        let req_id = msg.req_id;
+                        let payment_req = payment_request;
+                        let aib = amount_in_btc;
                         let currency = msg.currency;
 
                         let payment_task = tokio::task::spawn(async move {
@@ -1215,14 +1210,14 @@ impl BankEngine {
                                 Ok(result) => {
                                     let payment_response = PaymentResponse {
                                         uid,
-                                        req_id: req_id,
+                                        req_id,
                                         currency,
                                         payment_hash: result.payment_hash,
                                         success: true,
                                         payment_request: Some(payment_req.clone()),
                                         amount: aib,
                                         fees: Decimal::new(result.fee as i64, 0),
-                                        rate: rate,
+                                        rate,
                                         error: None,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
@@ -1231,7 +1226,7 @@ impl BankEngine {
                                         rate,
                                         is_success: true,
                                         amount: outbound_amount_in_btc_plus_max_fees,
-                                        payment_response: payment_response,
+                                        payment_response,
                                         error: None,
                                     }));
                                     payment_task_sender.send(msg).unwrap();
@@ -1239,14 +1234,14 @@ impl BankEngine {
                                 Err(e) => {
                                     let payment_response = PaymentResponse {
                                         uid,
-                                        req_id: req_id,
+                                        req_id,
                                         currency,
                                         payment_hash: String::from(""),
                                         success: false,
                                         payment_request: Some(payment_req.clone()),
                                         amount: aib,
                                         fees: dec!(0),
-                                        rate: rate,
+                                        rate,
                                         error: Some(PaymentResponseError::InsufficientFundsForFees),
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
@@ -1255,7 +1250,7 @@ impl BankEngine {
                                         rate,
                                         is_success: false,
                                         amount: outbound_amount_in_btc_plus_max_fees,
-                                        payment_response: payment_response,
+                                        payment_response,
                                         error: Some(e.to_string()),
                                     }));
                                     payment_task_sender.send(msg).unwrap();
@@ -1340,8 +1335,8 @@ impl BankEngine {
 
                     // Deducting internal fees
                     // TODO: This is wrong./
-                    if internal_tx_fee > dec!(0) {
-                        if self
+                    if internal_tx_fee > dec!(0)
+                        && self
                             .make_tx(
                                 &mut invoice_payer_account,
                                 uid,
@@ -1351,9 +1346,8 @@ impl BankEngine {
                                 rate,
                             )
                             .is_err()
-                        {
-                            return;
-                        }
+                    {
+                        return;
                     }
 
                     self.ledger.fee_account = fee_account;
@@ -1556,7 +1550,7 @@ impl BankEngine {
                             None => return,
                         };
 
-                        user_account.get_default_account(msg.currency).clone()
+                        user_account.get_default_account(msg.currency)
                     };
 
                     if msg.currency != Currency::BTC && msg.rate.is_none() {
@@ -1677,7 +1671,7 @@ impl BankEngine {
                             None => return,
                         };
 
-                        user_account.get_default_account(res.currency).clone()
+                        user_account.get_default_account(res.currency)
                     };
 
                     let inv_rate = dec!(1) / res.rate;
@@ -1766,9 +1760,7 @@ impl BankEngine {
 
                     let msg = Message::Api(Api::PaymentResponse(payment_response));
                     listener(msg, ServiceIdentity::Api);
-                    return;
                 }
-                _ => {}
             },
             _ => {}
         }
