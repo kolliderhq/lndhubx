@@ -11,6 +11,7 @@ use rust_decimal_macros::*;
 use core_types::*;
 use uuid::Uuid;
 use futures_util::{stream, Future};
+use utils::misc::decode_hex;
 
 #[derive(Debug, Clone)]
 pub struct PayResponse {
@@ -121,39 +122,52 @@ impl LndConnector {
     }
 
     pub async fn pay_invoice(&mut self, payment_request: String, amount_in_sats: Decimal, max_fee: Decimal) -> Result<PayResponse, LndConnectorError> {
-
         // Max fee is always a percentage of amount.
         let max_fee = (amount_in_sats * max_fee).round_dp(0).to_i64().unwrap();
         // Never send a payment with lower fee than 10.
         let max_fee = std::cmp::max(max_fee, 10);
-
-        let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
-        let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
-        let send_payment = tonic_openssl_lnd::lnrpc::SendRequest {
-            payment_request,
-            fee_limit: Some(fee_limit),
-            allow_self_payment: true,
-            ..Default::default()
-        };
-
-        if let Ok(resp) = self.ln_client.send_payment_sync(send_payment).await {
+        // Decode payment_request
+        let decode = tonic_openssl_lnd::lnrpc::PayReqString { pay_req: payment_request.clone() };
+        if let Ok(resp) = self.ln_client.decode_pay_req(decode).await {
             let r = resp.into_inner();
-            if !r.payment_error.is_empty() {
-                return Err(LndConnectorError::FailedToSendPayment);
-            }
-            let fee = match r.payment_route {
-                Some(pr) => {
-                    pr.total_fees.try_into().unwrap()
+            if let Ok(probe) = self.probe(r.destination, Decimal::new(r.num_satoshis, 0), Decimal::new(max_fee, 0)).await {
+                // TOOD: select best route, For now, select the first route
+                if probe.len() > 0 {
+                    // Get fees and print them out for the chosen route
+                    // TODO: make lndhubx aware of the fees
+                    let chosen_route = &probe[0];
+                    let hops = &chosen_route.hops;
+                    let mut total_route_fees_msat = 0;
+                    for hop in hops {
+                        total_route_fees_msat += hop.fee_msat;
+                    }
+                    dbg!(total_route_fees_msat);
+                    let vec_payment_hash = decode_hex(r.payment_hash);
+                    let send_payment = tonic_openssl_lnd::lnrpc::SendToRouteRequest {
+                        payment_hash: vec_payment_hash,
+                        route: Some(probe[0]),
+                        ..Default::default()
+                    };
+                    if let Ok(resp) = self.ln_client.send_to_route_sync(send_payment).await {
+                        let r = resp.into_inner();
+                        if !r.payment_error.is_empty() {
+                            return Err(LndConnectorError::FailedToSendPayment);
+                        }
+                        let fee = match r.payment_route {
+                            Some(pr) => {
+                                pr.total_fees.try_into().unwrap()
+                            }
+                            None => 0
+                        };
+                        let response = PayResponse {
+                            fee,
+                            payment_hash: hex::encode(r.payment_hash),
+                        };
+                        return Ok(response);
+                    }
                 }
-                None => 0
             };
-            let response = PayResponse {
-                fee,
-                payment_hash: hex::encode(r.payment_hash),
-            };
-            return Ok(response);
-        }
-
+        };
         Err(LndConnectorError::FailedToSendPayment)
     }
 
