@@ -559,7 +559,8 @@ impl BankEngine {
                         .pay_invoice(
                             pay_invoice.payment_request.clone(),
                             amount_in_sats,
-                            self.ln_network_max_fee,
+                            Some(self.ln_network_max_fee),
+                            None,
                         )
                         .await
                     {
@@ -1147,7 +1148,24 @@ impl BankEngine {
                     // Worst case amount user will have to pay for this transaction in Bitcoin.
                     let max_fee_in_btc = (amount_in_btc * self.ln_network_fee_margin)
                         .round_dp_with_strategy(SATS_DECIMALS, RoundingStrategy::AwayFromZero);
-                    let outbound_amount_in_btc_plus_max_fees = amount_in_btc + max_fee_in_btc;
+
+                    let mut estimated_fee = dec!(0);
+
+                    let settings = self.lnd_connector_settings.clone();
+                    let mut lnd_connector = LndConnector::new(settings).await;
+
+                    if let Ok(res) = lnd_connector.probe(payment_request.clone(), self.ln_network_fee_margin).await {
+                        if res.len() > 0 {
+                            let best_route = res[0].clone();
+                            estimated_fee = Decimal::new(best_route.total_fees, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0);
+                        } else {
+                            estimated_fee = max_fee_in_btc;
+                        }
+                    } else {
+                        estimated_fee = max_fee_in_btc;
+                    }
+                    
+                    let outbound_amount_in_btc_plus_max_fees = amount_in_btc + estimated_fee;
 
                     // Worst case amount user will have to pay for this transaction in outbound Currency.
                     let outbound_amount_in_outbound_currency_plus_max_fee = outbound_amount_in_btc_plus_max_fees / rate;
@@ -1191,7 +1209,7 @@ impl BankEngine {
                         self.update_account(&external_account, BANK_UID);
 
                         payment_response.success = false;
-                        payment_response.fees = max_fee_in_btc;
+                        payment_response.fees = estimated_fee;
 
                         let payment_task_sender = self.payment_thread_sender.clone();
 
@@ -1204,7 +1222,7 @@ impl BankEngine {
                         let payment_task = tokio::task::spawn(async move {
                             let mut lnd_connector = LndConnector::new(settings).await;
                             match lnd_connector
-                                .pay_invoice(payment_req.clone(), amount_in_sats, dec!(0))
+                                .pay_invoice(payment_req.clone(), amount_in_sats, None, Some(estimated_fee))
                                 .await
                             {
                                 Ok(result) => {
@@ -1639,6 +1657,30 @@ impl BankEngine {
                     let msg = Message::Api(Api::PayLnurlWithdrawalResponse(response));
                     listener(msg, ServiceIdentity::Api);
                 }
+                Api::QueryRouteRequest(msg) => {
+                    let settings = self.lnd_connector_settings.clone();
+                    let mut lnd_connector = LndConnector::new(settings).await;
+
+                    if let Ok(res) = lnd_connector.probe(msg.payment_request, dec!(0.0005)).await {
+                        if res.len() > 0 {
+                            let best_route = res[0].clone();
+                            let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
+                                req_id: msg.req_id,
+                                total_fee: Decimal::new(best_route.total_fees, 0),
+                                error: None,
+                            }));
+                            listener(msg, ServiceIdentity::Api);
+                        } else {
+                            let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
+                                req_id: msg.req_id,
+                                total_fee: dec!(0),
+                                error: Some(QueryRouteError::NoRouteFound),
+                            }));
+                            listener(msg, ServiceIdentity::Api);
+                        }
+                    }
+                }
+
                 _ => {}
             },
             Message::Bank(msg) => match msg {
