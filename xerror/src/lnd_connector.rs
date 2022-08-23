@@ -3,6 +3,8 @@ pub enum LndConnectorError {
     FailedToCreateInvoice,
     FailedToSendPayment,
     FailedToGetNodeInfo,
+    FailedToDecodePaymentRequest,
+    FailedToQueryRoutes,
 }
 
 impl std::fmt::Display for LndConnectorError {
