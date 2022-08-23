@@ -58,24 +58,28 @@ impl LndConnector {
     }
 
     pub async fn sub_invoices(&mut self, listener: Sender<Message>) {
-        while let Ok(inv) = self
-            .ln_client
-            .subscribe_invoices(tonic_openssl_lnd::lnrpc::InvoiceSubscription {
-                add_index: 0,
-                settle_index: 0,
-            })
-            .await
-        {
-            if let Ok(Some(invoice)) = inv.into_inner().message().await {
-                let invoice_state = tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
-                if invoice_state == tonic_openssl_lnd::lnrpc::invoice::InvoiceState::Settled {
-                    let deposit = Deposit {
-                        payment_request: invoice.payment_request,
-                    };
-                    let msg = Message::Deposit(deposit);
-                    listener.send(msg).expect("Failed to send a message");
+        loop {
+            while let Ok(inv) = self
+                .ln_client
+                .subscribe_invoices(tonic_openssl_lnd::lnrpc::InvoiceSubscription {
+                    add_index: 0,
+                    settle_index: 0,
+                })
+                .await
+            {
+                if let Ok(Some(invoice)) = inv.into_inner().message().await {
+                    let invoice_state = tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
+                    if invoice_state == tonic_openssl_lnd::lnrpc::invoice::InvoiceState::Settled {
+                        let deposit = Deposit {
+                            payment_request: invoice.payment_request,
+                        };
+                        let msg = Message::Deposit(deposit);
+                        listener.send(msg).expect("Failed to send a message");
+                    }
                 }
             }
+            // Sleeping for a little bit before trying to reconnect.
+            std::thread::sleep(std::time::Duration::from_secs(5));
         }
     }
 

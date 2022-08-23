@@ -31,7 +31,9 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
         .build()
         .unwrap()];
 
-    client.write(bucket, stream::iter(points)).await.unwrap();
+    if let Err(err) = client.write(bucket, stream::iter(points)).await {
+        dbg!(format!("Couldn't write point to influx: {}", err));
+    }
 }
 
 pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
