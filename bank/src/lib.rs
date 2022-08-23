@@ -53,7 +53,9 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
         .build()
         .unwrap()];
 
-    client.write(bucket, stream::iter(points)).await.unwrap();
+    if let Err(err) = client.write(bucket, stream::iter(points)).await {
+       dbg!(format!("Failed to write point to Influx. Err: {}", err));
+    }
 }
 
 pub async fn start(
