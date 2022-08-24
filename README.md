@@ -62,9 +62,9 @@ This wraps docker-compose and will bring up the DB, create the database if neede
 Each microservice can be run individually
  
 ```
-ENV=dev FILE_NAME=lndhubx cargo run --bin api
-ENV=dev FILE_NAME=lndhubx cargo run --bin dealer
-ENV=dev FILE_NAME=lndhubx cargo run --bin bank
+ENV=sample FILE_NAME=lndhubx cargo run --bin api
+ENV=sample FILE_NAME=lndhubx cargo run --bin dealer
+ENV=sample FILE_NAME=lndhubx cargo run --bin bank
 ```
 -----------
  
