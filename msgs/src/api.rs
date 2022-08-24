@@ -45,6 +45,12 @@ pub enum QuoteResponseError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QueryRouteError {
+    NoRouteFound
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AvailableCurrenciesResponseError {
     GeneralError,
 }
@@ -238,6 +244,20 @@ pub struct PayLnurlWithdrawalResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryRouteRequest {
+    pub req_id: RequestId,
+    pub payment_request: String,
+    pub max_fee: Option<Decimal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryRouteResponse {
+    pub req_id: RequestId,
+    pub total_fee: Decimal,
+    pub error: Option<QueryRouteError>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
     InvoiceRequest(InvoiceRequest),
     InvoiceResponse(InvoiceResponse),
@@ -259,4 +279,6 @@ pub enum Api {
     GetLnurlWithdrawalResponse(GetLnurlWithdrawalResponse),
     PayLnurlWithdrawalRequest(PayLnurlWithdrawalRequest),
     PayLnurlWithdrawalResponse(PayLnurlWithdrawalResponse),
+    QueryRouteRequest(QueryRouteRequest),
+    QueryRouteResponse(QueryRouteResponse),
 }
