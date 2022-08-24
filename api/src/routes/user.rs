@@ -393,3 +393,45 @@ pub async fn get_node_info(web_sender: WebSender) -> Result<HttpResponse, ApiErr
     }
     Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
 }
+
+#[derive(Deserialize)]
+pub struct QueryRouteParams {
+    pub payment_request: String,
+    pub max_fee: Option<Decimal>,
+}
+
+#[get("/query_route")]
+pub async fn get_query_route(
+    query: Query<QueryRouteParams>,
+    web_sender: WebSender,
+) -> Result<HttpResponse, ApiError> {
+    let req_id = Uuid::new_v4();
+
+    let params = query.into_inner();
+
+    let request = QueryRouteRequest{ req_id, payment_request: params.payment_request, max_fee: params.max_fee };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::QueryRouteResponse(response)) if response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::QueryRouteRequest(request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::QueryRouteResponse(response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&response));
+    }
+    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+}

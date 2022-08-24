@@ -68,7 +68,8 @@ impl LndConnector {
                 .await
             {
                 if let Ok(Some(invoice)) = inv.into_inner().message().await {
-                    let invoice_state = tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
+                    let invoice_state =
+                        tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
                     if invoice_state == tonic_openssl_lnd::lnrpc::invoice::InvoiceState::Settled {
                         let deposit = Deposit {
                             payment_request: invoice.payment_request,
@@ -125,12 +126,21 @@ impl LndConnector {
         &mut self,
         payment_request: String,
         amount_in_sats: Decimal,
-        max_fee: Decimal,
+        max_fee_as_pp: Option<Decimal>,
+        max_fee_in_sats: Option<Decimal>,
     ) -> Result<PayResponse, LndConnectorError> {
-        // Max fee is always a percentage of amount.
-        let max_fee = (amount_in_sats * max_fee).round_dp(0).to_i64().unwrap();
-        // Never send a payment with lower fee than 10.
-        let max_fee = std::cmp::max(max_fee, 10);
+        if max_fee_as_pp.is_none() && max_fee_in_sats.is_none() {
+            return Err(LndConnectorError::FailedToSendPayment)
+        }
+        let mut max_fee = match max_fee_as_pp {
+            Some(m) => (amount_in_sats * m).round_dp(0).to_i64().unwrap(),
+            None => 0
+        };
+
+        max_fee = match max_fee_in_sats {
+            Some(m) => (m).round_dp(0).to_i64().unwrap(),
+            None => max_fee
+        };
 
         let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
@@ -179,6 +189,58 @@ impl LndConnector {
                 dbg!(&err);
                 Err(LndConnectorError::FailedToGetNodeInfo)
             }
+        }
+    }
+
+    pub async fn decode_payment_request(&mut self, payment_request: String) -> Result<tonic_openssl_lnd::lnrpc::PayReq, LndConnectorError> {
+        let decode = tonic_openssl_lnd::lnrpc::PayReqString {
+            pay_req: payment_request,
+        };
+
+        if let Ok(resp) = self.ln_client.decode_pay_req(decode).await {
+            let inner = resp.into_inner();
+            Ok(inner)
+        } else {
+            Err(LndConnectorError::FailedToDecodePaymentRequest)
+        }
+    }
+
+    pub async fn probe(
+        &mut self,
+        payment_request: String,
+        max_fee: Decimal,
+    ) -> Result<std::vec::Vec<tonic_openssl_lnd::lnrpc::Route>, LndConnectorError> {
+        // Max fee is always a percentage of amount.
+        let decode = tonic_openssl_lnd::lnrpc::PayReqString {
+            pay_req: payment_request.clone(),
+        };
+
+        if let Ok(resp) = self.ln_client.decode_pay_req(decode).await {
+            let r = resp.into_inner();
+            let max_fee = (Decimal::new(r.num_satoshis, 0) * max_fee).round_dp(0).to_i64().unwrap();
+            // Never send a payment with lower fee than 10.
+            let max_fee = std::cmp::max(max_fee, 10);
+            let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
+            let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
+            let query_routes = tonic_openssl_lnd::lnrpc::QueryRoutesRequest {
+                pub_key: r.destination,
+                amt: r.num_satoshis,
+                fee_limit: Some(fee_limit),
+                use_mission_control: true,
+                ..Default::default()
+            };
+            match self.ln_client.query_routes(query_routes).await {
+                Ok(pr) => {
+                    let resp = pr.into_inner();
+                    Ok(resp.routes)
+                }
+                Err(err) => {
+                    dbg!(&err);
+                    Err(LndConnectorError::FailedToQueryRoutes)
+                }
+            }
+        } else {
+            Err(LndConnectorError::FailedToQueryRoutes)
         }
     }
 }
