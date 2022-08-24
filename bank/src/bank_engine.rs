@@ -457,6 +457,10 @@ impl BankEngine {
         };
 
         let inbound_uid = inbound_user.uid as u64;
+        if inbound_uid == outbound_uid {
+            slog::error!(self.logger, "User tried to send to self via username.");
+            return;
+        }
 
         let mut outbound_account = {
             let user_account = match self.ledger.user_accounts.get_mut(&outbound_uid) {
