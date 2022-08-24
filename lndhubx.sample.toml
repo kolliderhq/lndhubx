@@ -1,0 +1,70 @@
+### API Config
+psql_url = "postgres://[psql-user]:[psql-password]@localhost:5432/lndhubx"
+
+influx_host = "http://localhost:8087"
+influx_org = "<INFLUX-ORG>"
+influx_bucket = "<INFLUX-BUCKET>"
+influx_token = "<INFLUX-TOKEN>"
+
+api_zmq_push_address = "tcp://0.0.0.0:5555"
+api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
+
+### Bank Config
+bank_zmq_pull_address = "tcp://0.0.0.0:5555"
+bank_zmq_publish_address = "tcp://0.0.0.0:5556"
+
+bank_dealer_pull_address = "tcp://0.0.0.0:5557"
+bank_dealer_push_address = "tcp://0.0.0.0:5558"
+
+deposit_limit = 0.001
+withdrawal_only = false
+
+tls_path = "/path/to/tls.cert"
+macaroon_path = "/path/to/admin.macaroon"
+host = "your.lnd.node.host"
+port = 10009
+
+### Dealer Config
+dealer_bank_push_address = "tcp://0.0.0.0:5557"
+dealer_bank_pull_address = "tcp://0.0.0.0:5558"
+
+
+## The margin users have to keep on their account to account
+## for network fees.
+ln_network_fee_margin = 0.005
+## This is the max amount the bank is willing to pay for a transaction.
+## If its the same as `ln_network_fee_margin` then bank will never
+## lose money on making external txs			.
+ln_network_max_fee = 0.005
+## Fee charged on internal txs.
+internal_tx_fee = 0.0001
+## Fee charged ontop of Ln network fee for external txs.
+external_tx_fee = 0
+## The minimum of liabilities the bank has to keep.
+reserve_ratio = 0.75
+
+kollider_ws_url = "ws://127.0.0.1:8085"
+kollider_api_key = "<API-KEY>"
+kollider_api_secret = "<API-SECRET>"
+kollider_api_passphrase = "<API-PASSPHRASE>"
+
+spread = 0.01
+
+# Risk the dealer is willing to take before hedging.
+[risk_tolerances]
+USD = 1
+EUR = 1
+GBP = 1
+
+[deposit_limits]
+USD = 5
+EUR = 5
+BTC = 0.00025
+GBP = 5
+
+## Logging
+[logging_settings]
+log_path = "lndhubx.log"
+stdout = true
+level = "debug"
+name = "lndhub"
