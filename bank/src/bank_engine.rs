@@ -1223,10 +1223,12 @@ impl BankEngine {
                         let aib = amount_in_btc;
                         let currency = msg.currency;
 
+                        let estimated_fee_in_sats = estimated_fee * Decimal::new(SATS_IN_BITCOIN as i64, 0);
+
                         let payment_task = tokio::task::spawn(async move {
                             let mut lnd_connector = LndConnector::new(settings).await;
                             match lnd_connector
-                                .pay_invoice(payment_req.clone(), amount_in_sats, None, Some(estimated_fee))
+                                .pay_invoice(payment_req.clone(), amount_in_sats, None, Some(estimated_fee_in_sats))
                                 .await
                             {
                                 Ok(result) => {
