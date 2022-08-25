@@ -49,6 +49,9 @@ kollider_api_secret = "<API-SECRET>"
 kollider_api_passphrase = "<API-PASSPHRASE>"
 
 spread = 0.01
+position_min_leverage = 0.9999
+position_max_leverage = 1.0001
+leverage_check_interval_ms = 1000
 
 # Risk the dealer is willing to take before hedging.
 [risk_tolerances]
