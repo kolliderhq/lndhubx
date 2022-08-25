@@ -945,6 +945,10 @@ mod tests {
         fn is_ready(&self) -> bool {
             self.is_connected && self.is_authenticated
         }
+
+        fn change_margin(&self, _symbol: Symbol, _amount: i64) -> ws_client::Result<()> {
+            Ok(())
+        }
     }
 
     use crate::dealer_engine::QUOTE_TTL_MS;

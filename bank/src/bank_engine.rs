@@ -1153,22 +1153,23 @@ impl BankEngine {
                     let max_fee_in_btc = (amount_in_btc * self.ln_network_fee_margin)
                         .round_dp_with_strategy(SATS_DECIMALS, RoundingStrategy::AwayFromZero);
 
-                    let mut estimated_fee = dec!(0);
-
                     let settings = self.lnd_connector_settings.clone();
                     let mut lnd_connector = LndConnector::new(settings).await;
 
-                    if let Ok(res) = lnd_connector.probe(payment_request.clone(), self.ln_network_fee_margin).await {
-                        if res.len() > 0 {
+                    let estimated_fee = if let Ok(res) = lnd_connector
+                        .probe(payment_request.clone(), self.ln_network_fee_margin)
+                        .await
+                    {
+                        if !res.is_empty() {
                             let best_route = res[0].clone();
-                            estimated_fee = Decimal::new(best_route.total_fees, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0);
+                            Decimal::new(best_route.total_fees, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0)
                         } else {
-                            estimated_fee = max_fee_in_btc;
+                            max_fee_in_btc
                         }
                     } else {
-                        estimated_fee = max_fee_in_btc;
-                    }
-                    
+                        max_fee_in_btc
+                    };
+
                     let outbound_amount_in_btc_plus_max_fees = amount_in_btc + estimated_fee;
 
                     // Worst case amount user will have to pay for this transaction in outbound Currency.
@@ -1668,7 +1669,7 @@ impl BankEngine {
                     let mut lnd_connector = LndConnector::new(settings).await;
 
                     if let Ok(res) = lnd_connector.probe(msg.payment_request, dec!(0.0005)).await {
-                        if res.len() > 0 {
+                        if !res.is_empty() {
                             let best_route = res[0].clone();
                             let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
                                 req_id: msg.req_id,

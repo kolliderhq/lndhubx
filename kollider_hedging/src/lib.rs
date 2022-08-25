@@ -5,6 +5,7 @@ use crossbeam::channel::Sender;
 use msgs::kollider_client::*;
 use msgs::Message;
 use rust_decimal::Decimal;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::atomic::AtomicBool;
@@ -388,6 +389,22 @@ impl WsClient for KolliderHedgingClient {
         // side is opposite because selling fiat is buying inverse contract
         self.order(quantity, currency, Side::Bid)
     }
+
+    fn change_margin(&self, symbol: Symbol, amount: i64) -> Result<()> {
+        let (amount, action) = match amount.cmp(&0) {
+            Ordering::Greater => (Decimal::new(amount, 0), ChangeMarginAction::Add),
+            Ordering::Less => (Decimal::new(-amount, 0), ChangeMarginAction::Delete),
+            Ordering::Equal => return Err(KolliderClientError::IncorrectMarginAmount),
+        };
+        let change_margin = Request::ChangeMargin(ChangeMargin {
+            uid: 0,
+            ext_id: Uuid::new_v4(),
+            symbol,
+            amount,
+            action,
+        });
+        self.checked_send_request(&change_margin)
+    }
 }
 
 fn is_connected(shared_state: &Arc<Mutex<State>>) -> bool {
@@ -482,6 +499,14 @@ fn process_incoming_message(
             callback.send(msg).unwrap();
         }
         KolliderApiResponse::Level2State(_level2_state) => {
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
+        }
+        KolliderApiResponse::ChangeMarginSuccess(_change_margin_success) => {
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
+        }
+        KolliderApiResponse::ChangeMarginRejection(_change_margin_rejection) => {
             let msg = Message::KolliderApiResponse(response);
             callback.send(msg).unwrap();
         }
