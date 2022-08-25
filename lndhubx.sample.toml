@@ -1,7 +1,7 @@
 ### API Config
 psql_url = "postgres://[psql-user]:[psql-password]@localhost:5432/lndhubx"
 
-influx_host = "http://localhost:8087"
+influx_host = "http://localhost:8086"
 influx_org = "<INFLUX-ORG>"
 influx_bucket = "<INFLUX-BUCKET>"
 influx_token = "<INFLUX-TOKEN>"
@@ -43,7 +43,7 @@ external_tx_fee = 0
 ## The minimum of liabilities the bank has to keep.
 reserve_ratio = 0.75
 
-kollider_ws_url = "ws://127.0.0.1:8085"
+kollider_ws_url = "ws://127.0.0.1:8084"
 kollider_api_key = "<API-KEY>"
 kollider_api_secret = "<API-SECRET>"
 kollider_api_passphrase = "<API-PASSPHRASE>"
