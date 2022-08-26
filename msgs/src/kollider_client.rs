@@ -113,6 +113,7 @@ pub enum KolliderApiResponse {
     Reconnected(Reconnected),
     ChangeMarginSuccess(ChangeMarginSuccess),
     ChangeMarginRejection(ChangeMarginRejection),
+    AddMarginRequest(AddMarginRequest),
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -280,4 +281,11 @@ pub enum RejectionReason {
     SymbolInLimitOnlyMode,
     TradingForSymbolSuspended,
     SlippageExceeded,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct AddMarginRequest {
+    symbol: Symbol,
+    amount: Decimal,
+    invoice: String,
 }

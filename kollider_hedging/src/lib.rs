@@ -510,6 +510,10 @@ fn process_incoming_message(
             let msg = Message::KolliderApiResponse(response);
             callback.send(msg).unwrap();
         }
+        KolliderApiResponse::AddMarginRequest(_add_margin_request) => {
+            let msg = Message::KolliderApiResponse(response);
+            callback.send(msg).unwrap();
+        }
         _ => {}
     }
 }

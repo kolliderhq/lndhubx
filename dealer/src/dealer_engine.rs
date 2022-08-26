@@ -793,7 +793,7 @@ impl DealerEngine {
         }
         self.last_leverage_check_timestamp = Instant::now();
 
-        if self.position_min_leverage <= position.leverage || position.leverage <= self.position_max_leverage {
+        if self.position_min_leverage <= position.leverage && position.leverage <= self.position_max_leverage {
             return;
         }
 
