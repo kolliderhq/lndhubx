@@ -57,6 +57,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::user::pay_invoice)
             .service(routes::user::get_user_invoices)
             .service(routes::user::swap)
+            .service(routes::user::probe)
             .service(routes::user::quote)
             .service(routes::user::get_txs)
             .service(routes::user::get_available_currencies)

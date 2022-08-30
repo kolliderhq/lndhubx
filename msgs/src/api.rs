@@ -45,6 +45,13 @@ pub enum QuoteResponseError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QueryRouteError {
+    GeneralError,
+    NoRouteFound,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AvailableCurrenciesResponseError {
     GeneralError,
 }
@@ -140,6 +147,18 @@ pub struct Balances {
     pub req_id: RequestId,
     pub uid: UserId,
     pub accounts: HashMap<AccountId, Account>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProbeRequest {
+    pub req_id: RequestId,
+    pub payment_request: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProbeResponse {
+    pub req_id: RequestId,
+    pub fee_in_sats: Decimal,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,6 +266,8 @@ pub enum Api {
     SwapResponse(SwapResponse),
     GetBalances(GetBalances),
     Balances(Balances),
+    ProbeRequest(ProbeRequest),
+    ProbeResponse(ProbeResponse),
     QuoteRequest(QuoteRequest),
     QuoteResponse(QuoteResponse),
     AvailableCurrenciesRequest(AvailableCurrenciesRequest),

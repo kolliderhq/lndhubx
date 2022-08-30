@@ -1514,6 +1514,14 @@ impl BankEngine {
                     listener(msg.clone(), ServiceIdentity::Api);
                     listener(msg, ServiceIdentity::Dealer);
                 }
+                Api::ProbeRequest(msg) => {
+                    // let msg = Message::Api(Api::ProbeRequest(msg));
+                    //TODO: payment_request
+                    let probed_routes = match self.lnd_connector.probe(msg.payment_request).await {
+                        Ok(pr) => pr,
+                        Err(_) => QueryRouteError::GeneralError,
+                    };
+                }
                 Api::QuoteRequest(msg) => {
                     let msg = Message::Api(Api::QuoteRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
