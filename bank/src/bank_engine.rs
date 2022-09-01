@@ -1532,6 +1532,21 @@ impl BankEngine {
                     listener(msg.clone(), ServiceIdentity::Api);
                     listener(msg, ServiceIdentity::Dealer);
                 }
+                Api::ProbeRequest(msg) => {
+                    let probe = match self.lnd_connector.probe(msg.payment_request, self.ln_network_fee_margin).await {
+                        Ok(pr) => pr,
+                        Err(_) => std::vec::Vec::new(),
+                    };
+                    if probe.len() > 0 {
+                        let chosen_route = probe[0].clone();
+                        let response = ProbeResponse {
+                            req_id: msg.req_id,
+                            fees_in_sats: Decimal::new(chosen_route.total_fees, 0),
+                        };
+                        let msg = Message::Api(Api::ProbeResponse(response));
+                        listener(msg, ServiceIdentity::Api);
+                    }
+                }
                 Api::QuoteRequest(msg) => {
                     let msg = Message::Api(Api::QuoteRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);

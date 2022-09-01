@@ -149,6 +149,18 @@ pub struct Balances {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProbeRequest {
+    pub req_id: RequestId,
+    pub payment_request: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProbeResponse {
+    pub req_id: RequestId,
+    pub fees_in_sats: Decimal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuoteRequest {
     pub req_id: RequestId,
     pub uid: UserId,
@@ -267,6 +279,8 @@ pub enum Api {
     SwapResponse(SwapResponse),
     GetBalances(GetBalances),
     Balances(Balances),
+    ProbeRequest(ProbeRequest),
+    ProbeResponse(ProbeResponse),
     QuoteRequest(QuoteRequest),
     QuoteResponse(QuoteResponse),
     AvailableCurrenciesRequest(AvailableCurrenciesRequest),

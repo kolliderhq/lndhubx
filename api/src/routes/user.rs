@@ -247,6 +247,49 @@ pub async fn get_user_invoices(pool: WebDbPool, auth_data: AuthData) -> Result<H
 }
 
 #[derive(Deserialize)]
+pub struct ProbeParams {
+    pub payment_request: String,
+}
+
+#[get("/probe")]
+pub async fn probe(
+    _auth_data: AuthData,
+    web_sender: WebSender,
+    query: Query<ProbeParams>,
+) -> Result<HttpResponse, ApiError> {
+    let req_id = Uuid::new_v4();
+
+    let probe_request = ProbeRequest {
+        req_id,
+        payment_request: query.payment_request.clone(),
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::ProbeResponse(probe_response)) if probe_response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::ProbeRequest(probe_request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::ProbeResponse(probe_response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&probe_response));
+    }
+    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+}
+
+#[derive(Deserialize)]
 pub struct QuoteParams {
     pub from_currency: Currency,
     pub to_currency: Currency,
