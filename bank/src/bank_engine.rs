@@ -1539,6 +1539,7 @@ impl BankEngine {
                     };
                     if probe.len() > 0 {
                         let chosen_route = probe[0].clone();
+                        #[allow(deprecated)]
                         let response = ProbeResponse {
                             req_id: msg.req_id,
                             fees_in_sats: Decimal::new(chosen_route.total_fees, 0),
@@ -1685,6 +1686,7 @@ impl BankEngine {
                     if let Ok(res) = lnd_connector.probe(msg.payment_request, dec!(0.0005)).await {
                         if res.len() > 0 {
                             let best_route = res[0].clone();
+                            #[allow(deprecated)]
                             let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
                                 req_id: msg.req_id,
                                 total_fee: Decimal::new(best_route.total_fees, 0),
