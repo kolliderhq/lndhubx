@@ -1862,9 +1862,9 @@ impl BankEngine {
                         return;
                     }
 
-                    self.ledger.external_account = external_account;
-
+                    self.update_account(&external_account, BANK_UID);
                     self.update_account(&insurance_fund_account, DEALER_UID);
+                    self.ledger.external_account = external_account;
                     self.ledger.insurance_fund_account = insurance_fund_account;
                 }
             }
