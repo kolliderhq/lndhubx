@@ -180,10 +180,11 @@ impl DealerEngine {
         if let Some(balances) = self.ws_client.get_all_balances() {
             slog::info!(self.logger, "Sweeping: {:?}", balances);
             let sat_balance = balances.cash.get(&Symbol::from("SAT")).unwrap();
-            if *sat_balance > dec!(1000) {
+            if *sat_balance > dec!(10_000) {
                 let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
                     amount: sat_balance.to_i64().unwrap() as u64,
+                    memo: "Excess funds withdrawal".to_string(),
                 }));
                 listener(msg);
             }
@@ -519,6 +520,7 @@ impl DealerEngine {
                         let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                             req_id: Uuid::new_v4(),
                             amount: settlement_request.amount.parse().unwrap(),
+                            memo: format!("Withdrawal upon settlement on {}", settlement_request.symbol),
                         }));
                         listener(msg);
                     }
@@ -549,6 +551,37 @@ impl DealerEngine {
                             vec![Channel::MarkPrices, Channel::OrderbookLevel2],
                             Some(available_symbols),
                         );
+                    }
+                    KolliderApiResponse::ChangeMarginSuccess(change_margin_success) => {
+                        if change_margin_success.amount.is_sign_negative() {
+                            let amount = -change_margin_success.amount;
+                            slog::info!(
+                                self.logger,
+                                "Reduced {} position margin by {} sats. Trying to withdraw",
+                                change_margin_success.symbol,
+                                amount
+                            );
+                            let memo = format!("Reduced {} position margin", change_margin_success.symbol);
+                            let msg = Message::Dealer(Dealer::CreateInsuranceInvoiceRequest(CreateInvoiceRequest {
+                                req_id: Uuid::new_v4(),
+                                amount: amount.to_u64().unwrap(),
+                                memo,
+                            }));
+                            listener(msg);
+                        }
+                    }
+                    KolliderApiResponse::AddMarginRequest(add_margin_request) => {
+                        slog::info!(
+                            self.logger,
+                            "Received add margin request of {} sats for {} position. Requesting invoice to be paid",
+                            add_margin_request.amount,
+                            add_margin_request.symbol,
+                        );
+                        let msg = Message::Dealer(Dealer::PayInsuranceInvoice(PayInvoice {
+                            req_id: Uuid::new_v4(),
+                            payment_request: add_margin_request.invoice,
+                        }));
+                        listener(msg)
                     }
                     _ => {
                         slog::warn!(self.logger, "Handling of KolliderApiResponse {:?} not implemented", msg);

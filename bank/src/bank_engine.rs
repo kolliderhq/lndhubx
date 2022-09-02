@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use core_types::*;
-use models::{accounts, internal_user_mappings, invoices::Invoice, users::User};
+use models::{accounts, invoices::Invoice, users::User};
 
 use msgs::api::*;
 use msgs::bank::*;
@@ -23,6 +23,7 @@ use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 use serde::{Deserialize, Serialize};
 
 const BANK_UID: u64 = 23193913;
+const DEALER_UID: u64 = 52172712;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BankEngineSettings {
@@ -202,6 +203,52 @@ impl BankEngine {
         }
     }
 
+    fn fetch_insurance_account(&mut self, conn: &diesel::PgConnection) -> Account {
+        let dealer_account = match accounts::Account::get_dealer_btc_accounts(conn) {
+            Ok(mut dealer_accounts) => {
+                let dealer_accounts_count = dealer_accounts.len();
+                if dealer_accounts_count != 1 {
+                    slog::error!(
+                        self.logger,
+                        "Exactly one Dealer's Internal BTC account should exist - found {}",
+                        dealer_accounts_count
+                    );
+                    panic!(
+                        "Exactly one Dealer's Internal BTC account should exist - found {}",
+                        dealer_accounts_count
+                    );
+                }
+                dealer_accounts.pop().unwrap()
+            }
+            Err(err) => {
+                slog::error!(
+                    self.logger,
+                    "Could not get dealer account to initialise insurance account, reason {:?}",
+                    err
+                );
+                panic!(
+                    "Could not get dealer account to initialise insurance account, reason {:?}",
+                    err
+                );
+            }
+        };
+
+        let currency = Currency::from_str(&dealer_account.currency).unwrap();
+        let balance = Decimal::from_str(&dealer_account.balance.to_string()).unwrap();
+        let account_id = dealer_account.account_id;
+        let account_type = AccountType::from_str(&dealer_account.account_type).unwrap();
+        Account {
+            account_id,
+            balance,
+            currency,
+            account_type,
+        }
+    }
+
+    fn is_insurance_fund_depleted(&self) -> bool {
+        self.ledger.insurance_fund_account.balance < Decimal::new(1000, SATS_DECIMALS)
+    }
+
     pub fn init_accounts(&mut self) {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
@@ -219,13 +266,11 @@ impl BankEngine {
             }
         };
 
-        let accounts = match accounts::Account::get_all_not_in(&c, &[]) {
-            Ok(accs) => accs,
-            Err(_) => return,
-        };
+        let insurance_account = self.fetch_insurance_account(&c);
+        self.ledger.insurance_fund_account = insurance_account;
 
-        let _internal_users = match internal_user_mappings::InternalUserMapping::get_all_not_in(&c, &[]) {
-            Ok(iu) => iu,
+        let accounts = match accounts::Account::get_non_internal_users_accounts(&c) {
+            Ok(accs) => accs,
             Err(_) => return,
         };
 
@@ -529,8 +574,10 @@ impl BankEngine {
             Message::Dealer(msg) => match msg {
                 Dealer::Health(dealer_health) => {
                     self.available_currencies = dealer_health.available_currencies;
-                    if dealer_health.status == HealthStatus::Down {
-                        slog::warn!(self.logger, "Dealer is disconnected from the exchange!");
+                    if dealer_health.status == HealthStatus::Down || self.is_insurance_fund_depleted() {
+                        if dealer_health.status == HealthStatus::Down {
+                            slog::warn!(self.logger, "Dealer is disconnected from the exchange!");
+                        }
                         self.available_currencies = Vec::new();
                     }
                 }
@@ -540,77 +587,18 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Dealer::PayInvoice(pay_invoice) => {
-                    let decoded = match pay_invoice
-                        .payment_request
-                        .clone()
-                        .parse::<lightning_invoice::Invoice>()
-                    {
-                        Ok(d) => d,
-                        Err(_) => return,
-                    };
-
-                    let amount_in_sats = Decimal::new(decoded.amount_milli_satoshis().unwrap() as i64, 0) / dec!(1000);
-
-                    slog::debug!(
-                        self.logger,
-                        "Dealer requests to pay invoice: {} of amount: {}",
-                        pay_invoice.payment_request,
-                        amount_in_sats
-                    );
-
-                    if let Ok(result) = self
-                        .lnd_connector
-                        .pay_invoice(
-                            pay_invoice.payment_request.clone(),
-                            amount_in_sats,
-                            Some(self.ln_network_max_fee),
-                            None,
-                        )
-                        .await
-                    {
-                        slog::debug!(self.logger, "{:?}", result);
-                        // let mut outbound_acconut = self.
-                        // we have to make a transaction here.
-                    }
+                    self.process_pay_invoice(pay_invoice, false).await;
+                }
+                Dealer::PayInsuranceInvoice(pay_invoice) => {
+                    self.process_pay_invoice(pay_invoice, true).await;
                 }
                 Dealer::CreateInvoiceRequest(req) => {
-                    slog::debug!(self.logger, "Dealer requested payment: {:?}", req);
-                    let conn = match &self.conn_pool {
-                        Some(conn) => conn,
-                        None => {
-                            slog::error!(self.logger, "No database provided.");
-                            return;
-                        }
-                    };
-
-                    let c = match conn.get() {
-                        Ok(psql_connection) => psql_connection,
-                        Err(_) => {
-                            slog::error!(self.logger, "Couldn't get psql connection.");
-                            return;
-                        }
-                    };
-
-                    let meta = "dealer withdrawal".to_string();
-                    if let Ok(invoice) = self
-                        .lnd_connector
-                        .create_invoice(req.amount, meta, BANK_UID, self.ledger.external_account.account_id)
-                        .await
-                    {
-                        if let Err(_err) = invoice.insert(&c) {
-                            slog::error!(self.logger, "Couldn't insert invoice.");
-                            return;
-                        }
-
-                        let create_invoice_response = CreateInvoiceResponse {
-                            req_id: req.req_id,
-                            payment_request: invoice.payment_request,
-                            amount: req.amount,
-                        };
-
-                        let msg = Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response));
-                        listener(msg, ServiceIdentity::Dealer)
-                    }
+                    slog::info!(self.logger, "Dealer requested payment: {:?}", req);
+                    self.process_create_invoice_request(req, BANK_UID, listener).await;
+                }
+                Dealer::CreateInsuranceInvoiceRequest(req) => {
+                    slog::info!(self.logger, "Dealer requested insurance payment: {:?}", req);
+                    self.process_create_invoice_request(req, DEALER_UID, listener).await;
                 }
                 Dealer::FiatDepositResponse(msg) => {
                     slog::info!(self.logger, "Received fiat deposit response: {:?}", msg);
@@ -719,7 +707,12 @@ impl BankEngine {
                         return;
                     }
 
-                    let (mut inbound_account, inbound_uid) = {
+                    let is_insurance_invoice = invoice.uid as UserId == DEALER_UID;
+                    let (mut inbound_account, inbound_uid) = if is_insurance_invoice {
+                        slog::info!(self.logger, "Transferring deposit into insurance fund");
+                        let insurance_account = self.ledger.insurance_fund_account.clone();
+                        (insurance_account, DEALER_UID)
+                    } else {
                         let user_account = self
                             .ledger
                             .user_accounts
@@ -748,14 +741,17 @@ impl BankEngine {
                         return;
                     }
 
-                    // Safe to unwrap as we created this account above.
-                    let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
+                    if is_insurance_invoice {
+                        self.ledger.insurance_fund_account = inbound_account.clone();
+                    } else {
+                        // Safe to unwrap as we created this account above.
+                        let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
 
-                    // Updating cache.
-                    user_account
-                        .accounts
-                        .insert(inbound_account.account_id, inbound_account.clone());
-
+                        // Updating cache.
+                        user_account
+                            .accounts
+                            .insert(inbound_account.account_id, inbound_account.clone());
+                    }
                     // Updating cache of external account.
                     self.ledger.external_account = external_account.clone();
 
@@ -1812,6 +1808,125 @@ impl BankEngine {
                 }
             },
             _ => {}
+        }
+    }
+
+    async fn process_pay_invoice(&mut self, pay_invoice: PayInvoice, is_insurance_invoice: bool) {
+        let decoded = match pay_invoice
+            .payment_request
+            .clone()
+            .parse::<lightning_invoice::Invoice>()
+        {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+
+        let amount_in_sats = Decimal::new(decoded.amount_milli_satoshis().unwrap() as i64, 0) / dec!(1000);
+
+        let invoice_type_text = if is_insurance_invoice { "insurance " } else { "" };
+
+        slog::debug!(
+            self.logger,
+            "Dealer requests to pay {}invoice: {} of amount: {}",
+            invoice_type_text,
+            pay_invoice.payment_request,
+            amount_in_sats
+        );
+
+        match self
+            .lnd_connector
+            .pay_invoice(
+                pay_invoice.payment_request.clone(),
+                amount_in_sats,
+                Some(self.ln_network_max_fee),
+                None,
+            )
+            .await
+        {
+            Ok(result) => {
+                slog::debug!(self.logger, "{:?}", result);
+                if is_insurance_invoice {
+                    let mut external_account = self.ledger.external_account.clone();
+                    let mut insurance_fund_account = self.ledger.insurance_fund_account.clone();
+                    if self
+                        .make_tx(
+                            &mut insurance_fund_account,
+                            DEALER_UID,
+                            &mut external_account,
+                            BANK_UID,
+                            amount_in_sats * Decimal::new(1, SATS_DECIMALS),
+                            Decimal::ONE,
+                        )
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    self.ledger.external_account = external_account;
+
+                    self.update_account(&insurance_fund_account, DEALER_UID);
+                    self.ledger.insurance_fund_account = insurance_fund_account;
+                }
+            }
+            Err(err) => {
+                slog::error!(
+                    self.logger,
+                    "Failed to pay {}invoice {:?}, reason: {:?}",
+                    invoice_type_text,
+                    pay_invoice,
+                    err
+                );
+            }
+        }
+    }
+
+    async fn process_create_invoice_request<F: FnMut(Message, ServiceIdentity)>(
+        &mut self,
+        req: CreateInvoiceRequest,
+        invoice_owner: UserId,
+        listener: &mut F,
+    ) {
+        let conn = match &self.conn_pool {
+            Some(conn) => conn,
+            None => {
+                slog::error!(self.logger, "No database provided.");
+                return;
+            }
+        };
+
+        let c = match conn.get() {
+            Ok(psql_connection) => psql_connection,
+            Err(_) => {
+                slog::error!(self.logger, "Couldn't get psql connection.");
+                return;
+            }
+        };
+
+        let account_id = match invoice_owner {
+            BANK_UID => self.ledger.external_account.account_id,
+            DEALER_UID => self.ledger.insurance_fund_account.account_id,
+            _ => panic!("Unexpected invoice owner. It can be Bank or Dealer only"),
+        };
+
+        if let Ok(invoice) = self
+            .lnd_connector
+            .create_invoice(req.amount, req.memo, invoice_owner, account_id)
+            .await
+        {
+            slog::info!(self.logger, "Inserting invoice into db: {:?}", invoice);
+            if let Err(_err) = invoice.insert(&c) {
+                slog::error!(self.logger, "Couldn't insert invoice: {:?}", invoice);
+                return;
+            }
+
+            let create_invoice_response = CreateInvoiceResponse {
+                req_id: req.req_id,
+                payment_request: invoice.payment_request,
+                amount: req.amount,
+            };
+
+            let msg = Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response));
+            listener(msg, ServiceIdentity::Dealer)
         }
     }
 }

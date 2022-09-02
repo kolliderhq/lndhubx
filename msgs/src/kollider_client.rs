@@ -285,7 +285,7 @@ pub enum RejectionReason {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct AddMarginRequest {
-    symbol: Symbol,
-    amount: Decimal,
-    invoice: String,
+    pub symbol: Symbol,
+    pub amount: Decimal,
+    pub invoice: String,
 }
