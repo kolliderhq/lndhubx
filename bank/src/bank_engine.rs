@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use core_types::*;
+use diesel::result::Error as DieselError;
 use models::{accounts, invoices::Invoice, users::User};
 
 use msgs::api::*;
@@ -203,46 +204,55 @@ impl BankEngine {
         }
     }
 
-    fn fetch_insurance_account(&mut self, conn: &diesel::PgConnection) -> Account {
-        let dealer_account = match accounts::Account::get_dealer_btc_accounts(conn) {
-            Ok(mut dealer_accounts) => {
-                let dealer_accounts_count = dealer_accounts.len();
-                if dealer_accounts_count != 1 {
+    fn fetch_internal_user_account<F: FnMut(&diesel::PgConnection) -> Result<Vec<accounts::Account>, DieselError>>(
+        &mut self,
+        conn: &diesel::PgConnection,
+        fetcher: &mut F,
+    ) -> Account {
+        let account = match fetcher(conn) {
+            Ok(mut internal_accounts) => {
+                let internal_accounts_count = internal_accounts.len();
+                if internal_accounts_count != 1 {
                     slog::error!(
                         self.logger,
-                        "Exactly one Dealer's Internal BTC account should exist - found {}",
-                        dealer_accounts_count
+                        "Exactly one Internal user's BTC account should exist - found {}",
+                        internal_accounts_count
                     );
                     panic!(
-                        "Exactly one Dealer's Internal BTC account should exist - found {}",
-                        dealer_accounts_count
+                        "Exactly one Internal user's BTC account should exist - found {}",
+                        internal_accounts_count
                     );
                 }
-                dealer_accounts.pop().unwrap()
+                internal_accounts.pop().unwrap()
             }
             Err(err) => {
                 slog::error!(
                     self.logger,
-                    "Could not get dealer account to initialise insurance account, reason {:?}",
+                    "Could not initialise internal user account, reason {:?}",
                     err
                 );
-                panic!(
-                    "Could not get dealer account to initialise insurance account, reason {:?}",
-                    err
-                );
+                panic!("Could not initialise internal user account, reason {:?}", err);
             }
         };
 
-        let currency = Currency::from_str(&dealer_account.currency).unwrap();
-        let balance = Decimal::from_str(&dealer_account.balance.to_string()).unwrap();
-        let account_id = dealer_account.account_id;
-        let account_type = AccountType::from_str(&dealer_account.account_type).unwrap();
+        let currency = Currency::from_str(&account.currency).unwrap();
+        let balance = Decimal::from_str(&account.balance.to_string()).unwrap();
+        let account_id = account.account_id;
+        let account_type = AccountType::from_str(&account.account_type).unwrap();
         Account {
             account_id,
             balance,
             currency,
             account_type,
         }
+    }
+
+    fn fetch_external_account(&mut self, conn: &diesel::PgConnection) -> Account {
+        self.fetch_internal_user_account(conn, &mut accounts::Account::get_bank_btc_accounts)
+    }
+
+    fn fetch_insurance_account(&mut self, conn: &diesel::PgConnection) -> Account {
+        self.fetch_internal_user_account(conn, &mut accounts::Account::get_dealer_btc_accounts)
     }
 
     fn is_insurance_fund_depleted(&self) -> bool {
@@ -268,6 +278,9 @@ impl BankEngine {
 
         let insurance_account = self.fetch_insurance_account(&c);
         self.ledger.insurance_fund_account = insurance_account;
+
+        let external_account = self.fetch_external_account(&c);
+        self.ledger.external_account = external_account;
 
         let accounts = match accounts::Account::get_non_internal_users_accounts(&c) {
             Ok(accs) => accs,
