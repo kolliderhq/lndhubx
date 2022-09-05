@@ -53,6 +53,10 @@ pub struct DealerEngineSettings {
     pub influx_org: String,
     pub influx_bucket: String,
     pub influx_token: String,
+
+    pub position_min_leverage: Decimal,
+    pub position_max_leverage: Decimal,
+    pub leverage_check_interval_ms: u64,
 }
 
 pub struct DealerEngine {
@@ -72,6 +76,10 @@ pub struct DealerEngine {
     last_bank_state: Option<BankState>,
     last_bank_state_timestamp: Option<Instant>,
     hedged_qtys: HashMap<Symbol, Decimal>,
+    position_min_leverage: Decimal,
+    position_max_leverage: Decimal,
+    leverage_check_interval_ms: u64,
+    last_leverage_check_timestamp: Instant,
 }
 
 impl DealerEngine {
@@ -92,6 +100,10 @@ impl DealerEngine {
 
         let hedged_qtys = HashMap::new();
 
+        // making sure that leverage adjustment action is performed first time position state is received
+        let last_leverage_check_timestamp =
+            Instant::now().sub(Duration::from_millis(settings.leverage_check_interval_ms + 1));
+
         Self {
             risk_tolerances,
             ws_client: Box::new(ws_client),
@@ -108,6 +120,10 @@ impl DealerEngine {
             last_bank_state_timestamp: None,
             hedged_qtys,
             logger,
+            position_min_leverage: settings.position_min_leverage,
+            position_max_leverage: settings.position_max_leverage,
+            leverage_check_interval_ms: settings.leverage_check_interval_ms,
+            last_leverage_check_timestamp,
         }
     }
 
@@ -164,10 +180,11 @@ impl DealerEngine {
         if let Some(balances) = self.ws_client.get_all_balances() {
             slog::info!(self.logger, "Sweeping: {:?}", balances);
             let sat_balance = balances.cash.get(&Symbol::from("SAT")).unwrap();
-            if *sat_balance > dec!(1000) {
+            if *sat_balance > dec!(10_000) {
                 let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
                     amount: sat_balance.to_i64().unwrap() as u64,
+                    memo: "Excess funds withdrawal".to_string(),
                 }));
                 listener(msg);
             }
@@ -503,16 +520,21 @@ impl DealerEngine {
                         let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
                             req_id: Uuid::new_v4(),
                             amount: settlement_request.amount.parse().unwrap(),
+                            memo: format!("Withdrawal upon settlement on {}", settlement_request.symbol),
                         }));
                         listener(msg);
                     }
-                    KolliderApiResponse::Positions(_positions) => {
+                    KolliderApiResponse::Positions(positions) => {
                         // positions are not stored, however, from this point we know
                         // that ws client received them too and they can be fetched
                         // from its state
-                        slog::info!(self.logger, "Received positions");
+                        slog::info!(self.logger, "Received positions {:?}", positions);
                         self.has_received_positions = true;
                         self.check_has_received_initial_data();
+                    }
+                    KolliderApiResponse::PositionStates(position) => {
+                        slog::info!(self.logger, "Received position state {:?}", position);
+                        self.maintain_leverage(&position);
                     }
                     KolliderApiResponse::Level2State(level2state) => {
                         self.process_orderbook_update(level2state);
@@ -530,7 +552,40 @@ impl DealerEngine {
                             Some(available_symbols),
                         );
                     }
-                    _ => {}
+                    KolliderApiResponse::ChangeMarginSuccess(change_margin_success) => {
+                        if change_margin_success.amount.is_sign_negative() {
+                            let amount = -change_margin_success.amount;
+                            slog::info!(
+                                self.logger,
+                                "Reduced {} position margin by {} sats. Trying to withdraw",
+                                change_margin_success.symbol,
+                                amount
+                            );
+                            let memo = format!("Reduced {} position margin", change_margin_success.symbol);
+                            let msg = Message::Dealer(Dealer::CreateInsuranceInvoiceRequest(CreateInvoiceRequest {
+                                req_id: Uuid::new_v4(),
+                                amount: amount.to_u64().unwrap(),
+                                memo,
+                            }));
+                            listener(msg);
+                        }
+                    }
+                    KolliderApiResponse::AddMarginRequest(add_margin_request) => {
+                        slog::info!(
+                            self.logger,
+                            "Received add margin request of {} sats for {} position. Requesting invoice to be paid",
+                            add_margin_request.amount,
+                            add_margin_request.symbol,
+                        );
+                        let msg = Message::Dealer(Dealer::PayInsuranceInvoice(PayInvoice {
+                            req_id: Uuid::new_v4(),
+                            payment_request: add_margin_request.invoice,
+                        }));
+                        listener(msg)
+                    }
+                    _ => {
+                        slog::warn!(self.logger, "Handling of KolliderApiResponse {:?} not implemented", msg);
+                    }
                 }
             }
             Message::Dealer(Dealer::BankState(bank_state)) => {
@@ -763,6 +818,36 @@ impl DealerEngine {
         self.last_bank_state = None;
         self.last_bank_state_timestamp = None;
     }
+
+    fn maintain_leverage(&mut self, position: &PositionState) {
+        let elapsed = self.last_leverage_check_timestamp.elapsed().as_millis() as u64;
+        if elapsed <= self.leverage_check_interval_ms {
+            return;
+        }
+        self.last_leverage_check_timestamp = Instant::now();
+
+        if self.position_min_leverage <= position.leverage && position.leverage <= self.position_max_leverage {
+            return;
+        }
+
+        let current_margin = position.entry_value / position.leverage;
+        let required_margin = position.entry_value / Decimal::ONE;
+        let margin_delta = required_margin - current_margin;
+
+        if !margin_delta.is_zero() {
+            if let Some(amount) = margin_delta.to_i64() {
+                slog::info!(
+                    self.logger,
+                    "Adjusting {} position margin by {}",
+                    position.symbol,
+                    amount
+                );
+                if let Err(err) = self.ws_client.change_margin(position.symbol.clone(), amount) {
+                    slog::error!(self.logger, "Failed to change margin, reason: {:?}", err)
+                }
+            }
+        }
+    }
 }
 
 fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(), ()> {
@@ -945,6 +1030,10 @@ mod tests {
         fn is_ready(&self) -> bool {
             self.is_connected && self.is_authenticated
         }
+
+        fn change_margin(&self, _symbol: Symbol, _amount: i64) -> ws_client::Result<()> {
+            Ok(())
+        }
     }
 
     use crate::dealer_engine::QUOTE_TTL_MS;
@@ -984,6 +1073,9 @@ mod tests {
             influx_org: "".to_string(),
             influx_bucket: "".to_string(),
             influx_token: "".to_string(),
+            position_min_leverage: dec!(0.9999),
+            position_max_leverage: dec!(1.0001),
+            leverage_check_interval_ms: 1000,
         };
         let ws_client = MockWsClient::new();
         let mut dealer = DealerEngine::new(settings, ws_client);

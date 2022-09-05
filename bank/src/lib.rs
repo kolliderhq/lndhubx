@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod bank_engine;
 
 use bank_engine::*;
@@ -54,7 +56,7 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
         .unwrap()];
 
     if let Err(err) = client.write(bucket, stream::iter(points)).await {
-       dbg!(format!("Failed to write point to Influx. Err: {}", err));
+        dbg!(format!("Failed to write point to Influx. Err: {}", err));
     }
 }
 

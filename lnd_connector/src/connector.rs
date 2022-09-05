@@ -80,7 +80,7 @@ impl LndConnector {
                 }
             }
             // Sleeping for a little bit before trying to reconnect.
-            std::thread::sleep(std::time::Duration::from_secs(5));
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     }
 
@@ -130,16 +130,16 @@ impl LndConnector {
         max_fee_in_sats: Option<Decimal>,
     ) -> Result<PayResponse, LndConnectorError> {
         if max_fee_as_pp.is_none() && max_fee_in_sats.is_none() {
-            return Err(LndConnectorError::FailedToSendPayment)
+            return Err(LndConnectorError::FailedToSendPayment);
         }
         let mut max_fee = match max_fee_as_pp {
             Some(m) => (amount_in_sats * m).round_dp(0).to_i64().unwrap(),
-            None => 0
+            None => 0,
         };
 
         max_fee = match max_fee_in_sats {
             Some(m) => (m).round_dp(0).to_i64().unwrap(),
-            None => max_fee
+            None => max_fee,
         };
 
         let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
@@ -154,6 +154,7 @@ impl LndConnector {
         if let Ok(resp) = self.ln_client.send_payment_sync(send_payment).await {
             let r = resp.into_inner();
             if !r.payment_error.is_empty() {
+                dbg!(format!("Payment error: {:?}", r.payment_error));
                 return Err(LndConnectorError::FailedToSendPayment);
             }
             let fee = match r.payment_route {
@@ -166,7 +167,6 @@ impl LndConnector {
             };
             return Ok(response);
         }
-
         Err(LndConnectorError::FailedToSendPayment)
     }
 
@@ -192,7 +192,10 @@ impl LndConnector {
         }
     }
 
-    pub async fn decode_payment_request(&mut self, payment_request: String) -> Result<tonic_openssl_lnd::lnrpc::PayReq, LndConnectorError> {
+    pub async fn decode_payment_request(
+        &mut self,
+        payment_request: String,
+    ) -> Result<tonic_openssl_lnd::lnrpc::PayReq, LndConnectorError> {
         let decode = tonic_openssl_lnd::lnrpc::PayReqString {
             pay_req: payment_request,
         };
@@ -217,7 +220,10 @@ impl LndConnector {
 
         if let Ok(resp) = self.ln_client.decode_pay_req(decode).await {
             let r = resp.into_inner();
-            let max_fee = (Decimal::new(r.num_satoshis, 0) * max_fee).round_dp(0).to_i64().unwrap();
+            let max_fee = (Decimal::new(r.num_satoshis, 0) * max_fee)
+                .round_dp(0)
+                .to_i64()
+                .unwrap();
             // Never send a payment with lower fee than 10.
             let max_fee = std::cmp::max(max_fee, 10);
             let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);

@@ -9,4 +9,5 @@ pub enum KolliderClientError {
     CouldNotConnect,
     NotConnected,
     PositionStateNotAvailable,
+    IncorrectMarginAmount,
 }

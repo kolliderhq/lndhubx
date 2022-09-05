@@ -9,13 +9,6 @@ table! {
 }
 
 table! {
-    clients (id) {
-        id -> Int4,
-        name -> Text,
-    }
-}
-
-table! {
     internal_user_mappings (username) {
         username -> Text,
         uid -> Int4,
@@ -69,18 +62,12 @@ table! {
 }
 
 table! {
-    user_types (id) {
-        id -> Int4,
-        name -> Text,
-    }
-}
-
-table! {
     users (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
         username -> Text,
         password -> Text,
+        is_internal -> Bool,
     }
 }
 
@@ -89,11 +76,9 @@ joinable!(internal_user_mappings -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
-    clients,
     internal_user_mappings,
     invoices,
     pre_signups,
     transactions,
-    user_types,
     users,
 );

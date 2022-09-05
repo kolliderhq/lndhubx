@@ -29,6 +29,7 @@ pub enum Request {
     Subscribe(Subscribe),
     Order(Order),
     WithdrawalRequest(WithdrawalRequest),
+    ChangeMargin(ChangeMargin),
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -110,6 +111,9 @@ pub enum KolliderApiResponse {
     Level2State(Level2State),
     Disconnected(Disconnected),
     Reconnected(Reconnected),
+    ChangeMarginSuccess(ChangeMarginSuccess),
+    ChangeMarginRejection(ChangeMarginRejection),
+    AddMarginRequest(AddMarginRequest),
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -224,4 +228,64 @@ pub struct Level2State {
     pub symbol: Symbol,
     pub bids: BTreeMap<Decimal, u64>,
     pub asks: BTreeMap<Decimal, u64>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub enum ChangeMarginAction {
+    Add,
+    Delete,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ChangeMargin {
+    pub uid: UserId,
+    pub ext_id: Uuid,
+    pub symbol: Symbol,
+    pub amount: Decimal,
+    pub action: ChangeMarginAction,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ChangeMarginSuccess {
+    pub symbol: Symbol,
+    pub amount: Decimal,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ChangeMarginRejection {
+    pub symbol: Symbol,
+    pub reason: RejectionReason,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub enum RejectionReason {
+    ContractNotAvailable,
+    PositionIsUnderLiquidation,
+    PositionIsNotUnderLiquidation,
+    DuplicatedOrderId,
+    RiskLimitExceeded,
+    MalformedOrder,
+    NotEnoughMargin,
+    NotEnoughAvailableBalance,
+    MaxLeverageExceeded,
+    BelowMinLeverage,
+    NoMarket,
+    InvalidOrder,
+    OrderTooSmall,
+    OrderDoesNotExist,
+    InstantLiquidation,
+    NoOpenPosition,
+    PositionNotFound,
+    InvalidMarginChange,
+    SymbolInPostOnlyMode,
+    SymbolInLimitOnlyMode,
+    TradingForSymbolSuspended,
+    SlippageExceeded,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct AddMarginRequest {
+    pub symbol: Symbol,
+    pub amount: Decimal,
+    pub invoice: String,
 }

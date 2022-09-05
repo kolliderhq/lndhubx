@@ -20,4 +20,5 @@ pub trait WsClient {
     fn subscribe(&self, chanels: Vec<Channel>, symbols: Option<Vec<Symbol>>);
     fn buy(&self, quantity: u64, currency: Currency) -> Result<()>;
     fn sell(&self, quantity: u64, currency: Currency) -> Result<()>;
+    fn change_margin(&self, symbol: Symbol, amount: i64) -> Result<()>;
 }

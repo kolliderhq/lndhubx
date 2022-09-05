@@ -40,12 +40,14 @@ pub fn verify(salt: &str, password: &str, attempted_password: &str) -> bool {
 pub struct User {
     /// User id as a 4 byte wide int
     pub uid: i32,
-    /// Accountn creation
+    /// Account creation
     pub created_at: Option<std::time::SystemTime>,
     /// Username for this row
     pub username: String,
-    /// User email
+    /// User password hash
     pub password: String,
+    /// Internal user flag
+    pub is_internal: bool,
 }
 
 #[derive(Insertable, Debug, Deserialize)]
@@ -53,6 +55,7 @@ pub struct User {
 pub struct InsertableUser {
     pub username: String,
     pub password: String,
+    pub is_internal: bool,
 }
 
 impl User {

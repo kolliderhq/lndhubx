@@ -37,6 +37,7 @@ pub struct PayInvoice {
 pub struct CreateInvoiceRequest {
     pub req_id: RequestId,
     pub amount: u64,
+    pub memo: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,7 +90,9 @@ pub enum Dealer {
     BankState(BankState),
     Health(DealerHealth),
     PayInvoice(PayInvoice),
+    PayInsuranceInvoice(PayInvoice),
     CreateInvoiceRequest(CreateInvoiceRequest),
+    CreateInsuranceInvoiceRequest(CreateInvoiceRequest),
     CreateInvoiceResponse(CreateInvoiceResponse),
     FiatDepositRequest(FiatDepositRequest),
     FiatDepositResponse(FiatDepositResponse),

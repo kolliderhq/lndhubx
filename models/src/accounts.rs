@@ -1,12 +1,12 @@
 use crate::schema::accounts;
+use crate::schema::users;
+use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use diesel::result::Error as DieselError;
 use serde::Deserialize;
 use std::default::Default;
 use std::str::FromStr;
 use uuid::Uuid;
-
-use bigdecimal::BigDecimal;
 
 #[derive(Queryable, Identifiable, Debug)]
 #[primary_key(account_id)]
@@ -62,6 +62,53 @@ impl Account {
         accounts::dsl::accounts
             .filter(accounts::account_id.ne_all(account_ids))
             .load::<Self>(conn)
+    }
+
+    pub fn get_non_internal_users_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
+        users::dsl::users
+            .inner_join(accounts::dsl::accounts)
+            .select((
+                accounts::account_id,
+                accounts::balance,
+                accounts::currency,
+                accounts::account_type,
+                accounts::uid,
+            ))
+            .filter(users::is_internal.eq(false))
+            .load::<Self>(conn)
+    }
+
+    // uid would be enough to fetch the account, but we use both pieces to information
+    // to make sure that username and uid are bound together
+    fn get_internal_user_btc_accounts(
+        conn: &diesel::PgConnection,
+        uid: i32,
+        username: &str,
+        account_type: &str,
+    ) -> Result<Vec<Self>, DieselError> {
+        users::dsl::users
+            .inner_join(accounts::dsl::accounts)
+            .select((
+                accounts::account_id,
+                accounts::balance,
+                accounts::currency,
+                accounts::account_type,
+                accounts::uid,
+            ))
+            .filter(users::uid.eq(uid))
+            .filter(users::is_internal.eq(true))
+            .filter(users::username.eq(username))
+            .filter(accounts::account_type.eq(account_type))
+            .filter(accounts::currency.eq("BTC"))
+            .load::<Self>(conn)
+    }
+
+    pub fn get_dealer_btc_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
+        Self::get_internal_user_btc_accounts(conn, 52172712, "dealer", "Internal")
+    }
+
+    pub fn get_bank_btc_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
+        Self::get_internal_user_btc_accounts(conn, 23193913, "bank", "External")
     }
 }
 
