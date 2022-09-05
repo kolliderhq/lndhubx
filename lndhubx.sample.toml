@@ -16,6 +16,8 @@ bank_zmq_publish_address = "tcp://0.0.0.0:5556"
 bank_dealer_pull_address = "tcp://0.0.0.0:5557"
 bank_dealer_push_address = "tcp://0.0.0.0:5558"
 
+bank_cli_resp_address = "tcp://127.0.0.1:5559"
+
 deposit_limit = 0.001
 withdrawal_only = false
 

@@ -47,6 +47,7 @@ pub struct BankEngineSettings {
     pub influx_org: String,
     pub influx_bucket: String,
     pub influx_token: String,
+    pub bank_cli_resp_address: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
