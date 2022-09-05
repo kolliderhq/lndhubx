@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use core_types::DbPool;
-use utils::xzmq::*;
+use utils::xzmq::SocketContext;
 
 pub mod comms;
 pub mod jwt;
@@ -39,8 +39,9 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
 
     let (tx, rx) = mpsc::channel(1024);
 
-    let subscriber = create_subscriber(&settings.api_zmq_subscribe_address);
-    let pusher = create_push(&settings.api_zmq_push_address);
+    let context = SocketContext::new();
+    let subscriber = context.create_subscriber(&settings.api_zmq_subscribe_address);
+    let pusher = context.create_push(&settings.api_zmq_push_address);
 
     tokio::task::spawn(CommsActor::start(tx.clone(), rx, subscriber, pusher, settings.clone()));
 
