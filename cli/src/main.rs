@@ -1,5 +1,5 @@
-use cli::cli::CliSettings;
-use cli::start;
+use cli::cli::{Cli, CliSettings};
+use structopt::StructOpt;
 use utils::xzmq::SocketContext;
 
 fn main() {
@@ -8,5 +8,5 @@ fn main() {
     let context = SocketContext::new();
     let socket = context.create_request(&settings.bank_cli_resp_address);
 
-    start(&socket);
+    Cli::from_args().execute(socket).process_response();
 }
