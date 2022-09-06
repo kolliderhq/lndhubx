@@ -125,8 +125,8 @@ pub async fn start(
     };
 
     let mut cli_listener = |msg: Message, _destination: ServiceIdentity| {
-        let payload = bincode::serialize(&msg).unwrap();
-        cli_socket.send(payload, 0x00).unwrap();
+        let payload = serde_json::to_string(&msg).unwrap();
+        cli_socket.send(payload.as_str(), 0x00).unwrap();
     };
 
     loop {

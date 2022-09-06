@@ -33,7 +33,7 @@ pub struct ResponseHandler {
 impl ResponseHandler {
     pub fn process_response(self) {
         match self.socket.recv_msg(0) {
-            Ok(frame) => match bincode::deserialize::<Message>(&frame) {
+            Ok(frame) => match serde_json::from_slice::<Message>(&frame) {
                 Ok(msg) => match msg {
                     Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response)) => {
                         println!("Received create invoice response: {:?}", create_invoice_response);
