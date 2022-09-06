@@ -4,11 +4,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod api;
 pub mod bank;
+pub mod cli;
 pub mod dealer;
 pub mod kollider_client;
 
 use api::*;
 use bank::*;
+use cli::*;
 use dealer::*;
 use kollider_client::*;
 
@@ -30,6 +32,7 @@ pub enum Message {
     Dealer(Dealer),
     KolliderApiResponse(KolliderApiResponse),
     Bank(Bank),
+    Cli(Cli),
 }
 
 #[cfg(test)]

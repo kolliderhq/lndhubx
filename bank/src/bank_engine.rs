@@ -21,6 +21,7 @@ use xerror::bank_engine::*;
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 
+use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use serde::{Deserialize, Serialize};
 
 const BANK_UID: u64 = 23193913;
@@ -1821,6 +1822,17 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
             },
+            Message::Cli(Cli::MakeTx(make_tx)) => {
+                let tx = make_tx.clone();
+                let result = match self.process_make_tx(make_tx).await {
+                    Ok(_) => "Successful".to_string(),
+                    Err(err) => err.to_string(),
+                };
+                let msg = Message::Cli(Cli::MakeTxResult(MakeTxResult { tx, result }));
+                // the identity is ignored by cli listener, so we are using ServiceIdentity::Api here
+                // just to pass some argument
+                listener(msg, ServiceIdentity::Api);
+            }
             _ => {}
         }
     }
@@ -1942,6 +1954,114 @@ impl BankEngine {
             let msg = Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response));
             listener(msg, ServiceIdentity::Dealer)
         }
+    }
+
+    async fn process_make_tx(&mut self, make_tx: MakeTx) -> Result<(), BankError> {
+        let MakeTx {
+            outbound_uid,
+            outbound_account_id,
+            inbound_uid,
+            inbound_account_id,
+            amount,
+            currency,
+        } = make_tx;
+
+        if amount.is_sign_negative() {
+            return Err(BankError::FailedTransaction);
+        }
+
+        if outbound_uid == inbound_uid && outbound_account_id == inbound_account_id {
+            return Err(BankError::FailedTransaction);
+        }
+
+        let is_inbound_insurance_account =
+            inbound_uid == DEALER_UID && inbound_account_id == self.ledger.insurance_fund_account.account_id;
+        let is_outbound_insurance_account =
+            outbound_uid == DEALER_UID && make_tx.outbound_account_id == self.ledger.insurance_fund_account.account_id;
+        let is_inbound_external_account =
+            inbound_uid == BANK_UID && inbound_account_id == self.ledger.external_account.account_id;
+        let is_outbound_external_account =
+            outbound_uid == BANK_UID && outbound_account_id == self.ledger.external_account.account_id;
+
+        if (is_inbound_insurance_account && !is_outbound_external_account)
+            || (is_outbound_insurance_account && !is_inbound_external_account)
+        {
+            return Err(BankError::FailedTransaction);
+        }
+
+        let mut outbound_account = if is_outbound_external_account {
+            self.ledger.external_account.clone()
+        } else if is_outbound_insurance_account {
+            self.ledger.insurance_fund_account.clone()
+        } else {
+            self.ledger
+                .user_accounts
+                .get(&outbound_uid)
+                .ok_or(BankError::UserAccountNotFound)?
+                .accounts
+                .get(&outbound_account_id)
+                .cloned()
+                .ok_or(BankError::AccountNotFound)?
+        };
+
+        let mut inbound_account = if is_inbound_external_account {
+            self.ledger.external_account.clone()
+        } else if is_inbound_insurance_account {
+            self.ledger.insurance_fund_account.clone()
+        } else {
+            self.ledger
+                .user_accounts
+                .get(&inbound_uid)
+                .ok_or(BankError::UserAccountNotFound)?
+                .accounts
+                .get(&inbound_account_id)
+                .cloned()
+                .ok_or(BankError::AccountNotFound)?
+        };
+
+        if outbound_account.currency != currency || outbound_account.currency != inbound_account.currency {
+            return Err(BankError::FailedTransaction);
+        }
+
+        self.make_tx(
+            &mut outbound_account,
+            outbound_uid,
+            &mut inbound_account,
+            inbound_uid,
+            amount,
+            Decimal::ONE,
+        )?;
+
+        self.update_account(&outbound_account, outbound_uid);
+        self.update_account(&inbound_account, inbound_uid);
+
+        if is_outbound_external_account {
+            self.ledger.external_account = outbound_account;
+        } else if is_outbound_insurance_account {
+            self.ledger.insurance_fund_account = outbound_account;
+        } else {
+            self.ledger
+                .user_accounts
+                .get_mut(&outbound_uid)
+                .unwrap()
+                .accounts
+                .insert(outbound_account_id, outbound_account);
+        };
+
+        if is_inbound_external_account {
+            self.ledger.external_account = inbound_account
+        } else if is_inbound_insurance_account {
+            self.ledger.insurance_fund_account = inbound_account
+        } else {
+            self.ledger
+                .user_accounts
+                .get_mut(&inbound_uid)
+                .unwrap()
+                .accounts
+                .insert(inbound_account_id, inbound_account);
+        };
+
+        Ok(())
     }
 }
 

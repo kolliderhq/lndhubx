@@ -1,5 +1,5 @@
 use crate::actions::Action;
-use msgs::{dealer::Dealer, Message};
+use msgs::{cli::Cli as CliMsg, dealer::Dealer, Message};
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 use utils::xzmq::ZmqSocket;
@@ -40,6 +40,9 @@ impl ResponseHandler {
                     }
                     Message::Dealer(Dealer::BankState(state)) => {
                         println!("Received bank state: {:?}", state);
+                    }
+                    Message::Cli(CliMsg::MakeTxResult(tx_result)) => {
+                        println!("Received transaction result: {:?}", tx_result);
                     }
                     _ => {
                         println!("Received unhandled message: {:?}", msg)
