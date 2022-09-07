@@ -135,7 +135,10 @@ impl KolliderHedgingClient {
                         set_disconnected(&shared_state, &shared_state_changed, &callback);
                     }
                     match Self::open_socket(ws_url.clone()) {
-                        Ok(new_socket) => socket = new_socket,
+                        Ok(new_socket) => {
+                            socket = new_socket;
+                            set_reconnected(&shared_state, &shared_state_changed, &callback);
+                        }
                         Err(_err) => {
                             std::thread::sleep(Duration::from_millis(WS_THREAD_RECONNECT_MILLISECONDS));
                         }
