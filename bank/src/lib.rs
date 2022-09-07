@@ -67,6 +67,7 @@ pub async fn start(
     api_sender: ZmqSocket,
     dealer_sender: ZmqSocket,
     dealer_recv: ZmqSocket,
+    cli_socket: ZmqSocket,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
@@ -123,6 +124,11 @@ pub async fn start(
         _ => {}
     };
 
+    let mut cli_listener = |msg: Message, _destination: ServiceIdentity| {
+        let payload = serde_json::to_string(&msg).unwrap();
+        cli_socket.send(payload.as_str(), 0x00).unwrap();
+    };
+
     loop {
         if let Ok(msg) = payment_thread_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
@@ -148,6 +154,12 @@ pub async fn start(
 
         if let Ok(msg) = priority_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
+        }
+
+        if let Ok(frame) = cli_socket.recv_msg(1) {
+            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
+                bank_engine.process_msg(message, &mut cli_listener).await;
+            };
         }
 
         if state_insertion_interval.elapsed().as_secs() > 5 {
