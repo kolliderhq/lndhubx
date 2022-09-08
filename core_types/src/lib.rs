@@ -163,7 +163,7 @@ pub enum ServiceIdentity {
     Loopback,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConversionInfo {
     pub from: Currency,
     pub to: Currency,
@@ -204,6 +204,10 @@ impl ConversionInfo {
             symbol,
             side,
         }
+    }
+
+    pub fn is_linear(&self) -> bool {
+        self.base == self.from
     }
 }
 

@@ -353,12 +353,13 @@ impl DealerEngine {
                         .as_micros();
                     self.guaranteed_quotes = self.guaranteed_quotes.split_off(&invalidated_quotes);
 
+                    let conversion_info = ConversionInfo::new(swap_request.from, swap_request.to);
+                    let current_rate = self.get_rate(Some(swap_request.amount), None, conversion_info.clone());
+
                     match swap_request.quote_id {
                         None => {
-                            let conversion_info = ConversionInfo::new(swap_request.from, swap_request.to);
-                            let rate = self.get_rate(Some(swap_request.amount), None, conversion_info);
-                            if rate.is_some() {
-                                swap_response.rate = rate;
+                            if current_rate.is_some() {
+                                swap_response.rate = current_rate;
                             } else {
                                 swap_response.success = false;
                                 swap_response.error = Some(SwapResponseError::CurrencyNotAvailable);
@@ -370,7 +371,10 @@ impl DealerEngine {
                                 swap_response.error = Some(SwapResponseError::InvalidQuoteId);
                             }
                             Some(quote) => match validate_quote(&quote, &swap_request) {
-                                Ok(_) => swap_response.rate = quote.rate,
+                                Ok(_) => {
+                                    let best_rate = get_better_rate(&quote.rate, &current_rate, conversion_info);
+                                    swap_response.rate = best_rate;
+                                }
                                 Err(_) => {
                                     swap_response.success = false;
                                     swap_response.error = Some(SwapResponseError::InvalidQuoteId);
@@ -826,7 +830,7 @@ impl DealerEngine {
                 match quotes.range(lookup_quantity..u64::MAX).next() {
                     None => None,
                     Some((_level_vol, price)) => {
-                        if conversion_info.base == conversion_info.from {
+                        if conversion_info.is_linear() {
                             Some(self.get_linear_rate(*price))
                         } else {
                             Some(self.get_inverse_rate(*price))
@@ -891,6 +895,31 @@ fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(
         return Err(());
     }
     Ok(())
+}
+
+fn get_better_rate(
+    rate1: &Option<Decimal>,
+    rate2: &Option<Decimal>,
+    conversion_info: ConversionInfo,
+) -> Option<Decimal> {
+    let is_linear = conversion_info.is_linear();
+    if is_linear {
+        let r1 = rate1.unwrap_or(Decimal::MIN);
+        let r2 = rate2.unwrap_or(Decimal::MIN);
+        if r1 > r2 {
+            rate1.clone()
+        } else {
+            rate2.clone()
+        }
+    } else {
+        let r1 = rate1.unwrap_or(Decimal::MAX);
+        let r2 = rate2.unwrap_or(Decimal::MAX);
+        if r1 < r2 {
+            rate1.clone()
+        } else {
+            rate2.clone()
+        }
+    }
 }
 
 #[cfg(test)]
