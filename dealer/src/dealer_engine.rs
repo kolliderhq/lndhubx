@@ -375,10 +375,13 @@ impl DealerEngine {
                             Some(quote) => match validate_quote(&quote, &swap_request) {
                                 Ok(_) => {
                                     let best_rate = get_better_rate(&quote.rate, &current_rate, conversion_info);
-                                    let best_fees =
-                                        quote.fees.unwrap_or(Decimal::MAX).min(fees.unwrap_or(Decimal::ZERO));
+                                    let best_fees = if let (Some(fees), Some(quote_fees)) = (fees, quote.fees) {
+                                        Some(std::cmp::min(fees, quote_fees))
+                                    } else {
+                                        fees.or(quote.fees)
+                                    };
                                     swap_response.rate = best_rate;
-                                    swap_response.fees = Some(best_fees);
+                                    swap_response.fees = best_fees;
                                 }
                                 Err(_) => {
                                     swap_response.success = false;
