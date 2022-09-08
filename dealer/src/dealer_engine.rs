@@ -344,6 +344,7 @@ impl DealerEngine {
                         to: swap_request.to,
                         rate: None,
                         error: None,
+                        fees: None,
                     };
                     let time_now = SystemTime::now();
                     let invalidated_quotes = time_now
@@ -354,12 +355,13 @@ impl DealerEngine {
                     self.guaranteed_quotes = self.guaranteed_quotes.split_off(&invalidated_quotes);
 
                     let conversion_info = ConversionInfo::new(swap_request.from, swap_request.to);
-                    let current_rate = self.get_rate(Some(swap_request.amount), None, conversion_info.clone());
+                    let (current_rate, fees) = self.get_rate(Some(swap_request.amount), None, conversion_info.clone());
 
                     match swap_request.quote_id {
                         None => {
                             if current_rate.is_some() {
                                 swap_response.rate = current_rate;
+                                swap_response.fees = fees;
                             } else {
                                 swap_response.success = false;
                                 swap_response.error = Some(SwapResponseError::CurrencyNotAvailable);
@@ -373,7 +375,10 @@ impl DealerEngine {
                             Some(quote) => match validate_quote(&quote, &swap_request) {
                                 Ok(_) => {
                                     let best_rate = get_better_rate(&quote.rate, &current_rate, conversion_info);
+                                    let best_fees =
+                                        quote.fees.unwrap_or(Decimal::MAX).min(fees.unwrap_or(Decimal::ZERO));
                                     swap_response.rate = best_rate;
+                                    swap_response.fees = Some(best_fees);
                                 }
                                 Err(_) => {
                                     swap_response.success = false;
@@ -396,9 +401,10 @@ impl DealerEngine {
                         rate: None,
                         quote_id: None,
                         error: None,
+                        fees: None,
                     };
                     let conversion_info = ConversionInfo::new(quote_request.from, quote_request.to);
-                    let rate = self.get_rate(Some(quote_request.amount), None, conversion_info);
+                    let (rate, fees) = self.get_rate(Some(quote_request.amount), None, conversion_info);
                     if rate.is_some() {
                         let time_now = SystemTime::now();
                         let quote_id = time_now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
@@ -410,6 +416,7 @@ impl DealerEngine {
                         quote_response.quote_id = Some(quote_id);
                         quote_response.rate = rate;
                         quote_response.valid_until = valid_until;
+                        quote_response.fees = fees;
                         self.guaranteed_quotes.insert(quote_id, quote_response.clone());
                     } else {
                         quote_response.error = Some(QuoteResponseError::CurrencyNotAvailable);
@@ -438,7 +445,7 @@ impl DealerEngine {
                 Api::InvoiceRequest(invoice_request) => {
                     let conversion_info = ConversionInfo::new(Currency::BTC, invoice_request.currency);
                     // We assume user specifies the value not the amount.
-                    let rate = self.get_rate(None, Some(invoice_request.amount), conversion_info);
+                    let (rate, fees) = self.get_rate(None, Some(invoice_request.amount), conversion_info);
                     let mut invoice_response = InvoiceResponse {
                         rate: None,
                         amount: invoice_request.amount,
@@ -449,11 +456,13 @@ impl DealerEngine {
                         payment_request: None,
                         account_id: None,
                         error: None,
+                        fees: None,
                     };
                     if rate.is_none() {
                         invoice_response.error = Some(InvoiceResponseError::RateNotAvailable);
                     } else {
-                        invoice_response.rate = rate
+                        invoice_response.rate = rate;
+                        invoice_response.fees = fees;
                     }
                     let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                     listener(msg);
@@ -462,11 +471,12 @@ impl DealerEngine {
                     let conversion_info = ConversionInfo::new(msg.currency, Currency::BTC);
                     // We assume user specifies the value not the amount.
                     let amount = msg.amount.unwrap();
-                    let rate = self.get_rate(None, Some(amount), conversion_info);
+                    let (rate, fees) = self.get_rate(None, Some(amount), conversion_info);
                     if rate.is_none() {
                         return;
                     } else {
                         msg.rate = rate;
+                        msg.fees = fees;
                     }
                     let msg = Message::Api(Api::PaymentRequest(msg));
                     listener(msg);
@@ -475,11 +485,12 @@ impl DealerEngine {
                     let conversion_info = ConversionInfo::new(msg.currency, Currency::BTC);
                     // We assume user specifies the value not the amount.
                     let amount = msg.amount;
-                    let rate = self.get_rate(None, Some(amount), conversion_info);
+                    let (rate, fees) = self.get_rate(None, Some(amount), conversion_info);
                     if rate.is_none() {
                         return;
                     } else {
                         msg.rate = rate;
+                        msg.fees = fees;
                     }
                     let msg = Message::Api(Api::CreateLnurlWithdrawalRequest(msg));
                     listener(msg);
@@ -612,7 +623,7 @@ impl DealerEngine {
             Message::Dealer(Dealer::FiatDepositRequest(msg)) => {
                 let conversion_info = ConversionInfo::new(Currency::BTC, msg.currency);
                 // We assume user specifies the value not the amount.
-                let rate = self.get_rate(None, Some(msg.amount), conversion_info);
+                let (rate, fees) = self.get_rate(None, Some(msg.amount), conversion_info);
 
                 let mut fiat_deposit_response = FiatDepositResponse {
                     req_id: msg.req_id,
@@ -621,12 +632,14 @@ impl DealerEngine {
                     currency: msg.currency,
                     rate: None,
                     error: None,
+                    fees: None,
                 };
 
                 if rate.is_none() {
                     fiat_deposit_response.error = Some(FiatDepositResponseError::CurrencyNotAvailable);
                 } else {
                     fiat_deposit_response.rate = rate;
+                    fiat_deposit_response.fees = fees;
                 }
 
                 let msg = Message::Dealer(Dealer::FiatDepositResponse(fiat_deposit_response));
@@ -803,17 +816,17 @@ impl DealerEngine {
         amount: Option<Decimal>,
         value: Option<Decimal>,
         conversion_info: ConversionInfo,
-    ) -> Option<Decimal> {
+    ) -> (Option<Decimal>, Option<Decimal>) {
         let maybe_quotes = match conversion_info.side {
             Side::Bid => self.bid_quotes.get(&conversion_info.symbol),
             Side::Ask => self.ask_quotes.get(&conversion_info.symbol),
         };
-        // Either vlaue or amount needs to be some.
+        // Either value or amount needs to be some.
         if amount.is_none() && value.is_none() {
-            return None;
+            return (None, None);
         }
         match maybe_quotes {
-            None => None,
+            None => (None, None),
             Some(quotes) => {
                 let best_price = if conversion_info.from != conversion_info.quote {
                     *quotes.range(0..u64::MAX).next().unwrap().1
@@ -828,12 +841,17 @@ impl DealerEngine {
                 };
                 let lookup_quantity = value.to_i64().unwrap() as u64;
                 match quotes.range(lookup_quantity..u64::MAX).next() {
-                    None => None,
+                    None => (None, None),
                     Some((_level_vol, price)) => {
                         if conversion_info.is_linear() {
-                            Some(self.get_linear_rate(*price))
+                            let user_rate = self.get_linear_rate(*price);
+                            let fees = (price - user_rate) * amount.unwrap_or(value);
+                            (Some(user_rate), Some(fees))
                         } else {
-                            Some(self.get_inverse_rate(*price))
+                            let no_fee_inverse_rate = Decimal::ONE / price;
+                            let user_inverse_rate = self.get_inverse_rate(*price);
+                            let fees = (no_fee_inverse_rate - user_inverse_rate) * amount.unwrap_or(value);
+                            (Some(user_inverse_rate), Some(fees))
                         }
                     }
                 }
@@ -907,17 +925,17 @@ fn get_better_rate(
         let r1 = rate1.unwrap_or(Decimal::MIN);
         let r2 = rate2.unwrap_or(Decimal::MIN);
         if r1 > r2 {
-            rate1.clone()
+            *rate1
         } else {
-            rate2.clone()
+            *rate2
         }
     } else {
         let r1 = rate1.unwrap_or(Decimal::MAX);
         let r2 = rate2.unwrap_or(Decimal::MAX);
         if r1 < r2 {
-            rate1.clone()
+            *rate1
         } else {
-            rate2.clone()
+            *rate2
         }
     }
 }

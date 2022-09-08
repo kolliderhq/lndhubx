@@ -81,6 +81,7 @@ pub struct FiatDepositResponse {
     pub currency: Currency,
     pub uid: UserId,
     pub error: Option<FiatDepositResponseError>,
+    pub fees: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

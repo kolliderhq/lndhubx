@@ -793,6 +793,7 @@ impl BankEngine {
                             currency: msg.currency,
                             account_id: None,
                             error: Some(InvoiceResponseError::WithdrawalOnly),
+                            fees: None,
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
@@ -847,6 +848,7 @@ impl BankEngine {
                                 currency: msg.currency,
                                 account_id: Some(target_account.account_id),
                                 error: Some(InvoiceResponseError::AccountDoesNotExist),
+                                fees: None,
                             };
                             let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                             listener(msg, ServiceIdentity::Api);
@@ -871,6 +873,7 @@ impl BankEngine {
                             currency: msg.currency,
                             account_id: Some(target_account.account_id),
                             error: Some(InvoiceResponseError::DepositLimitExceeded),
+                            fees: None,
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
@@ -900,6 +903,7 @@ impl BankEngine {
                             currency: msg.currency,
                             account_id: Some(target_account.account_id),
                             error: None,
+                            fees: None,
                         };
 
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
@@ -961,6 +965,7 @@ impl BankEngine {
                                 currency: msg.currency,
                                 account_id: Some(target_account.account_id),
                                 error: Some(InvoiceResponseError::AccountDoesNotExist),
+                                fees: None,
                             };
                             let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                             listener(msg, ServiceIdentity::Api);
@@ -986,6 +991,7 @@ impl BankEngine {
                             currency: msg.currency,
                             account_id: Some(target_account.account_id),
                             error: Some(InvoiceResponseError::DepositLimitExceeded),
+                            fees: None,
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
@@ -1013,6 +1019,7 @@ impl BankEngine {
                             currency: msg.currency,
                             account_id: Some(target_account.account_id),
                             error: None,
+                            fees: msg.fees,
                         };
 
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
@@ -1619,6 +1626,7 @@ impl BankEngine {
                         rate: msg.rate,
                         payment_request: Some(String::from("")),
                         receipient: None,
+                        fees: msg.fees,
                     };
 
                     let lnurl_path = String::from("https://lndhubx.kollider.xyz/api/lnurl_withdrawal/request");
