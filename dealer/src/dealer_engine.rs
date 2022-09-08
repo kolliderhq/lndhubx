@@ -26,8 +26,6 @@ use uuid::Uuid;
 use xerror::kollider_client::KolliderClientError;
 
 const QUOTE_TTL_MS: u64 = 5000;
-const LINEAR_MODIFIER: Decimal = dec!(0.995);
-const INVERSE_MODIFIER: Decimal = dec!(1.005);
 
 pub struct HedgeSettings {
     // The amount of unhedged value to tolerate before a an adjustment.
@@ -57,6 +55,8 @@ pub struct DealerEngineSettings {
     pub position_min_leverage: Decimal,
     pub position_max_leverage: Decimal,
     pub leverage_check_interval_ms: u64,
+
+    pub spread: Decimal,
 }
 
 pub struct DealerEngine {
@@ -80,6 +80,7 @@ pub struct DealerEngine {
     position_max_leverage: Decimal,
     leverage_check_interval_ms: u64,
     last_leverage_check_timestamp: Instant,
+    spread: Decimal,
 }
 
 impl DealerEngine {
@@ -124,6 +125,7 @@ impl DealerEngine {
             position_max_leverage: settings.position_max_leverage,
             leverage_check_interval_ms: settings.leverage_check_interval_ms,
             last_leverage_check_timestamp,
+            spread: settings.spread,
         }
     }
 
@@ -762,6 +764,36 @@ impl DealerEngine {
         }
     }
 
+    #[inline]
+    fn get_spread(&self) -> Decimal {
+        self.spread
+    }
+
+    #[inline]
+    fn get_half_spread(&self) -> Decimal {
+        self.get_spread() / Decimal::TWO
+    }
+
+    #[inline]
+    fn get_linear_modifier(&self) -> Decimal {
+        Decimal::ONE - self.get_half_spread()
+    }
+
+    #[inline]
+    fn get_inverse_modifier(&self) -> Decimal {
+        Decimal::ONE + self.get_half_spread()
+    }
+
+    #[inline]
+    fn get_linear_rate(&self, price: Decimal) -> Decimal {
+        price * self.get_linear_modifier()
+    }
+
+    #[inline]
+    fn get_inverse_rate(&self, price: Decimal) -> Decimal {
+        Decimal::ONE / (price * self.get_inverse_modifier())
+    }
+
     fn get_rate(
         &self,
         amount: Option<Decimal>,
@@ -795,9 +827,9 @@ impl DealerEngine {
                     None => None,
                     Some((_level_vol, price)) => {
                         if conversion_info.base == conversion_info.from {
-                            Some(*price * LINEAR_MODIFIER)
+                            Some(self.get_linear_rate(*price))
                         } else {
-                            Some(dec!(1) / (price * INVERSE_MODIFIER))
+                            Some(self.get_inverse_rate(*price))
                         }
                     }
                 }
@@ -1076,6 +1108,7 @@ mod tests {
             position_min_leverage: dec!(0.9999),
             position_max_leverage: dec!(1.0001),
             leverage_check_interval_ms: 1000,
+            spread: dec!(0.01),
         };
         let ws_client = MockWsClient::new();
         let mut dealer = DealerEngine::new(settings, ws_client);
