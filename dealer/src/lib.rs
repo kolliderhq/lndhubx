@@ -1,7 +1,5 @@
 pub mod dealer_engine;
 
-use utils::xzmq::*;
-
 use crossbeam::channel::bounded;
 use dealer_engine::*;
 use msgs::dealer::{BankStateRequest, Dealer};
@@ -15,6 +13,7 @@ use core_types::*;
 use futures::prelude::*;
 use influxdb2::Client;
 use rust_decimal::prelude::*;
+use utils::xzmq::ZmqSocket;
 
 pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
@@ -57,8 +56,7 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     );
 
     let mut listener = |msg: Message| {
-        let payload = bincode::serialize(&msg).unwrap();
-        bank_sender.send(payload, 0x00).unwrap();
+        utils::xzmq::send_as_bincode(&bank_sender, &msg);
     };
 
     let mut last_health_check = Instant::now();

@@ -19,8 +19,7 @@ pub struct Cli {
 impl Cli {
     pub fn execute(self, socket: ZmqSocket) -> ResponseHandler {
         let msg = self.action.into_request();
-        let payload = bincode::serialize(&msg).unwrap();
-        socket.send(payload, 0x00).unwrap();
+        utils::xzmq::send_as_bincode(&socket, &msg);
 
         ResponseHandler { socket }
     }

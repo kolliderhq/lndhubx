@@ -111,12 +111,10 @@ pub async fn start(
 
     let mut listener = |msg: Message, destination: ServiceIdentity| match destination {
         ServiceIdentity::Api => {
-            let payload = bincode::serialize(&msg).unwrap();
-            api_sender.send_multipart(vec![vec![], vec![], payload], 0x00).unwrap();
+            utils::xzmq::send_multipart_as_bincode(&api_sender, &msg);
         }
         ServiceIdentity::Dealer => {
-            let payload = bincode::serialize(&msg).unwrap();
-            dealer_sender.send(payload, 0x00).unwrap();
+            utils::xzmq::send_as_bincode(&dealer_sender, &msg);
         }
         ServiceIdentity::Loopback => {
             priority_tx.send(msg).unwrap();
@@ -125,8 +123,7 @@ pub async fn start(
     };
 
     let mut cli_listener = |msg: Message, _destination: ServiceIdentity| {
-        let payload = serde_json::to_string(&msg).unwrap();
-        cli_socket.send(payload.as_str(), 0x00).unwrap();
+        utils::xzmq::send_as_json(&cli_socket, &msg);
     };
 
     loop {
