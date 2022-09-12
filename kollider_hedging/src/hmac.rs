@@ -7,7 +7,7 @@ type HmacSha256 = Hmac<Sha256>;
 pub fn generate_authentication_signature(b64_secret: &str) -> Result<(String, String), ()> {
     let timestamp_str = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
+        .expect("System time should not be set to earlier than epoch start")
         .as_secs()
         .to_string();
     let mut message = timestamp_str.clone();

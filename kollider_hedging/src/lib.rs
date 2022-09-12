@@ -9,9 +9,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::WebSocket;
 use url::Url;
@@ -98,7 +98,7 @@ impl KolliderHedgingClient {
         let thread_run_flag = run_flag.clone();
         let ws_url = Url::parse(url).expect("Could not parse url");
         let mut socket = Self::open_socket(ws_url.clone())?;
-        shared_state.lock().unwrap().is_connected = true;
+        get_locked_state(&shared_state).is_connected = true;
         let join_handle = std::thread::spawn(move || {
             while thread_run_flag.load(std::sync::atomic::Ordering::SeqCst) {
                 let mut messages_available = false;
@@ -212,7 +212,7 @@ impl KolliderHedgingClient {
         });
         self.send_request(&authenticate_request)?;
         let result = self.state_changed.wait_timeout_while(
-            self.state.lock().unwrap(),
+            get_locked_state(&self.state),
             Duration::from_secs(WS_ACTION_TIMEOUT_SECONDS),
             |state| !state.is_authenticated,
         );
@@ -281,15 +281,15 @@ impl KolliderHedgingClient {
 
 impl WsClient for KolliderHedgingClient {
     fn is_authenticated(&self) -> bool {
-        self.state.lock().unwrap().is_authenticated
+        get_locked_state(&self.state).is_authenticated
     }
 
     fn is_connected(&self) -> bool {
-        self.state.lock().unwrap().is_connected
+        get_locked_state(&self.state).is_connected
     }
 
     fn is_ready(&self) -> bool {
-        let state = self.state.lock().unwrap();
+        let state = get_locked_state(&self.state);
         state.is_connected && state.is_authenticated
     }
 
@@ -297,7 +297,7 @@ impl WsClient for KolliderHedgingClient {
         if !matches!(currency, Currency::BTC) {
             let symbol: Symbol = currency.into();
             {
-                let shared_state = self.state.lock().unwrap();
+                let shared_state = get_locked_state(&self.state);
                 let (side, upnl) = match shared_state.position_states.get(&symbol) {
                     Some(position) => match position.side.as_ref() {
                         None => {
@@ -333,31 +333,34 @@ impl WsClient for KolliderHedgingClient {
                 }
             }
         } else {
-            match self.state.lock().unwrap().balances {
+            match get_locked_state(&self.state).balances {
                 Some(ref balance) => {
                     let symbol = Symbol::from("SAT");
-                    let sats_balance = balance.cash.get(&symbol).unwrap();
-                    Ok(*sats_balance)
+                    balance
+                        .cash
+                        .get(&symbol)
+                        .cloned()
+                        .ok_or(KolliderClientError::BalanceNotAvailable)
                 }
                 None => Err(KolliderClientError::BalanceNotAvailable),
             }
         }
     }
 
-    fn subscribe(&self, channels: Vec<Channel>, symbols: Option<Vec<Symbol>>) {
+    fn subscribe(&self, channels: Vec<Channel>, symbols: Option<Vec<Symbol>>) -> Result<()> {
         if let Some(s) = symbols {
-            self.subscribe(channels, s).unwrap();
+            self.subscribe(channels, s)
         } else {
-            self.subscribe_all(channels).unwrap();
+            self.subscribe_all(channels)
         }
     }
 
     fn get_all_balances(&self) -> Option<Balances> {
-        self.state.lock().unwrap().balances.clone()
+        get_locked_state(&self.state).balances.clone()
     }
 
     fn get_position_state(&self, symbol: &Symbol) -> Result<Option<PositionState>> {
-        let shared_state = self.state.lock().unwrap();
+        let shared_state = get_locked_state(&self.state);
         if shared_state.has_received_positions {
             Ok(shared_state.position_states.get(symbol).cloned())
         } else {
@@ -366,7 +369,7 @@ impl WsClient for KolliderHedgingClient {
     }
 
     fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol> {
-        self.state.lock().unwrap().tradable_symbols.clone()
+        get_locked_state(&self.state).tradable_symbols.clone()
     }
 
     fn make_withdrawal(&self, amount: u64, payment_request: String) -> Result<()> {
@@ -412,32 +415,26 @@ impl WsClient for KolliderHedgingClient {
 }
 
 fn is_connected(shared_state: &Arc<Mutex<State>>) -> bool {
-    shared_state.lock().unwrap().is_connected
+    get_locked_state(shared_state).is_connected
 }
 
 fn set_disconnected(shared_state: &Arc<Mutex<State>>, shared_state_changed: &Arc<Condvar>, callback: &Sender<Message>) {
-    let mut state = shared_state.lock().unwrap();
+    let mut state = get_locked_state(shared_state);
     state.clear();
     shared_state_changed.notify_one();
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let timestamp = utils::time::time_now();
     let msg = Message::KolliderApiResponse(KolliderApiResponse::Disconnected(Disconnected { timestamp }));
-    callback.send(msg).unwrap();
+    send_to_callback(callback, msg);
 }
 
 fn set_reconnected(shared_state: &Arc<Mutex<State>>, shared_state_changed: &Arc<Condvar>, callback: &Sender<Message>) {
-    let mut state = shared_state.lock().unwrap();
+    let mut state = get_locked_state(shared_state);
     state.is_authenticated = false;
     state.is_connected = true;
     shared_state_changed.notify_one();
-    let timestamp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let timestamp = utils::time::time_now();
     let msg = Message::KolliderApiResponse(KolliderApiResponse::Reconnected(Reconnected { timestamp }));
-    callback.send(msg).unwrap();
+    send_to_callback(callback, msg);
 }
 
 fn process_incoming_message(
@@ -449,76 +446,91 @@ fn process_incoming_message(
     match response.clone() {
         KolliderApiResponse::Authenticate(authenticate) => {
             if authenticate.success() {
-                shared_state.lock().unwrap().is_authenticated = true;
+                get_locked_state(shared_state).is_authenticated = true;
                 shared_state_changed.notify_one();
             }
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::PositionStates(position_state) => {
             {
-                let mut shared_state = shared_state.lock().unwrap();
+                let mut shared_state = get_locked_state(shared_state);
                 shared_state
                     .position_states
                     .insert(position_state.symbol.clone(), *position_state);
             }
             shared_state_changed.notify_one();
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::Positions(positions) => {
             {
-                let mut shared_state = shared_state.lock().unwrap();
+                let mut shared_state = get_locked_state(shared_state);
                 shared_state.position_states = positions.positions;
                 shared_state.has_received_positions = true;
             }
             shared_state_changed.notify_one();
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::Balances(balances) => {
-            shared_state.lock().unwrap().balances = Some(balances);
+            get_locked_state(shared_state).balances = Some(balances);
             shared_state_changed.notify_one();
         }
         KolliderApiResponse::MarkPrices(mark_price) => {
-            shared_state
-                .lock()
-                .unwrap()
+            get_locked_state(shared_state)
                 .mark_prices
                 .insert(mark_price.symbol.clone(), mark_price);
             shared_state_changed.notify_one();
         }
         KolliderApiResponse::OrderInvoice(_order_invoice) => {
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::TradableSymbols(tradable_symbols) => {
-            shared_state.lock().unwrap().tradable_symbols = tradable_symbols.symbols;
+            get_locked_state(shared_state).tradable_symbols = tradable_symbols.symbols;
             shared_state_changed.notify_one();
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::SettlementRequest(_settlement_request) => {
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::Level2State(_level2_state) => {
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::ChangeMarginSuccess(_change_margin_success) => {
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::ChangeMarginRejection(_change_margin_rejection) => {
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::AddMarginRequest(_add_margin_request) => {
             let msg = Message::KolliderApiResponse(response);
-            callback.send(msg).unwrap();
+            send_to_callback(callback, msg);
         }
         _ => {}
+    }
+}
+
+fn send_to_callback(callback: &Sender<Message>, msg: Message) {
+    if let Err(err) = callback.send(msg) {
+        eprintln!("Failed to send a message to a callback sender, reason: {:?}", err);
+        panic!("Failed to send a message to a callback sender");
+    }
+}
+
+fn get_locked_state(shared_state: &Arc<Mutex<State>>) -> MutexGuard<State> {
+    match shared_state.lock() {
+        Ok(locked) => locked,
+        Err(err) => {
+            eprintln!("Could not lock a shared state, reason: {:?}", err);
+            panic!("Could not lock a shared state")
+        }
     }
 }
 

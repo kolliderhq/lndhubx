@@ -33,7 +33,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
         .expect("Failed to create pool.");
 
     {
-        let conn = pool.get().unwrap();
+        let conn = pool.get().expect("Failed to get DB connection to initialize models");
         models::init(&conn).expect("Failed to initialize models");
     }
 

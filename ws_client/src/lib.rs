@@ -17,7 +17,7 @@ pub trait WsClient {
     fn get_tradable_symbols(&self) -> HashMap<Symbol, TradableSymbol>;
     fn make_withdrawal(&self, amount: u64, payment_request: String) -> Result<()>;
     fn make_order(&self, quantity: u64, symbol: Symbol, side: Side) -> Result<()>;
-    fn subscribe(&self, chanels: Vec<Channel>, symbols: Option<Vec<Symbol>>);
+    fn subscribe(&self, chanels: Vec<Channel>, symbols: Option<Vec<Symbol>>) -> Result<()>;
     fn buy(&self, quantity: u64, currency: Currency) -> Result<()>;
     fn sell(&self, quantity: u64, currency: Currency) -> Result<()>;
     fn change_margin(&self, symbol: Symbol, amount: i64) -> Result<()>;

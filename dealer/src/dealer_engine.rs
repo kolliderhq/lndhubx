@@ -516,8 +516,14 @@ impl DealerEngine {
                             "Re-connected to the Kollider exchange at {}",
                             reconnection.timestamp
                         );
-                        slog::info!(self.logger, "Re-subscribing to position states");
-                        self.ws_client.subscribe(vec![Channel::PositionStates], None);
+                        slog::info!(self.logger, "Re-subscribing to position states after reconnection");
+                        if let Err(err) = self.ws_client.subscribe(vec![Channel::PositionStates], None) {
+                            slog::error!(
+                                self.logger,
+                                "Failed to re-subscribe position states after reconnection, reason: {:?}",
+                                err
+                            );
+                        }
                     }
                     KolliderApiResponse::Authenticate(auth) => {
                         if auth.success() {
@@ -525,7 +531,14 @@ impl DealerEngine {
                             self.is_kollider_authenticated = true;
                             self.check_has_received_initial_data();
                         }
-                        self.ws_client.subscribe(vec![Channel::PositionStates], None);
+                        slog::info!(self.logger, "Re-subscribing to position states after authentication");
+                        if let Err(err) = self.ws_client.subscribe(vec![Channel::PositionStates], None) {
+                            slog::error!(
+                                self.logger,
+                                "Failed to re-subscribe position states after authentication, reason: {:?}",
+                                err
+                            );
+                        }
                     }
                     KolliderApiResponse::OrderInvoice(order_invoice) => {
                         // Received an order invoice. We need to send this to the bank to pay for it.
@@ -567,10 +580,16 @@ impl DealerEngine {
                         });
                         self.has_received_symbols = true;
                         self.check_has_received_initial_data();
-                        self.ws_client.subscribe(
+                        if let Err(err) = self.ws_client.subscribe(
                             vec![Channel::MarkPrices, Channel::OrderbookLevel2],
                             Some(available_symbols),
-                        );
+                        ) {
+                            slog::error!(
+                                self.logger,
+                                "Failed to subscribe mark price and L2 order book updates, reason: {:?}",
+                                err
+                            );
+                        }
                     }
                     KolliderApiResponse::ChangeMarginSuccess(change_margin_success) => {
                         if change_margin_success.amount.is_sign_negative() {
@@ -1074,7 +1093,9 @@ mod tests {
             }
         }
 
-        fn subscribe(&self, _channels: Vec<Channel>, _symbols: Option<Vec<Symbol>>) {}
+        fn subscribe(&self, _channels: Vec<Channel>, _symbols: Option<Vec<Symbol>>) -> Result<(), KolliderClientError> {
+            Ok(())
+        }
 
         fn get_all_balances(&self) -> Option<Balances> {
             Some(self.balances.borrow().clone())

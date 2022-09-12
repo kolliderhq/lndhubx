@@ -8,13 +8,10 @@ pub mod time {
     use std::time::SystemTime;
 
     pub fn time_now() -> u64 {
-        match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-            Ok(duration) => duration.as_millis() as u64,
-            Err(err) => {
-                eprintln!("Failed to get current system time as epoch, reason: {:?}", err);
-                panic!("Failed to get current system time as epoch");
-            }
-        }
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("System time should not be earlier than epoch start")
+            .as_millis() as u64
     }
 
     #[inline]
@@ -28,7 +25,7 @@ pub mod time {
         S: Serializer,
     {
         let epoch = match system_time.duration_since(SystemTime::UNIX_EPOCH) {
-            Ok(duaration) => duaration.as_millis() as u64,
+            Ok(duration) => duration.as_millis() as u64,
             Err(_) => 0_u64,
         };
         serializer.serialize_u64(epoch)

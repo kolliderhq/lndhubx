@@ -21,6 +21,8 @@ pub enum JWTError {
     Invalid,
     #[error(display = "Jwt token that was supplied is invalid.")]
     Expired,
+    #[error(display = "Jwt could not be generated.")]
+    EncodingFailed,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -74,12 +76,15 @@ impl error::ResponseError for ApiError {
                 DbError::Unknown => HttpResponse::InternalServerError().json("An unknown error has occured."),
             },
             ApiError::Comms(comms) => match comms {
-                CommsError::FailedToSendMessage => HttpResponse::InternalServerError().json("Could't send message."),
+                CommsError::FailedToSendMessage => {
+                    HttpResponse::InternalServerError().json("Could not send a message.")
+                }
             },
             ApiError::JWT(jwt) => match jwt {
                 JWTError::Invalid => HttpResponse::Unauthorized().json("Jwt token is invalid."),
                 JWTError::Expired => HttpResponse::Unauthorized().json("Jwt token is expired."),
                 JWTError::NotSupplied => HttpResponse::Unauthorized().json("Jwt token is not supplied."),
+                JWTError::EncodingFailed => HttpResponse::Unauthorized().json("Jwt token could not be generated."),
             },
         }
     }
@@ -104,6 +109,7 @@ impl error::ResponseError for ApiError {
                 JWTError::Invalid => StatusCode::UNAUTHORIZED,
                 JWTError::Expired => StatusCode::UNAUTHORIZED,
                 JWTError::NotSupplied => StatusCode::UNAUTHORIZED,
+                JWTError::EncodingFailed => StatusCode::UNAUTHORIZED,
             },
         }
     }

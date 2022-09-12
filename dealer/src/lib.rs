@@ -38,14 +38,22 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
 pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
     let (kollider_client_tx, kollider_client_rx) = bounded(2024);
 
-    let ws_client = KolliderHedgingClient::connect(
+    let ws_client = match KolliderHedgingClient::connect(
         &settings.kollider_ws_url,
         &settings.kollider_api_key,
         &settings.kollider_api_secret,
         &settings.kollider_api_passphrase,
         kollider_client_tx,
-    )
-    .unwrap();
+    ) {
+        Ok(connected) => connected,
+        Err(err) => {
+            eprintln!(
+                "Failed to connect to: {}, reason: {:?}. Exiting",
+                settings.kollider_ws_url, err
+            );
+            return;
+        }
+    };
 
     let mut synth_dealer = DealerEngine::new(settings.clone(), ws_client);
 

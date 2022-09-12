@@ -8,6 +8,13 @@ use serde::{Deserialize, Serialize};
 use bigdecimal::BigDecimal;
 use uuid::Uuid;
 
+fn time_now_as_i64() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("System time should not be earlier than epoch start")
+        .as_millis() as i64
+}
+
 #[derive(Queryable, Identifiable, Insertable, Debug, Serialize, Deserialize)]
 #[primary_key(txid)]
 pub struct Transaction {
@@ -39,12 +46,7 @@ impl Transaction {
         to: Option<i64>,
     ) -> Result<Vec<Self>, DieselError> {
         let from = from.unwrap_or(0);
-        let to = to.unwrap_or(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64,
-        );
+        let to = to.unwrap_or_else(time_now_as_i64);
         let owning_transactions = transactions::outbound_uid.eq(uid).or(transactions::inbound_uid.eq(uid));
         transactions::dsl::transactions
             .filter(
@@ -63,12 +65,7 @@ impl Transaction {
         to: Option<i64>,
     ) -> Result<Vec<Self>, DieselError> {
         let from = from.unwrap_or(0);
-        let to = to.unwrap_or(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64,
-        );
+        let to = to.unwrap_or_else(time_now_as_i64);
         dbg!(&uid);
         let owning_transactions = transactions::outbound_uid
             .eq(uid)
