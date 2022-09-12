@@ -46,9 +46,8 @@ pub enum QuoteResponseError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueryRouteError {
-    NoRouteFound
+    NoRouteFound,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AvailableCurrenciesResponseError {
@@ -76,6 +75,7 @@ pub struct InvoiceResponse {
     pub currency: Currency,
     pub account_id: Option<Uuid>,
     pub error: Option<InvoiceResponseError>,
+    pub fees: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +87,7 @@ pub struct PaymentRequest {
     pub receipient: Option<String>,
     pub amount: Option<Decimal>,
     pub rate: Option<Decimal>,
+    pub fees: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +134,7 @@ pub struct SwapResponse {
     pub to: Currency,
     pub rate: Option<Decimal>,
     pub error: Option<SwapResponseError>,
+    pub fees: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +171,7 @@ pub struct QuoteResponse {
     pub rate: Option<Decimal>,
     pub quote_id: Option<u128>,
     pub error: Option<QuoteResponseError>,
+    pub fees: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +209,7 @@ pub struct CreateLnurlWithdrawalRequest {
     pub amount: Decimal,
     pub currency: Currency,
     pub rate: Option<Decimal>,
+    pub fees: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,7 +258,7 @@ pub struct QueryRouteRequest {
 pub struct QueryRouteResponse {
     pub req_id: RequestId,
     pub total_fee: Decimal,
-    pub error: Option<QueryRouteError>
+    pub error: Option<QueryRouteError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

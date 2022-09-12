@@ -91,6 +91,7 @@ pub async fn pay_invoice(
         rate: None,
         amount: pay_invoice_data.amount,
         receipient: pay_invoice_data.receipient.clone(),
+        fees: None,
     };
 
     if pay_invoice_data.payment_request.is_none() && pay_invoice_data.receipient.is_none() {
@@ -401,15 +402,16 @@ pub struct QueryRouteParams {
 }
 
 #[get("/query_route")]
-pub async fn get_query_route(
-    query: Query<QueryRouteParams>,
-    web_sender: WebSender,
-) -> Result<HttpResponse, ApiError> {
+pub async fn get_query_route(query: Query<QueryRouteParams>, web_sender: WebSender) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
     let params = query.into_inner();
 
-    let request = QueryRouteRequest{ req_id, payment_request: params.payment_request, max_fee: params.max_fee };
+    let request = QueryRouteRequest {
+        req_id,
+        payment_request: params.payment_request,
+        max_fee: params.max_fee,
+    };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
         move |message| matches!(message, Message::Api(Api::QueryRouteResponse(response)) if response.req_id == req_id),

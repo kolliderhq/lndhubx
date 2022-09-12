@@ -41,6 +41,7 @@ pub async fn create_lnurl_withdrawal(
         amount: query.amount,
         currency: query.currency,
         rate: None,
+        fees: None,
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
