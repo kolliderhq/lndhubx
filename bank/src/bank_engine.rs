@@ -1060,6 +1060,25 @@ impl BankEngine {
                         Err(_) => return,
                     };
 
+                    // If the user supplied a zero-amount invoice, return an error
+                    if decoded.amount_milli_satoshis().is_none() {
+                        let payment_response = PaymentResponse {
+                            error: Some(PaymentResponseError::ZeroAmountInvoice),
+                            amount: dec!(0),
+                            payment_hash: Uuid::new_v4().to_string(),
+                            req_id: msg.req_id,
+                            uid,
+                            success: false,
+                            payment_request: Some(payment_request.clone()),
+                            currency: msg.currency,
+                            fees: dec!(0),
+                            rate: msg.rate.unwrap(),
+                        };
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
                     // Amount in sats the user supplied an invoice for.
                     let value = (decoded.amount_milli_satoshis().unwrap() / 1000) as u64;
                     // Amount in sats that we're paying.
