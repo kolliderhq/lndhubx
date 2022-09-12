@@ -8,10 +8,13 @@ pub mod time {
     use std::time::SystemTime;
 
     pub fn time_now() -> u64 {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+        match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(duration) => duration.as_millis() as u64,
+            Err(err) => {
+                eprintln!("Failed to get current system time as epoch, reason: {:?}", err);
+                panic!("Failed to get current system time as epoch");
+            }
+        }
     }
 
     #[inline]

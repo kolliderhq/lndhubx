@@ -1631,7 +1631,14 @@ impl BankEngine {
 
                     let lnurl_path = String::from("https://lndhubx.kollider.xyz/api/lnurl_withdrawal/request");
                     let q = msg.req_id;
-                    let lnurl = utils::lnurl::encode(lnurl_path, Some(q.to_string()));
+                    let lnurl = if let Ok(encoded) = utils::lnurl::encode(lnurl_path, Some(q.to_string())) {
+                        encoded
+                    } else {
+                        response.error = Some(CreateLnurlWithdrawalError::FailedToCreateLnUrl);
+                        let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    };
                     response.lnurl = Some(lnurl);
                     self.lnurl_withdrawal_requests
                         .insert(payment_request.req_id, (now, payment_request));
