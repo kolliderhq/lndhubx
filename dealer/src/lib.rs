@@ -19,19 +19,30 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
     let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCEUR.PERP"));
 
-    if usd_hedged_qty.is_err() || eur_hedged_qty.is_err() {
-        return;
-    }
+    let fields = vec![
+        ("usd_hedged_quantity", usd_hedged_qty),
+        ("eur_hedged_quantity", eur_hedged_qty),
+    ];
 
-    let points = vec![influxdb2::models::DataPoint::builder("dealer_states")
-        // .tag("host", "server01")
-        .field("usd_hedged_quantity", usd_hedged_qty.unwrap().to_f64().unwrap())
-        .field("eur_hedged_quantity", eur_hedged_qty.unwrap().to_f64().unwrap())
-        .build()
-        .unwrap()];
+    let builder = fields.into_iter().fold(
+        influxdb2::models::DataPoint::builder("bank_states"),
+        |builder, (field_name, value)| {
+            if let Ok(defined) = value {
+                match defined.to_f64() {
+                    Some(converted) => builder.field(field_name, converted),
+                    None => builder,
+                }
+            } else {
+                builder
+            }
+        },
+    );
 
-    if let Err(err) = client.write(bucket, stream::iter(points)).await {
-        dbg!(format!("Couldn't write point to influx: {}", err));
+    if let Ok(data_point) = builder.build() {
+        let points = vec![data_point];
+        if let Err(err) = client.write(bucket, stream::iter(points)).await {
+            eprintln!("Failed to write point to Influx. Err: {}", err);
+        }
     }
 }
 
@@ -114,10 +125,5 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
             last_house_keeping = Instant::now();
             synth_dealer.sweep_excess_funds(&mut listener);
         }
-
-        // if synth_dealer.last_bank_state_update.unwrap().elapsed().as_secs() > 10 {
-        //     let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest {req_id: Uuid::new_v4()}));
-        //     listener(msg);
-        // }
     }
 }

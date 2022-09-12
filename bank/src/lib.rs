@@ -37,26 +37,32 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
         }
     }
 
-    let points = vec![influxdb2::models::DataPoint::builder("bank_states")
-        // .tag("host", "server01")
-        .field("btc_user_balance", btc_balance.to_f64().unwrap())
-        .field("eur_user_balance", eur_balance.to_f64().unwrap())
-        .field("usd_user_balance", usd_balance.to_f64().unwrap())
-        .field("fee_balance", bank.ledger.fee_account.balance.to_f64().unwrap())
-        .field(
-            "insurance_fund_balance",
-            bank.ledger.insurance_fund_account.balance.to_f64().unwrap(),
-        )
-        .field("ln_network_max_fee", bank.ln_network_max_fee.to_f64().unwrap())
-        .field("ln_network_fee_margin", bank.ln_network_fee_margin.to_f64().unwrap())
-        .field("internal_tx_fee", bank.internal_tx_fee.to_f64().unwrap())
-        .field("external_tx_fee", bank.external_tx_fee.to_f64().unwrap())
-        .field("external_tx_fee", bank.external_tx_fee.to_f64().unwrap())
-        .build()
-        .unwrap()];
+    let fields = vec![
+        ("btc_user_balance", btc_balance),
+        ("eur_user_balance", eur_balance),
+        ("usd_user_balance", usd_balance),
+        ("fee_balance", bank.ledger.fee_account.balance),
+        ("insurance_fund_balance", bank.ledger.insurance_fund_account.balance),
+        ("ln_network_max_fee", bank.ln_network_max_fee),
+        ("ln_network_fee_margin", bank.ln_network_fee_margin),
+        ("internal_tx_fee", bank.internal_tx_fee),
+        ("external_tx_fee", bank.external_tx_fee),
+        ("external_tx_fee", bank.external_tx_fee),
+    ];
 
-    if let Err(err) = client.write(bucket, stream::iter(points)).await {
-        dbg!(format!("Failed to write point to Influx. Err: {}", err));
+    let builder = fields.into_iter().fold(
+        influxdb2::models::DataPoint::builder("bank_states"),
+        |builder, (field_name, value)| match value.to_f64() {
+            Some(converted) => builder.field(field_name, converted),
+            None => builder,
+        },
+    );
+
+    if let Ok(data_point) = builder.build() {
+        let points = vec![data_point];
+        if let Err(err) = client.write(bucket, stream::iter(points)).await {
+            eprintln!("Failed to write point to Influx. Err: {}", err);
+        }
     }
 }
 
@@ -117,7 +123,10 @@ pub async fn start(
             utils::xzmq::send_as_bincode(&dealer_sender, &msg);
         }
         ServiceIdentity::Loopback => {
-            priority_tx.send(msg).unwrap();
+            if let Err(err) = priority_tx.send(msg) {
+                eprintln!("Failed to send priority message: {:?}", err);
+                panic!("Failed to send priority message");
+            }
         }
         _ => {}
     };
