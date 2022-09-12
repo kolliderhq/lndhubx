@@ -202,7 +202,8 @@ impl KolliderHedgingClient {
     }
 
     fn authenticate(&self, token: String, passphrase: String, secret: String) -> Result<()> {
-        let (timestamp, signature) = hmac::generate_authentication_signature(&secret);
+        let (timestamp, signature) =
+            hmac::generate_authentication_signature(&secret).map_err(|_| KolliderClientError::AuthenticationFailed)?;
         let authenticate_request = Request::Authenticate(AuthenticateRequest {
             token,
             passphrase,

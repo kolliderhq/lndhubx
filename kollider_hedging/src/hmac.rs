@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 type HmacSha256 = Hmac<Sha256>;
 
-pub fn generate_authentication_signature(b64_secret: &str) -> (String, String) {
+pub fn generate_authentication_signature(b64_secret: &str) -> Result<(String, String), ()> {
     let timestamp_str = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
@@ -12,14 +12,17 @@ pub fn generate_authentication_signature(b64_secret: &str) -> (String, String) {
         .to_string();
     let mut message = timestamp_str.clone();
     message.push_str("authentication");
-    (timestamp_str, hmac_encrypt_message(b64_secret, &message))
+    match hmac_encrypt_message(b64_secret, &message) {
+        Ok(encrypted_message) => Ok((timestamp_str, encrypted_message)),
+        Err(_) => Err(()),
+    }
 }
 
-fn hmac_encrypt_message(b64_secret: &str, message: &str) -> String {
-    let decoded_secret = base64::decode(&b64_secret).unwrap();
-    let mut mac = HmacSha256::new_from_slice(&decoded_secret).expect("HMAC can take key of any size");
+fn hmac_encrypt_message(b64_secret: &str, message: &str) -> Result<String, ()> {
+    let decoded_secret = base64::decode(&b64_secret).map_err(|_| ())?;
+    let mut mac = HmacSha256::new_from_slice(&decoded_secret).map_err(|_| ())?;
     mac.update(message.as_bytes());
     let result = mac.finalize();
     let code_bytes = result.into_bytes();
-    base64::encode(&code_bytes)
+    Ok(base64::encode(&code_bytes))
 }
