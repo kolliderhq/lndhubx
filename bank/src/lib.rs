@@ -124,8 +124,7 @@ pub async fn start(
         }
         ServiceIdentity::Loopback => {
             if let Err(err) = priority_tx.send(msg) {
-                eprintln!("Failed to send priority message: {:?}", err);
-                panic!("Failed to send priority message");
+                panic!("Failed to send priority message: {:?}", err);
             }
         }
         _ => {}

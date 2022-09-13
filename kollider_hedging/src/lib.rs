@@ -519,8 +519,7 @@ fn process_incoming_message(
 
 fn send_to_callback(callback: &Sender<Message>, msg: Message) {
     if let Err(err) = callback.send(msg) {
-        eprintln!("Failed to send a message to a callback sender, reason: {:?}", err);
-        panic!("Failed to send a message to a callback sender");
+        panic!("Failed to send a message to a callback sender, reason: {:?}", err);
     }
 }
 
@@ -528,8 +527,7 @@ fn get_locked_state(shared_state: &Arc<Mutex<State>>) -> MutexGuard<State> {
     match shared_state.lock() {
         Ok(locked) => locked,
         Err(err) => {
-            eprintln!("Could not lock a shared state, reason: {:?}", err);
-            panic!("Could not lock a shared state")
+            panic!("Could not lock a shared state, reason: {:?}", err);
         }
     }
 }

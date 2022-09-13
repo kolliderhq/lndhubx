@@ -16,18 +16,16 @@ impl SocketContext {
         let socket = match self.context.socket(socket_type) {
             Ok(created) => created,
             Err(err) => {
-                eprintln!(
+                panic!(
                     "Failed to create a {:?} socket listening on: {}, reason: {:?}",
                     socket_type, address, err
                 );
-                panic!("Failed to create a listening socket");
             }
         };
         match socket.bind(address) {
             Ok(()) => socket,
             Err(err) => {
-                eprintln!("Failed to bind socket to {}, reason: {:?}", address, err);
-                panic!("Failed to bind socket");
+                panic!("Failed to bind socket to {}, reason: {:?}", address, err);
             }
         }
     }
@@ -36,24 +34,21 @@ impl SocketContext {
         let socket = match self.context.socket(socket_type) {
             Ok(created) => created,
             Err(err) => {
-                eprintln!(
+                panic!(
                     "Failed to create a {:?} socket connecting to: {}, reason: {:?}",
                     socket_type, address, err
                 );
-                panic!("Failed to create a connecting socket");
             }
         };
         if socket_type == zmq::SUB {
             if let Err(err) = socket.set_subscribe(&[]) {
-                eprintln!("Failed to set subscribe on the socket, reason {:?}", err);
-                panic!("Failed to set subscribe on the socket");
+                panic!("Failed to set subscribe on the socket, reason {:?}", err);
             }
         }
         match socket.connect(address) {
             Ok(()) => socket,
             Err(err) => {
-                eprintln!("Failed to connect socket to {}, reason: {:?}", address, err);
-                panic!("Failed to connect socket");
+                panic!("Failed to connect socket to {}, reason: {:?}", address, err);
             }
         }
     }
@@ -96,19 +91,17 @@ where
     let payload = match serde_json::to_string(message) {
         Ok(serialized) => serialized,
         Err(err) => {
-            eprintln!(
+            panic!(
                 "Failed to serialize a message: {:?} into a json payload, reason: {:?}",
                 message, err
             );
-            panic!("Failed to serialize into json payload");
         }
     };
     if let Err(err) = socket.send(payload.as_str(), 0x00) {
-        eprintln!(
+        panic!(
             "Failed to send a message: {:?} as a json payload, reason: {:?}",
             message, err
         );
-        panic!("Failed to send as a json payload");
     }
 }
 
@@ -119,19 +112,17 @@ where
     let payload = match bincode::serialize(message) {
         Ok(serialized) => serialized,
         Err(err) => {
-            eprintln!(
+            panic!(
                 "Failed to serialize a message: {:?} into a bincode payload, reason: {:?}",
                 message, err
             );
-            panic!("Failed to serialize into bincode payload");
         }
     };
     if let Err(err) = socket.send(payload, 0x00) {
-        eprintln!(
+        panic!(
             "Failed to send a message: {:?} as a bincode payload, reason: {:?}",
             message, err
         );
-        panic!("Failed to send as a bincode payload");
     }
 }
 
@@ -142,18 +133,16 @@ where
     let payload = match bincode::serialize(message) {
         Ok(serialized) => vec![vec![], vec![], serialized],
         Err(err) => {
-            eprintln!(
+            panic!(
                 "Failed to serialize a message: {:?} into a bincode payload, reason: {:?}",
                 message, err
             );
-            panic!("Failed to serialize into bincode payload");
         }
     };
     if let Err(err) = socket.send_multipart(payload, 0x00) {
-        eprintln!(
+        panic!(
             "Failed to send a message: {:?} as a multipart bincode payload, reason: {:?}",
             message, err
         );
-        panic!("Failed to send as a bincode payload");
     }
 }
