@@ -91,7 +91,15 @@ impl DealerEngine {
             .risk_tolerances
             .into_iter()
             .map(|(c, r)| {
-                let currency = Currency::from_str(&c).unwrap();
+                let currency = match Currency::from_str(&c) {
+                    Ok(converted) => converted,
+                    Err(err) => {
+                        panic!(
+                            "Failed to convert a settings item {} into a currency, reason: {:?}",
+                            c, err
+                        );
+                    }
+                };
                 (currency, r)
             })
             .collect::<HashMap<Currency, u64>>();
@@ -181,14 +189,23 @@ impl DealerEngine {
     pub fn sweep_excess_funds<F: FnMut(Message)>(&self, listener: &mut F) {
         if let Some(balances) = self.ws_client.get_all_balances() {
             slog::info!(self.logger, "Sweeping: {:?}", balances);
-            let sat_balance = balances.cash.get(&Symbol::from("SAT")).unwrap();
-            if *sat_balance > dec!(10_000) {
-                let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
-                    req_id: Uuid::new_v4(),
-                    amount: sat_balance.to_i64().unwrap() as u64,
-                    memo: "Excess funds withdrawal".to_string(),
-                }));
-                listener(msg);
+            if let Some(sat_balance) = balances.cash.get(&Symbol::from("SAT")) {
+                if *sat_balance > dec!(10_000) {
+                    if let Some(amount) = sat_balance.to_u64() {
+                        let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
+                            req_id: Uuid::new_v4(),
+                            amount,
+                            memo: "Excess funds withdrawal".to_string(),
+                        }));
+                        listener(msg);
+                    } else {
+                        slog::info!(
+                            self.logger,
+                            "Sweeping excess funds failed. Could not convert balnce value: {} to u64",
+                            sat_balance
+                        );
+                    }
+                }
             }
         }
     }
@@ -202,17 +219,26 @@ impl DealerEngine {
             .into_iter()
             .filter_map(|(symbol, _)| {
                 let base = &symbol[0..3];
-                let quote = Currency::from_str(&symbol[3..6]).unwrap();
-                if base == "BTC" {
-                    Some(quote)
+                let quote_currency_str = &symbol[3..6];
+                if let Ok(quote) = Currency::from_str(quote_currency_str) {
+                    if base == "BTC" {
+                        Some(quote)
+                    } else {
+                        None
+                    }
                 } else {
+                    slog::error!(
+                        self.logger,
+                        "Could not convert {} to a valid currency",
+                        quote_currency_str
+                    );
                     None
                 }
             })
             .collect::<HashSet<Currency>>();
 
         let mut available_currencies = available_currencies.into_iter().collect::<Vec<_>>();
-        available_currencies.push(Currency::from_str("BTC").unwrap());
+        available_currencies.push(Currency::BTC);
 
         let status = if is_authenticated {
             HealthStatus::Running
@@ -315,18 +341,28 @@ impl DealerEngine {
                 continue;
             }
 
-            let trade_side = Side::from_sign(delta_qty.to_i64().unwrap());
+            let (order_quantity, trade_side) = match delta_qty.to_i64() {
+                Some(converted) => (converted.abs() as u64, Side::from_sign(converted)),
+                None => {
+                    slog::error!(
+                        self.logger,
+                        "Could not convert delta quantity of {} into i64",
+                        delta_qty,
+                    );
+                    panic!("Could not convert delta quantity into i64");
+                }
+            };
 
             slog::info!(
                 self.logger,
                 "Placing trade on side: {:?} of qty: {} for symbol: {}",
                 trade_side,
-                delta_qty,
+                order_quantity,
                 symbol
             );
 
             self.ws_client
-                .make_order(delta_qty.abs().to_i64().unwrap() as u64, symbol, trade_side)
+                .make_order(order_quantity, symbol, trade_side)
                 .expect("Failed to create order");
         }
     }
@@ -350,7 +386,7 @@ impl DealerEngine {
                     let invalidated_quotes = time_now
                         .sub(Duration::from_millis(QUOTE_TTL_MS))
                         .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap()
+                        .expect("System time should not be set to earlier than epoch start")
                         .as_micros();
                     self.guaranteed_quotes = self.guaranteed_quotes.split_off(&invalidated_quotes);
 
@@ -410,11 +446,14 @@ impl DealerEngine {
                     let (rate, fees) = self.get_rate(Some(quote_request.amount), None, conversion_info);
                     if rate.is_some() {
                         let time_now = SystemTime::now();
-                        let quote_id = time_now.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_micros();
+                        let quote_id = time_now
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .expect("System time should not be set to earlier than epoch start")
+                            .as_micros();
                         let valid_until = time_now
                             .add(Duration::from_millis(QUOTE_TTL_MS))
                             .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
+                            .expect("System time should not be set to earlier than epoch start")
                             .as_millis() as u64;
                         quote_response.quote_id = Some(quote_id);
                         quote_response.rate = rate;
@@ -431,11 +470,11 @@ impl DealerEngine {
                     let tradable_symbols = self.ws_client.get_tradable_symbols();
                     let mut currencies = tradable_symbols
                         .into_iter()
-                        .map(|(s, _)| get_base_currency_from_symbol(s).unwrap())
+                        .filter_map(|(s, _)| get_base_currency_from_symbol(s).ok())
                         .collect::<HashSet<Currency>>()
                         .into_iter()
                         .collect::<Vec<Currency>>();
-                    currencies.push(Currency::from_str("BTC").unwrap());
+                    currencies.push(Currency::BTC);
 
                     let response = AvailableCurrenciesResponse {
                         currencies,
@@ -473,16 +512,22 @@ impl DealerEngine {
                 Api::PaymentRequest(mut msg) => {
                     let conversion_info = ConversionInfo::new(msg.currency, Currency::BTC);
                     // We assume user specifies the value not the amount.
-                    let amount = msg.amount.unwrap();
-                    let (rate, fees) = self.get_rate(None, Some(amount), conversion_info);
-                    if rate.is_none() {
-                        return;
-                    } else {
-                        msg.rate = rate;
-                        msg.fees = fees;
+                    match msg.amount {
+                        Some(amount) => {
+                            let (rate, fees) = self.get_rate(None, Some(amount), conversion_info);
+                            if rate.is_none() {
+                                return;
+                            } else {
+                                msg.rate = rate;
+                                msg.fees = fees;
+                            }
+                            let msg = Message::Api(Api::PaymentRequest(msg));
+                            listener(msg);
+                        }
+                        None => {
+                            slog::error!(self.logger, "Discarded a payment request without amount: {:?}", msg);
+                        }
                     }
-                    let msg = Message::Api(Api::PaymentRequest(msg));
-                    listener(msg);
                 }
                 Api::CreateLnurlWithdrawalRequest(mut msg) => {
                     let conversion_info = ConversionInfo::new(msg.currency, Currency::BTC);
@@ -550,12 +595,21 @@ impl DealerEngine {
                     }
                     KolliderApiResponse::SettlementRequest(settlement_request) => {
                         slog::info!(self.logger, "Received settlement request trying to withdraw.");
-                        let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
-                            req_id: Uuid::new_v4(),
-                            amount: settlement_request.amount.parse().unwrap(),
-                            memo: format!("Withdrawal upon settlement on {}", settlement_request.symbol),
-                        }));
-                        listener(msg);
+                        if let Ok(amount) = settlement_request.amount.parse() {
+                            let msg = Message::Dealer(Dealer::CreateInvoiceRequest(CreateInvoiceRequest {
+                                req_id: Uuid::new_v4(),
+                                amount,
+                                memo: format!("Withdrawal upon settlement on {}", settlement_request.symbol),
+                            }));
+                            listener(msg);
+                        } else {
+                            slog::error!(
+                                self.logger,
+                                "Received a settlement request with incorrect amount: {:?}",
+                                settlement_request
+                            );
+                            panic!("Received a settlement request with incorrect amount");
+                        }
                     }
                     KolliderApiResponse::Positions(positions) => {
                         // positions are not stored, however, from this point we know
@@ -591,7 +645,7 @@ impl DealerEngine {
                             );
                         }
                     }
-                    KolliderApiResponse::ChangeMarginSuccess(change_margin_success) => {
+                    KolliderApiResponse::ChangeMarginSuccess(ref change_margin_success) => {
                         if change_margin_success.amount.is_sign_negative() {
                             let amount = -change_margin_success.amount;
                             slog::info!(
@@ -601,12 +655,20 @@ impl DealerEngine {
                                 amount
                             );
                             let memo = format!("Reduced {} position margin", change_margin_success.symbol);
-                            let msg = Message::Dealer(Dealer::CreateInsuranceInvoiceRequest(CreateInvoiceRequest {
-                                req_id: Uuid::new_v4(),
-                                amount: amount.to_u64().unwrap(),
-                                memo,
-                            }));
-                            listener(msg);
+                            if let Some(amount) = amount.to_u64() {
+                                let msg =
+                                    Message::Dealer(Dealer::CreateInsuranceInvoiceRequest(CreateInvoiceRequest {
+                                        req_id: Uuid::new_v4(),
+                                        amount,
+                                        memo,
+                                    }));
+                                listener(msg);
+                            } else {
+                                panic!(
+                                    "Received change margin success message with incorrect amount: {:?}",
+                                    msg
+                                );
+                            }
                         }
                     }
                     KolliderApiResponse::AddMarginRequest(add_margin_request) => {
@@ -851,31 +913,41 @@ impl DealerEngine {
             None => (None, None),
             Some(quotes) => {
                 let best_price = if conversion_info.from != conversion_info.quote {
-                    *quotes.range(0..u64::MAX).next().unwrap().1
+                    if let Some((_volume, price)) = quotes.range(0..u64::MAX).next() {
+                        *price
+                    } else {
+                        return (None, None);
+                    }
                 } else {
                     dec!(1.0)
                 };
                 let value = if let Some(v) = value {
                     v.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
-                } else {
-                    let value = amount.unwrap() * best_price;
+                } else if let Some(specified_amount) = amount {
+                    let value = specified_amount * best_price;
                     value.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
+                } else {
+                    return (None, None);
                 };
-                let lookup_quantity = value.to_i64().unwrap() as u64;
-                match quotes.range(lookup_quantity..u64::MAX).next() {
-                    None => (None, None),
-                    Some((_level_vol, price)) => {
-                        if conversion_info.is_linear() {
-                            let user_rate = self.get_linear_rate(*price);
-                            let fees = (price - user_rate) * amount.unwrap_or(value);
-                            (Some(user_rate), Some(fees))
-                        } else {
-                            let no_fee_inverse_rate = Decimal::ONE / price;
-                            let user_inverse_rate = self.get_inverse_rate(*price);
-                            let fees = (no_fee_inverse_rate - user_inverse_rate) * amount.unwrap_or(value);
-                            (Some(user_inverse_rate), Some(fees))
+
+                if let Some(lookup_quantity) = value.to_u64() {
+                    match quotes.range(lookup_quantity..u64::MAX).next() {
+                        None => (None, None),
+                        Some((_level_vol, price)) => {
+                            if conversion_info.is_linear() {
+                                let user_rate = self.get_linear_rate(*price);
+                                let fees = (price - user_rate) * amount.unwrap_or(value);
+                                (Some(user_rate), Some(fees))
+                            } else {
+                                let no_fee_inverse_rate = Decimal::ONE / price;
+                                let user_inverse_rate = self.get_inverse_rate(*price);
+                                let fees = (no_fee_inverse_rate - user_inverse_rate) * amount.unwrap_or(value);
+                                (Some(user_inverse_rate), Some(fees))
+                            }
                         }
                     }
+                } else {
+                    (None, None)
                 }
             }
         }
@@ -1110,8 +1182,13 @@ mod tests {
         }
 
         fn make_withdrawal(&self, amount: u64, _payment_request: String) -> ws_client::Result<()> {
-            *self.balances.borrow_mut().cash.get_mut(&Symbol::from("SAT")).unwrap() -= Decimal::new(amount as i64, 0);
-            Ok(())
+            match self.balances.borrow_mut().cash.get_mut(&Symbol::from("SAT")) {
+                Some(balance) => {
+                    *balance -= Decimal::new(amount as i64, 0);
+                    Ok(())
+                }
+                None => Err(KolliderClientError::BalanceNotAvailable),
+            }
         }
 
         fn make_order(&self, _quantity: u64, _symbol: Symbol, _side: Side) -> ws_client::Result<()> {
