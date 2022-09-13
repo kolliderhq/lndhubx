@@ -225,7 +225,12 @@ impl BankEngine {
                         internal_accounts_count
                     );
                 }
-                internal_accounts.pop().unwrap()
+                match internal_accounts.pop() {
+                    Some(account) => account,
+                    None => {
+                        panic!("Exactly one account expected due to previous check. Unexpected failure");
+                    }
+                }
             }
             Err(err) => {
                 slog::error!(
@@ -237,10 +242,34 @@ impl BankEngine {
             }
         };
 
-        let currency = Currency::from_str(&account.currency).unwrap();
-        let balance = Decimal::from_str(&account.balance.to_string()).unwrap();
+        let currency = match Currency::from_str(&account.currency) {
+            Ok(converted) => converted,
+            Err(err) => {
+                panic!(
+                    "Failed to convert {} to a valid currency, error: {:?}",
+                    account.currency, err
+                );
+            }
+        };
+        let balance = match Decimal::from_str(&account.balance.to_string()) {
+            Ok(converted) => converted,
+            Err(err) => {
+                panic!(
+                    "Failed to convert {} to a valid balance, error: {:?}",
+                    account.balance, err
+                );
+            }
+        };
+        let account_type = match AccountType::from_str(&account.account_type) {
+            Ok(converted) => converted,
+            Err(err) => {
+                panic!(
+                    "Failed to convert {} to a valid account type, error: {:?}",
+                    account.account_type, err
+                );
+            }
+        };
         let account_id = account.account_id;
-        let account_type = AccountType::from_str(&account.account_type).unwrap();
         Account {
             account_id,
             balance,
@@ -295,14 +324,39 @@ impl BankEngine {
                 .user_accounts
                 .entry(account.uid as u64)
                 .or_insert_with(|| UserAccount::new(account.uid as u64));
-            let balance_str = account.balance.to_string();
-            let balance_dec = Decimal::from_str(&balance_str).unwrap();
-            let currency = Currency::from_str(&account.currency).unwrap();
+            let currency = match Currency::from_str(&account.currency) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid currency, error: {:?}",
+                        account.currency, err
+                    );
+                }
+            };
+            let balance = match Decimal::from_str(&account.balance.to_string()) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid balance, error: {:?}",
+                        account.balance, err
+                    );
+                }
+            };
+            let account_type = match AccountType::from_str(&account.account_type) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid account type, error: {:?}",
+                        account.account_type, err
+                    );
+                }
+            };
+            let account_id = account.account_id;
             let acc = Account {
                 currency,
-                balance: balance_dec,
-                account_id: account.account_id,
-                account_type: AccountType::from_str(&account.account_type).unwrap(),
+                balance,
+                account_id,
+                account_type,
             };
 
             user_account.accounts.insert(account.account_id, acc);
@@ -323,6 +377,17 @@ impl BankEngine {
             total_exposures,
             insurance_fund_account: self.ledger.insurance_fund_account.clone(),
             external_account: self.ledger.external_account.clone(),
+        }
+    }
+
+    fn insert_into_ledger(&mut self, uid: &UserId, account_id: AccountId, account: Account) {
+        if let Some(user_account) = self.ledger.user_accounts.get_mut(uid) {
+            user_account.accounts.insert(account_id, account);
+        } else {
+            panic!(
+                "Failed to find user account, uid: {} while inserting account state: account_id: {}, account: {:?}",
+                uid, account_id, account
+            );
         }
     }
 
@@ -561,19 +626,8 @@ impl BankEngine {
             return;
         }
 
-        {
-            let inbound_user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
-            inbound_user_account
-                .accounts
-                .insert(inbound_account.account_id, inbound_account.clone());
-        }
-
-        {
-            let outbound_user_account = self.ledger.user_accounts.get_mut(&outbound_uid).unwrap();
-            outbound_user_account
-                .accounts
-                .insert(outbound_account.account_id, outbound_account.clone());
-        }
+        self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
+        self.insert_into_ledger(&outbound_uid, outbound_account.account_id, outbound_account.clone());
 
         // Update DB.
         self.update_account(&outbound_account, outbound_uid);
@@ -655,13 +709,7 @@ impl BankEngine {
                         return;
                     }
 
-                    // Safe to unwrap as we created this account above.
-                    let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
-
-                    // Updating cache.
-                    user_account
-                        .accounts
-                        .insert(inbound_account.account_id, inbound_account.clone());
+                    self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
 
                     // Updating cache of external account.
                     self.ledger.external_account = external_account.clone();
@@ -705,7 +753,12 @@ impl BankEngine {
                     let rate = dec!(1);
 
                     let currency = match invoice.currency {
-                        Some(c) => Currency::from_str(&c).unwrap(),
+                        Some(c) => match Currency::from_str(&c) {
+                            Ok(converted) => converted,
+                            Err(err) => {
+                                panic!("Failed to convert {} into a valid currency, reason: {:?}", c, err);
+                            }
+                        },
                         None => Currency::BTC,
                     };
 
@@ -760,12 +813,7 @@ impl BankEngine {
                         self.ledger.insurance_fund_account = inbound_account.clone();
                     } else {
                         // Safe to unwrap as we created this account above.
-                        let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
-
-                        // Updating cache.
-                        user_account
-                            .accounts
-                            .insert(inbound_account.account_id, inbound_account.clone());
+                        self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
                     }
                     // Updating cache of external account.
                     self.ledger.external_account = external_account.clone();
@@ -1222,11 +1270,7 @@ impl BankEngine {
 
                         self.ledger.external_account = external_account.clone();
 
-                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-
-                        user_account
-                            .accounts
-                            .insert(outbound_account.account_id, outbound_account.clone());
+                        self.insert_into_ledger(&uid, outbound_account.account_id, outbound_account.clone());
 
                         self.update_account(&outbound_account, msg.uid);
                         self.update_account(&external_account, BANK_UID);
@@ -1272,7 +1316,9 @@ impl BankEngine {
                                         payment_response,
                                         error: None,
                                     }));
-                                    payment_task_sender.send(msg).unwrap();
+                                    if let Err(err) = payment_task_sender.send(msg) {
+                                        panic!("Failed to send a payment task: {:?}", err);
+                                    }
                                 }
                                 Err(e) => {
                                     let payment_response = PaymentResponse {
@@ -1296,7 +1342,9 @@ impl BankEngine {
                                         payment_response,
                                         error: Some(e.to_string()),
                                     }));
-                                    payment_task_sender.send(msg).unwrap();
+                                    if let Err(err) = payment_task_sender.send(msg) {
+                                        panic!("Failed to send a payment task: {:?}", err);
+                                    }
                                 }
                             }
                         });
@@ -1335,8 +1383,18 @@ impl BankEngine {
                     };
 
                     let mut invoice_payer_account = {
-                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                        user_account.get_default_account(msg.currency)
+                        match self.ledger.user_accounts.get_mut(&uid) {
+                            Some(user_account) => user_account.get_default_account(msg.currency),
+                            None => {
+                                slog::error!(
+                                    self.logger,
+                                    "Invoice payer's user account does not exist: uid: {}, invoice: {:?}",
+                                    uid,
+                                    invoice
+                                );
+                                return;
+                            }
+                        }
                     };
 
                     let mut rate = msg.rate.unwrap();
@@ -1395,19 +1453,8 @@ impl BankEngine {
 
                     self.ledger.fee_account = fee_account;
 
-                    {
-                        let owner_user_account = self.ledger.user_accounts.get_mut(&owner).unwrap();
-                        owner_user_account
-                            .accounts
-                            .insert(invoice_owner_account.account_id, invoice_owner_account.clone());
-                    }
-
-                    {
-                        let payer_user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                        payer_user_account
-                            .accounts
-                            .insert(invoice_payer_account.account_id, invoice_payer_account.clone());
-                    }
+                    self.insert_into_ledger(&owner, invoice_owner_account.account_id, invoice_owner_account.clone());
+                    self.insert_into_ledger(&uid, invoice_payer_account.account_id, invoice_payer_account.clone());
 
                     // Update DB.
                     self.update_account(&invoice_payer_account, uid as u64);
@@ -1515,14 +1562,8 @@ impl BankEngine {
                         return;
                     }
 
-                    let user_account = self.ledger.user_accounts.get_mut(&msg.uid).unwrap();
-
-                    user_account
-                        .accounts
-                        .insert(outbound_account.account_id, outbound_account.clone());
-                    user_account
-                        .accounts
-                        .insert(inbound_account.account_id, inbound_account.clone());
+                    self.insert_into_ledger(&uid, outbound_account.account_id, outbound_account.clone());
+                    self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
                     self.update_account(&outbound_account, uid);
                     self.update_account(&inbound_account, uid);
@@ -1778,13 +1819,9 @@ impl BankEngine {
 
                             self.ledger.external_account = external_account.clone();
 
-                            let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
+                            self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
-                            user_account
-                                .accounts
-                                .insert(inbound_account.account_id, inbound_account.clone());
-
-                            self.update_account(&inbound_account, res.uid);
+                            self.update_account(&inbound_account, uid);
                             self.update_account(&external_account, BANK_UID);
                         }
 
@@ -1823,11 +1860,7 @@ impl BankEngine {
 
                         self.ledger.external_account = external_account.clone();
 
-                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-
-                        user_account
-                            .accounts
-                            .insert(inbound_account.account_id, inbound_account.clone());
+                        self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
                         self.update_account(&inbound_account, res.uid);
                         self.update_account(&external_account, BANK_UID);
@@ -2055,12 +2088,7 @@ impl BankEngine {
         } else if is_outbound_insurance_account {
             self.ledger.insurance_fund_account = outbound_account;
         } else {
-            self.ledger
-                .user_accounts
-                .get_mut(&outbound_uid)
-                .unwrap()
-                .accounts
-                .insert(outbound_account_id, outbound_account);
+            self.insert_into_ledger(&outbound_uid, outbound_account_id, outbound_account);
         };
 
         if is_inbound_external_account {
@@ -2068,12 +2096,7 @@ impl BankEngine {
         } else if is_inbound_insurance_account {
             self.ledger.insurance_fund_account = inbound_account
         } else {
-            self.ledger
-                .user_accounts
-                .get_mut(&inbound_uid)
-                .unwrap()
-                .accounts
-                .insert(inbound_account_id, inbound_account);
+            self.insert_into_ledger(&inbound_uid, inbound_account_id, inbound_account);
         };
 
         Ok(())
