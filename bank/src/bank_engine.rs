@@ -195,7 +195,13 @@ impl BankEngine {
             deposit_limits: settings
                 .deposit_limits
                 .into_iter()
-                .map(|(currency, limit)| (Currency::from_str(&currency).unwrap(), limit))
+                .map(|(currency, limit)| {
+                    (
+                        Currency::from_str(&currency)
+                            .unwrap_or_else(|_| panic!("Failed to convert {} into a valid currency", currency)),
+                        limit,
+                    )
+                })
                 .collect::<HashMap<Currency, Decimal>>(),
             logger,
             tx_seq: 0,
@@ -553,13 +559,20 @@ impl BankEngine {
             }
         };
 
-        let username = payment_request.receipient.unwrap();
+        let username = payment_request
+            .receipient
+            .as_ref()
+            .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
+            .clone();
         let outbound_uid = payment_request.uid;
-        let amount = payment_request.amount.unwrap();
+        let amount = *payment_request
+            .amount
+            .as_ref()
+            .unwrap_or_else(|| panic!("Amount not specified: {:?}", payment_request));
         let rate = dec!(1);
 
         let mut payment_response = PaymentResponse {
-            amount: payment_request.amount.unwrap(),
+            amount,
             payment_hash: Uuid::new_v4().to_string(),
             req_id: payment_request.req_id,
             uid: outbound_uid,
@@ -908,7 +921,10 @@ impl BankEngine {
                         target_account = account;
                     }
 
-                    let deposit_limit = self.deposit_limits.get(&currency).unwrap();
+                    let deposit_limit = self
+                        .deposit_limits
+                        .get(&currency)
+                        .unwrap_or_else(|| panic!("Failed to get deposit limits for {}", currency));
                     // Check whether deposit limit is exceeded.
                     if target_account.balance + amount > *deposit_limit {
                         let invoice_response = InvoiceResponse {
@@ -928,7 +944,14 @@ impl BankEngine {
                         return;
                     }
 
-                    let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0)).to_u64().unwrap();
+                    let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0))
+                        .to_u64()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Failed to convert  decimal amount in BTC: {} to u64 amount in SATs",
+                                amount
+                            )
+                        });
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
@@ -973,7 +996,7 @@ impl BankEngine {
                     let amount_in_sats = (amount_in_btc * Decimal::new(SATS_IN_BITCOIN as i64, 0))
                         .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
                         .to_u64()
-                        .unwrap();
+                        .unwrap_or_else(|| panic!());
 
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
@@ -1025,7 +1048,11 @@ impl BankEngine {
                         target_account = account;
                     }
 
-                    let deposit_limit = self.deposit_limits.get(&msg.currency).unwrap();
+                    let currency = msg.currency;
+                    let deposit_limit = self
+                        .deposit_limits
+                        .get(&currency)
+                        .unwrap_or_else(|| panic!("Failed to get deposit limit for {}", currency));
 
                     // Check whether deposit limit is exceeded.
                     if target_account.balance + msg.amount > *deposit_limit {
@@ -1036,7 +1063,7 @@ impl BankEngine {
                             rate: None,
                             meta: msg.meta.clone(),
                             payment_request: None,
-                            currency: msg.currency,
+                            currency,
                             account_id: Some(target_account.account_id),
                             error: Some(InvoiceResponseError::DepositLimitExceeded),
                             fees: None,
@@ -1101,7 +1128,10 @@ impl BankEngine {
 
                     let uid = msg.uid;
 
-                    let payment_request = msg.clone().payment_request.unwrap();
+                    let payment_request = msg
+                        .clone()
+                        .payment_request
+                        .unwrap_or_else(|| panic!("Payment request not specified in the message: {:?}", msg));
 
                     let decoded = match payment_request.parse::<lightning_invoice::Invoice>() {
                         Ok(d) => d,
@@ -1109,28 +1139,29 @@ impl BankEngine {
                     };
 
                     // If the user supplied a zero-amount invoice, return an error
-                    if decoded.amount_milli_satoshis().is_none() {
-                        let payment_response = PaymentResponse {
-                            error: Some(PaymentResponseError::ZeroAmountInvoice),
-                            amount: dec!(0),
-                            payment_hash: Uuid::new_v4().to_string(),
-                            req_id: msg.req_id,
-                            uid,
-                            success: false,
-                            payment_request: Some(payment_request.clone()),
-                            currency: msg.currency,
-                            fees: dec!(0),
-                            rate: msg.rate.unwrap(),
+                    let (invoice_amount_millisats, invoice_amount_sats) =
+                        if let Some(millisats) = decoded.amount_milli_satoshis() {
+                            (millisats, millisats / 1000)
+                        } else {
+                            let payment_response = PaymentResponse {
+                                error: Some(PaymentResponseError::ZeroAmountInvoice),
+                                amount: dec!(0),
+                                payment_hash: Uuid::new_v4().to_string(),
+                                req_id: msg.req_id,
+                                uid,
+                                success: false,
+                                payment_request: Some(payment_request.clone()),
+                                currency: msg.currency,
+                                fees: dec!(0),
+                                rate: msg.rate.unwrap_or(Decimal::ONE),
+                            };
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
                         };
-                        let msg = Message::Api(Api::PaymentResponse(payment_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
-                    }
 
-                    // Amount in sats the user supplied an invoice for.
-                    let value = (decoded.amount_milli_satoshis().unwrap() / 1000) as u64;
                     // Amount in sats that we're paying.
-                    let amount_in_sats = Decimal::new(value as i64, 0);
+                    let amount_in_sats = Decimal::new(invoice_amount_sats as i64, 0);
                     // Amount in btc that we're paying.
                     let amount_in_btc = amount_in_sats / Decimal::new(SATS_IN_BITCOIN as i64, 0);
 
@@ -1146,7 +1177,9 @@ impl BankEngine {
                         msg.rate = Some(dec!(1));
                     }
 
-                    let rate = msg.rate.unwrap();
+                    let rate = msg
+                        .rate
+                        .unwrap_or_else(|| panic!("Rate has not been specified in the message: {:?}", msg));
                     let invoice = if let Ok(invoice) =
                         models::invoices::Invoice::get_by_invoice_hash(&psql_connection, payment_request.clone())
                     {
@@ -1157,10 +1190,8 @@ impl BankEngine {
                             rhash: decoded.payment_hash().to_string(),
                             payment_hash: decoded.payment_hash().to_string(),
                             created_at: utils::time::time_now() as i64,
-                            value: Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000) as i64, 0)
-                                .to_i64()
-                                .unwrap(),
-                            value_msat: decoded.amount_milli_satoshis().unwrap() as i64,
+                            value: invoice_amount_sats as i64,
+                            value_msat: invoice_amount_millisats as i64,
                             expiry: decoded.expiry_time().as_secs() as i64,
                             settled: false,
                             add_index: -1,
@@ -1197,7 +1228,7 @@ impl BankEngine {
                         payment_request: Some(payment_request.clone()),
                         currency: msg.currency,
                         fees: dec!(0),
-                        rate: msg.rate.unwrap(),
+                        rate,
                         error: None,
                     };
 
@@ -1396,7 +1427,10 @@ impl BankEngine {
                         return;
                     }
 
-                    let owner = invoice.owner.unwrap() as u64;
+                    let owner = invoice
+                        .owner
+                        .unwrap_or_else(|| panic!("Invoice owner has not been specified: {:?}", invoice))
+                        as u64;
 
                     let mut invoice_owner_account = {
                         let user_account = self
@@ -1422,7 +1456,7 @@ impl BankEngine {
                         }
                     };
 
-                    let mut rate = msg.rate.unwrap();
+                    let mut rate = rate;
                     let amount = amount_in_btc / rate;
 
                     // we are resetting the rate because we made the conversions
@@ -1852,7 +1886,12 @@ impl BankEngine {
 
                         payment_response.success = true;
 
-                        let pr = payment_response.clone().payment_request.unwrap();
+                        let pr = payment_response.clone().payment_request.unwrap_or_else(|| {
+                            panic!(
+                                "Payment request has not been specified in the payment response: {:?}",
+                                payment_response
+                            )
+                        });
 
                         let mut invoice =
                             if let Ok(invoice) = models::invoices::Invoice::get_by_invoice_hash(&psql_connection, pr) {
@@ -1920,7 +1959,11 @@ impl BankEngine {
             Err(_) => return,
         };
 
-        let amount_in_sats = Decimal::new(decoded.amount_milli_satoshis().unwrap() as i64, 0) / dec!(1000);
+        let amount_in_milli_satoshi = decoded
+            .amount_milli_satoshis()
+            .unwrap_or_else(|| panic!("Amount in millisatoshi is not specified: {:?}", decoded));
+        // scale 3, which corresponds to dividing by 10^3 = 1000
+        let amount_in_sats = Decimal::new(amount_in_milli_satoshi as i64, 3);
 
         let invoice_type_text = if is_insurance_invoice { "insurance " } else { "" };
 
