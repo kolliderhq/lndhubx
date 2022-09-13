@@ -1352,17 +1352,23 @@ impl BankEngine {
                         return;
                     }
 
-                    let invoice_currency = invoice.currency.clone().unwrap();
-
-                    if Currency::from_str(&invoice_currency).unwrap() != msg.currency {
-                        slog::info!(
-                            self.logger,
-                            "Cannot send internal tx between two different currency accounts"
-                        );
-                        payment_response.success = false;
-                        let msg = Message::Api(Api::PaymentResponse(payment_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
+                    if let Some(invoice_currency) = invoice.currency.clone() {
+                        if let Ok(currency) = Currency::from_str(&invoice_currency) {
+                            if currency != msg.currency {
+                                slog::info!(
+                                    self.logger,
+                                    "Cannot send internal tx between two different currency accounts"
+                                );
+                                payment_response.success = false;
+                                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
+                        } else {
+                            panic!("Failed to convert {} to a valid currency", invoice_currency);
+                        }
+                    } else {
+                        panic!("Invoice currency not specified: {:?}", invoice);
                     }
 
                     if msg.currency != Currency::BTC && msg.rate.is_none() {
