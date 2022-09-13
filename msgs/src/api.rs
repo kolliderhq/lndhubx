@@ -95,6 +95,7 @@ pub struct PaymentRequest {
 pub enum PaymentResponseError {
     InsufficientFunds,
     InsufficientFundsForFees,
+    ZeroAmountInvoice,
     InvoiceAlreadyPaid,
     SelfPayment,
     RateNotAvailable,
