@@ -23,16 +23,18 @@ pub fn hash(salt: &str, s: &str) -> String {
 
 #[must_use]
 pub fn verify(salt: &str, password: &str, attempted_password: &str) -> bool {
-    let real_pwd = base64::decode(&password).unwrap();
-
-    pbkdf2::verify(
-        PBKDF2_ALG,
-        ITERATIONS,
-        salt.as_bytes(),
-        attempted_password.as_bytes(),
-        real_pwd.as_slice(),
-    )
-    .is_ok()
+    if let Ok(real_pwd) = base64::decode(&password) {
+        pbkdf2::verify(
+            PBKDF2_ALG,
+            ITERATIONS,
+            salt.as_bytes(),
+            attempted_password.as_bytes(),
+            real_pwd.as_slice(),
+        )
+        .is_ok()
+    } else {
+        false
+    }
 }
 
 #[derive(Queryable, Identifiable, Debug, Serialize)]

@@ -1,7 +1,5 @@
 pub mod dealer_engine;
 
-use utils::xzmq::*;
-
 use crossbeam::channel::bounded;
 use dealer_engine::*;
 use msgs::dealer::{BankStateRequest, Dealer};
@@ -15,38 +13,58 @@ use core_types::*;
 use futures::prelude::*;
 use influxdb2::Client;
 use rust_decimal::prelude::*;
+use utils::xzmq::ZmqSocket;
 
 pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
     let eur_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCEUR.PERP"));
 
-    if usd_hedged_qty.is_err() || eur_hedged_qty.is_err() {
-        return;
-    }
+    let fields = vec![
+        ("usd_hedged_quantity", usd_hedged_qty),
+        ("eur_hedged_quantity", eur_hedged_qty),
+    ];
 
-    let points = vec![influxdb2::models::DataPoint::builder("dealer_states")
-        // .tag("host", "server01")
-        .field("usd_hedged_quantity", usd_hedged_qty.unwrap().to_f64().unwrap())
-        .field("eur_hedged_quantity", eur_hedged_qty.unwrap().to_f64().unwrap())
-        .build()
-        .unwrap()];
+    let builder = fields.into_iter().fold(
+        influxdb2::models::DataPoint::builder("bank_states"),
+        |builder, (field_name, value)| {
+            if let Ok(defined) = value {
+                match defined.to_f64() {
+                    Some(converted) => builder.field(field_name, converted),
+                    None => builder,
+                }
+            } else {
+                builder
+            }
+        },
+    );
 
-    if let Err(err) = client.write(bucket, stream::iter(points)).await {
-        dbg!(format!("Couldn't write point to influx: {}", err));
+    if let Ok(data_point) = builder.build() {
+        let points = vec![data_point];
+        if let Err(err) = client.write(bucket, stream::iter(points)).await {
+            eprintln!("Failed to write point to Influx. Err: {}", err);
+        }
     }
 }
 
 pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
     let (kollider_client_tx, kollider_client_rx) = bounded(2024);
 
-    let ws_client = KolliderHedgingClient::connect(
+    let ws_client = match KolliderHedgingClient::connect(
         &settings.kollider_ws_url,
         &settings.kollider_api_key,
         &settings.kollider_api_secret,
         &settings.kollider_api_passphrase,
         kollider_client_tx,
-    )
-    .unwrap();
+    ) {
+        Ok(connected) => connected,
+        Err(err) => {
+            eprintln!(
+                "Failed to connect to: {}, reason: {:?}. Exiting",
+                settings.kollider_ws_url, err
+            );
+            return;
+        }
+    };
 
     let mut synth_dealer = DealerEngine::new(settings.clone(), ws_client);
 
@@ -57,8 +75,7 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     );
 
     let mut listener = |msg: Message| {
-        let payload = bincode::serialize(&msg).unwrap();
-        bank_sender.send(payload, 0x00).unwrap();
+        utils::xzmq::send_as_bincode(&bank_sender, &msg);
     };
 
     let mut last_health_check = Instant::now();
@@ -108,10 +125,5 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
             last_house_keeping = Instant::now();
             synth_dealer.sweep_excess_funds(&mut listener);
         }
-
-        // if synth_dealer.last_bank_state_update.unwrap().elapsed().as_secs() > 10 {
-        //     let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest {req_id: Uuid::new_v4()}));
-        //     listener(msg);
-        // }
     }
 }

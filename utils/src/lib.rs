@@ -10,7 +10,7 @@ pub mod time {
     pub fn time_now() -> u64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time should not be earlier than epoch start")
             .as_millis() as u64
     }
 
@@ -25,7 +25,7 @@ pub mod time {
         S: Serializer,
     {
         let epoch = match system_time.duration_since(SystemTime::UNIX_EPOCH) {
-            Ok(duaration) => duaration.as_millis() as u64,
+            Ok(duration) => duration.as_millis() as u64,
             Err(_) => 0_u64,
         };
         serializer.serialize_u64(epoch)

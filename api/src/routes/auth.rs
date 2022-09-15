@@ -75,8 +75,9 @@ pub async fn auth(pool: WebDbPool, login_data: Json<LoginData>) -> Result<HttpRe
 
     let access_expiry = 10000000;
 
-    let token = jwt_generate(user.uid, None, UserRoles::MasterToken, access_expiry);
-    let refresh = jwt_generate_refresh_token(user.uid, UserRoles::MasterToken, refresh_expiry);
+    let token = jwt_generate(user.uid, None, UserRoles::MasterToken, access_expiry).map_err(ApiError::JWT)?;
+    let refresh =
+        jwt_generate_refresh_token(user.uid, UserRoles::MasterToken, refresh_expiry).map_err(ApiError::JWT)?;
 
     // InsertableApiTokenFull::new(Uuid::new_v4().to_string(), Some(refresh.clone()), user.uid as i32).insert(&conn)?;
 

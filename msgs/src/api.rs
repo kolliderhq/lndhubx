@@ -16,6 +16,7 @@ pub enum InvoiceResponseError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CreateLnurlWithdrawalError {
     InsufficientFunds,
+    FailedToCreateLnUrl,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

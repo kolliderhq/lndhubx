@@ -108,8 +108,7 @@ impl CommsActor {
                 waiting.lock().await.push((tx, func, time::time_now()));
             }
 
-            let payload = bincode::serialize(&message).unwrap();
-            sender.send(&payload, 0x00).unwrap();
+            utils::xzmq::send_as_bincode(&sender, &message);
         }
     }
 }

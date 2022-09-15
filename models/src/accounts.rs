@@ -5,7 +5,6 @@ use diesel::prelude::*;
 use diesel::result::Error as DieselError;
 use serde::Deserialize;
 use std::default::Default;
-use std::str::FromStr;
 use uuid::Uuid;
 
 #[derive(Queryable, Identifiable, Debug)]
@@ -22,7 +21,7 @@ impl Default for Account {
     fn default() -> Self {
         Self {
             account_id: Uuid::new_v4(),
-            balance: BigDecimal::from_str("0").unwrap(),
+            balance: BigDecimal::from(0),
             currency: String::from("BTC"),
             account_type: String::from("Internal"),
             uid: 0,

@@ -251,7 +251,7 @@ pub struct RefreshToken {
 /// * `tid` - Token id, if this token is to be a API key then you want to supply a token id.
 /// otherwise supply `None`.
 #[inline]
-pub fn jwt_generate(uid: i32, tid: Option<i32>, roles: UserRoles, livetime: i64) -> String {
+pub fn jwt_generate(uid: i32, tid: Option<i32>, roles: UserRoles, livetime: i64) -> Result<String, JWTError> {
     let now = get_time().sec;
     let payload = UserRolesToken {
         iat: now,
@@ -261,7 +261,7 @@ pub fn jwt_generate(uid: i32, tid: Option<i32>, roles: UserRoles, livetime: i64)
         roles,
     };
 
-    encode(&Header::new(Algorithm::HS512), &payload, &E_KEY).unwrap()
+    encode(&Header::new(Algorithm::HS512), &payload, &E_KEY).map_err(|_| JWTError::EncodingFailed)
 }
 
 /// Function generates a new JWT token and signs it with our KEY
@@ -271,7 +271,7 @@ pub fn jwt_generate(uid: i32, tid: Option<i32>, roles: UserRoles, livetime: i64)
 /// * `tid` - Token id, if this token is to be a API key then you want to supply a token id.
 /// otherwise supply `None`.
 #[inline]
-pub fn jwt_generate_refresh_token(uid: i32, roles: UserRoles, lifetime: i64) -> String {
+pub fn jwt_generate_refresh_token(uid: i32, roles: UserRoles, lifetime: i64) -> Result<String, JWTError> {
     let now = get_time().sec;
     let payload = RefreshToken {
         iat: now,
@@ -280,7 +280,7 @@ pub fn jwt_generate_refresh_token(uid: i32, roles: UserRoles, lifetime: i64) -> 
         roles,
     };
 
-    encode(&Header::new(Algorithm::HS512), &payload, &E_KEY).unwrap()
+    encode(&Header::new(Algorithm::HS512), &payload, &E_KEY).map_err(|_| JWTError::EncodingFailed)
 }
 
 /// Function checks the token supplied and validates it
@@ -415,7 +415,8 @@ mod tests {
     #[test]
     async fn test_jwt_generate_check() {
         std::env::set_var("SECRET_KEY", "MYSECRET");
-        let token = jwt_generate(123, None, UserRoles::MasterToken, 60 * 60 * 3);
+        let token =
+            jwt_generate(123, None, UserRoles::MasterToken, 60 * 60 * 3).expect("Correct jwt should be generated");
         assert!(jwt_check(&token).is_ok());
     }
 
@@ -428,8 +429,9 @@ mod tests {
     #[test]
     async fn test_token_data() {
         std::env::set_var("SECRET_KEY", "MYSECRET");
-        let token = jwt_generate(123, None, UserRoles::MasterToken, 60 * 60 * 3);
-        let data = jwt_check(&token).unwrap().claims;
+        let token =
+            jwt_generate(123, None, UserRoles::MasterToken, 60 * 60 * 3).expect("Correct jwt should be generated");
+        let data = jwt_check(&token).expect("Check should not fail").claims;
 
         assert!(data.when_expires() > get_time().sec);
         assert!(!data.is_expired());
@@ -445,8 +447,9 @@ mod tests {
     #[test]
     async fn test_api_token_data() {
         std::env::set_var("SECRET_KEY", "MYSECRET");
-        let token = jwt_generate(123, Some(12), UserRoles::ApiToken(set![ApiRole::ViewOnly]), 60 * 60 * 3);
-        let data = jwt_check(&token).unwrap().claims;
+        let token = jwt_generate(123, Some(12), UserRoles::ApiToken(set![ApiRole::ViewOnly]), 60 * 60 * 3)
+            .expect("Correct jwt should be generated");
+        let data = jwt_check(&token).expect("Check should not fail").claims;
 
         assert!(!data.is_master());
         assert!(data.has_role(ApiRole::ViewOnly));
@@ -482,7 +485,7 @@ mod tests {
             roles: UserRoles::MasterToken,
         };
 
-        let token = encode(&Header::new(Algorithm::HS512), &payload, &E_KEY).unwrap();
+        let token = encode(&Header::new(Algorithm::HS512), &payload, &E_KEY).expect("Encoding should not fail");
 
         let (req, mut payload) = test::TestRequest::with_header("authorization", token).to_http_parts();
         let resp = <AuthData as FromRequest>::from_request(&req, &mut payload).await;

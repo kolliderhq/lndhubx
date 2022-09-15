@@ -10,6 +10,8 @@ use utils::time::*;
 use core_types::*;
 use uuid::Uuid;
 
+const MINIMUM_FEE: i64 = 10;
+
 #[derive(Debug, Clone)]
 pub struct PayResponse {
     pub payment_hash: String,
@@ -68,9 +70,9 @@ impl LndConnector {
                 .await
             {
                 if let Ok(Some(invoice)) = inv.into_inner().message().await {
-                    let invoice_state =
-                        tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state).unwrap();
-                    if invoice_state == tonic_openssl_lnd::lnrpc::invoice::InvoiceState::Settled {
+                    if let Some(tonic_openssl_lnd::lnrpc::invoice::InvoiceState::Settled) =
+                        tonic_openssl_lnd::lnrpc::invoice::InvoiceState::from_i32(invoice.state)
+                    {
                         let deposit = Deposit {
                             payment_request: invoice.payment_request,
                         };
@@ -133,12 +135,12 @@ impl LndConnector {
             return Err(LndConnectorError::FailedToSendPayment);
         }
         let mut max_fee = match max_fee_as_pp {
-            Some(m) => (amount_in_sats * m).round_dp(0).to_i64().unwrap(),
+            Some(m) => (amount_in_sats * m).round_dp(0).to_i64().unwrap_or(0),
             None => 0,
         };
 
         max_fee = match max_fee_in_sats {
-            Some(m) => (m).round_dp(0).to_i64().unwrap(),
+            Some(m) => (m).round_dp(0).to_i64().unwrap_or(max_fee),
             None => max_fee,
         };
 
@@ -158,7 +160,7 @@ impl LndConnector {
                 return Err(LndConnectorError::FailedToSendPayment);
             }
             let fee = match r.payment_route {
-                Some(pr) => pr.total_fees.try_into().unwrap(),
+                Some(pr) => pr.total_fees.try_into().unwrap_or(0),
                 None => 0,
             };
             let response = PayResponse {
@@ -223,9 +225,9 @@ impl LndConnector {
             let max_fee = (Decimal::new(r.num_satoshis, 0) * max_fee)
                 .round_dp(0)
                 .to_i64()
-                .unwrap();
+                .unwrap_or(MINIMUM_FEE);
             // Never send a payment with lower fee than 10.
-            let max_fee = std::cmp::max(max_fee, 10);
+            let max_fee = std::cmp::max(max_fee, MINIMUM_FEE);
             let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
             let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
             let query_routes = tonic_openssl_lnd::lnrpc::QueryRoutesRequest {

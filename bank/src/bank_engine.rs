@@ -195,7 +195,13 @@ impl BankEngine {
             deposit_limits: settings
                 .deposit_limits
                 .into_iter()
-                .map(|(currency, limit)| (Currency::from_str(&currency).unwrap(), limit))
+                .map(|(currency, limit)| {
+                    (
+                        Currency::from_str(&currency)
+                            .unwrap_or_else(|_| panic!("Failed to convert {} into a valid currency", currency)),
+                        limit,
+                    )
+                })
                 .collect::<HashMap<Currency, Decimal>>(),
             logger,
             tx_seq: 0,
@@ -225,7 +231,12 @@ impl BankEngine {
                         internal_accounts_count
                     );
                 }
-                internal_accounts.pop().unwrap()
+                match internal_accounts.pop() {
+                    Some(account) => account,
+                    None => {
+                        panic!("Exactly one account expected due to previous check. Unexpected failure");
+                    }
+                }
             }
             Err(err) => {
                 slog::error!(
@@ -237,10 +248,34 @@ impl BankEngine {
             }
         };
 
-        let currency = Currency::from_str(&account.currency).unwrap();
-        let balance = Decimal::from_str(&account.balance.to_string()).unwrap();
+        let currency = match Currency::from_str(&account.currency) {
+            Ok(converted) => converted,
+            Err(err) => {
+                panic!(
+                    "Failed to convert {} to a valid currency, error: {:?}",
+                    account.currency, err
+                );
+            }
+        };
+        let balance = match Decimal::from_str(&account.balance.to_string()) {
+            Ok(converted) => converted,
+            Err(err) => {
+                panic!(
+                    "Failed to convert {} to a valid balance, error: {:?}",
+                    account.balance, err
+                );
+            }
+        };
+        let account_type = match AccountType::from_str(&account.account_type) {
+            Ok(converted) => converted,
+            Err(err) => {
+                panic!(
+                    "Failed to convert {} to a valid account type, error: {:?}",
+                    account.account_type, err
+                );
+            }
+        };
         let account_id = account.account_id;
-        let account_type = AccountType::from_str(&account.account_type).unwrap();
         Account {
             account_id,
             balance,
@@ -295,14 +330,39 @@ impl BankEngine {
                 .user_accounts
                 .entry(account.uid as u64)
                 .or_insert_with(|| UserAccount::new(account.uid as u64));
-            let balance_str = account.balance.to_string();
-            let balance_dec = Decimal::from_str(&balance_str).unwrap();
-            let currency = Currency::from_str(&account.currency).unwrap();
+            let currency = match Currency::from_str(&account.currency) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid currency, error: {:?}",
+                        account.currency, err
+                    );
+                }
+            };
+            let balance = match Decimal::from_str(&account.balance.to_string()) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid balance, error: {:?}",
+                        account.balance, err
+                    );
+                }
+            };
+            let account_type = match AccountType::from_str(&account.account_type) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid account type, error: {:?}",
+                        account.account_type, err
+                    );
+                }
+            };
+            let account_id = account.account_id;
             let acc = Account {
                 currency,
-                balance: balance_dec,
-                account_id: account.account_id,
-                account_type: AccountType::from_str(&account.account_type).unwrap(),
+                balance,
+                account_id,
+                account_type,
             };
 
             user_account.accounts.insert(account.account_id, acc);
@@ -323,6 +383,17 @@ impl BankEngine {
             total_exposures,
             insurance_fund_account: self.ledger.insurance_fund_account.clone(),
             external_account: self.ledger.external_account.clone(),
+        }
+    }
+
+    fn insert_into_ledger(&mut self, uid: &UserId, account_id: AccountId, account: Account) {
+        if let Some(user_account) = self.ledger.user_accounts.get_mut(uid) {
+            user_account.accounts.insert(account_id, account);
+        } else {
+            panic!(
+                "Failed to find user account, uid: {} while inserting account state: account_id: {}, account: {:?}",
+                uid, account_id, account
+            );
         }
     }
 
@@ -488,13 +559,20 @@ impl BankEngine {
             }
         };
 
-        let username = payment_request.receipient.unwrap();
+        let username = payment_request
+            .receipient
+            .as_ref()
+            .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
+            .clone();
         let outbound_uid = payment_request.uid;
-        let amount = payment_request.amount.unwrap();
+        let amount = *payment_request
+            .amount
+            .as_ref()
+            .unwrap_or_else(|| panic!("Amount not specified: {:?}", payment_request));
         let rate = dec!(1);
 
         let mut payment_response = PaymentResponse {
-            amount: payment_request.amount.unwrap(),
+            amount,
             payment_hash: Uuid::new_v4().to_string(),
             req_id: payment_request.req_id,
             uid: outbound_uid,
@@ -561,19 +639,8 @@ impl BankEngine {
             return;
         }
 
-        {
-            let inbound_user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
-            inbound_user_account
-                .accounts
-                .insert(inbound_account.account_id, inbound_account.clone());
-        }
-
-        {
-            let outbound_user_account = self.ledger.user_accounts.get_mut(&outbound_uid).unwrap();
-            outbound_user_account
-                .accounts
-                .insert(outbound_account.account_id, outbound_account.clone());
-        }
+        self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
+        self.insert_into_ledger(&outbound_uid, outbound_account.account_id, outbound_account.clone());
 
         // Update DB.
         self.update_account(&outbound_account, outbound_uid);
@@ -655,13 +722,7 @@ impl BankEngine {
                         return;
                     }
 
-                    // Safe to unwrap as we created this account above.
-                    let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
-
-                    // Updating cache.
-                    user_account
-                        .accounts
-                        .insert(inbound_account.account_id, inbound_account.clone());
+                    self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
 
                     // Updating cache of external account.
                     self.ledger.external_account = external_account.clone();
@@ -705,7 +766,12 @@ impl BankEngine {
                     let rate = dec!(1);
 
                     let currency = match invoice.currency {
-                        Some(c) => Currency::from_str(&c).unwrap(),
+                        Some(c) => match Currency::from_str(&c) {
+                            Ok(converted) => converted,
+                            Err(err) => {
+                                panic!("Failed to convert {} into a valid currency, reason: {:?}", c, err);
+                            }
+                        },
                         None => Currency::BTC,
                     };
 
@@ -760,12 +826,7 @@ impl BankEngine {
                         self.ledger.insurance_fund_account = inbound_account.clone();
                     } else {
                         // Safe to unwrap as we created this account above.
-                        let user_account = self.ledger.user_accounts.get_mut(&inbound_uid).unwrap();
-
-                        // Updating cache.
-                        user_account
-                            .accounts
-                            .insert(inbound_account.account_id, inbound_account.clone());
+                        self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
                     }
                     // Updating cache of external account.
                     self.ledger.external_account = external_account.clone();
@@ -860,7 +921,10 @@ impl BankEngine {
                         target_account = account;
                     }
 
-                    let deposit_limit = self.deposit_limits.get(&currency).unwrap();
+                    let deposit_limit = self
+                        .deposit_limits
+                        .get(&currency)
+                        .unwrap_or_else(|| panic!("Failed to get deposit limits for {}", currency));
                     // Check whether deposit limit is exceeded.
                     if target_account.balance + amount > *deposit_limit {
                         let invoice_response = InvoiceResponse {
@@ -880,7 +944,14 @@ impl BankEngine {
                         return;
                     }
 
-                    let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0)).to_u64().unwrap();
+                    let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0))
+                        .to_u64()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Failed to convert  decimal amount in BTC: {} to u64 amount in SATs",
+                                amount
+                            )
+                        });
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
@@ -925,7 +996,7 @@ impl BankEngine {
                     let amount_in_sats = (amount_in_btc * Decimal::new(SATS_IN_BITCOIN as i64, 0))
                         .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
                         .to_u64()
-                        .unwrap();
+                        .unwrap_or_else(|| panic!());
 
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
@@ -977,7 +1048,11 @@ impl BankEngine {
                         target_account = account;
                     }
 
-                    let deposit_limit = self.deposit_limits.get(&msg.currency).unwrap();
+                    let currency = msg.currency;
+                    let deposit_limit = self
+                        .deposit_limits
+                        .get(&currency)
+                        .unwrap_or_else(|| panic!("Failed to get deposit limit for {}", currency));
 
                     // Check whether deposit limit is exceeded.
                     if target_account.balance + msg.amount > *deposit_limit {
@@ -988,7 +1063,7 @@ impl BankEngine {
                             rate: None,
                             meta: msg.meta.clone(),
                             payment_request: None,
-                            currency: msg.currency,
+                            currency,
                             account_id: Some(target_account.account_id),
                             error: Some(InvoiceResponseError::DepositLimitExceeded),
                             fees: None,
@@ -1053,7 +1128,10 @@ impl BankEngine {
 
                     let uid = msg.uid;
 
-                    let payment_request = msg.clone().payment_request.unwrap();
+                    let payment_request = msg
+                        .clone()
+                        .payment_request
+                        .unwrap_or_else(|| panic!("Payment request not specified in the message: {:?}", msg));
 
                     let decoded = match payment_request.parse::<lightning_invoice::Invoice>() {
                         Ok(d) => d,
@@ -1061,28 +1139,29 @@ impl BankEngine {
                     };
 
                     // If the user supplied a zero-amount invoice, return an error
-                    if decoded.amount_milli_satoshis().is_none() {
-                        let payment_response = PaymentResponse {
-                            error: Some(PaymentResponseError::ZeroAmountInvoice),
-                            amount: dec!(0),
-                            payment_hash: Uuid::new_v4().to_string(),
-                            req_id: msg.req_id,
-                            uid,
-                            success: false,
-                            payment_request: Some(payment_request.clone()),
-                            currency: msg.currency,
-                            fees: dec!(0),
-                            rate: msg.rate.unwrap(),
+                    let (invoice_amount_millisats, invoice_amount_sats) =
+                        if let Some(millisats) = decoded.amount_milli_satoshis() {
+                            (millisats, millisats / 1000)
+                        } else {
+                            let payment_response = PaymentResponse {
+                                error: Some(PaymentResponseError::ZeroAmountInvoice),
+                                amount: dec!(0),
+                                payment_hash: Uuid::new_v4().to_string(),
+                                req_id: msg.req_id,
+                                uid,
+                                success: false,
+                                payment_request: Some(payment_request.clone()),
+                                currency: msg.currency,
+                                fees: dec!(0),
+                                rate: msg.rate.unwrap_or(Decimal::ONE),
+                            };
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
                         };
-                        let msg = Message::Api(Api::PaymentResponse(payment_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
-                    }
 
-                    // Amount in sats the user supplied an invoice for.
-                    let value = (decoded.amount_milli_satoshis().unwrap() / 1000) as u64;
                     // Amount in sats that we're paying.
-                    let amount_in_sats = Decimal::new(value as i64, 0);
+                    let amount_in_sats = Decimal::new(invoice_amount_sats as i64, 0);
                     // Amount in btc that we're paying.
                     let amount_in_btc = amount_in_sats / Decimal::new(SATS_IN_BITCOIN as i64, 0);
 
@@ -1098,7 +1177,9 @@ impl BankEngine {
                         msg.rate = Some(dec!(1));
                     }
 
-                    let rate = msg.rate.unwrap();
+                    let rate = msg
+                        .rate
+                        .unwrap_or_else(|| panic!("Rate has not been specified in the message: {:?}", msg));
                     let invoice = if let Ok(invoice) =
                         models::invoices::Invoice::get_by_invoice_hash(&psql_connection, payment_request.clone())
                     {
@@ -1109,10 +1190,8 @@ impl BankEngine {
                             rhash: decoded.payment_hash().to_string(),
                             payment_hash: decoded.payment_hash().to_string(),
                             created_at: utils::time::time_now() as i64,
-                            value: Decimal::new((decoded.amount_milli_satoshis().unwrap() / 1000) as i64, 0)
-                                .to_i64()
-                                .unwrap(),
-                            value_msat: decoded.amount_milli_satoshis().unwrap() as i64,
+                            value: invoice_amount_sats as i64,
+                            value_msat: invoice_amount_millisats as i64,
                             expiry: decoded.expiry_time().as_secs() as i64,
                             settled: false,
                             add_index: -1,
@@ -1149,7 +1228,7 @@ impl BankEngine {
                         payment_request: Some(payment_request.clone()),
                         currency: msg.currency,
                         fees: dec!(0),
-                        rate: msg.rate.unwrap(),
+                        rate,
                         error: None,
                     };
 
@@ -1241,11 +1320,7 @@ impl BankEngine {
 
                         self.ledger.external_account = external_account.clone();
 
-                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-
-                        user_account
-                            .accounts
-                            .insert(outbound_account.account_id, outbound_account.clone());
+                        self.insert_into_ledger(&uid, outbound_account.account_id, outbound_account.clone());
 
                         self.update_account(&outbound_account, msg.uid);
                         self.update_account(&external_account, BANK_UID);
@@ -1291,7 +1366,9 @@ impl BankEngine {
                                         payment_response,
                                         error: None,
                                     }));
-                                    payment_task_sender.send(msg).unwrap();
+                                    if let Err(err) = payment_task_sender.send(msg) {
+                                        panic!("Failed to send a payment task: {:?}", err);
+                                    }
                                 }
                                 Err(e) => {
                                     let payment_response = PaymentResponse {
@@ -1315,7 +1392,9 @@ impl BankEngine {
                                         payment_response,
                                         error: Some(e.to_string()),
                                     }));
-                                    payment_task_sender.send(msg).unwrap();
+                                    if let Err(err) = payment_task_sender.send(msg) {
+                                        panic!("Failed to send a payment task: {:?}", err);
+                                    }
                                 }
                             }
                         });
@@ -1323,17 +1402,23 @@ impl BankEngine {
                         return;
                     }
 
-                    let invoice_currency = invoice.currency.clone().unwrap();
-
-                    if Currency::from_str(&invoice_currency).unwrap() != msg.currency {
-                        slog::info!(
-                            self.logger,
-                            "Cannot send internal tx between two different currency accounts"
-                        );
-                        payment_response.success = false;
-                        let msg = Message::Api(Api::PaymentResponse(payment_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
+                    if let Some(invoice_currency) = invoice.currency.clone() {
+                        if let Ok(currency) = Currency::from_str(&invoice_currency) {
+                            if currency != msg.currency {
+                                slog::info!(
+                                    self.logger,
+                                    "Cannot send internal tx between two different currency accounts"
+                                );
+                                payment_response.success = false;
+                                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
+                        } else {
+                            panic!("Failed to convert {} to a valid currency", invoice_currency);
+                        }
+                    } else {
+                        panic!("Invoice currency not specified: {:?}", invoice);
                     }
 
                     if msg.currency != Currency::BTC && msg.rate.is_none() {
@@ -1342,7 +1427,10 @@ impl BankEngine {
                         return;
                     }
 
-                    let owner = invoice.owner.unwrap() as u64;
+                    let owner = invoice
+                        .owner
+                        .unwrap_or_else(|| panic!("Invoice owner has not been specified: {:?}", invoice))
+                        as u64;
 
                     let mut invoice_owner_account = {
                         let user_account = self
@@ -1354,11 +1442,21 @@ impl BankEngine {
                     };
 
                     let mut invoice_payer_account = {
-                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                        user_account.get_default_account(msg.currency)
+                        match self.ledger.user_accounts.get_mut(&uid) {
+                            Some(user_account) => user_account.get_default_account(msg.currency),
+                            None => {
+                                slog::error!(
+                                    self.logger,
+                                    "Invoice payer's user account does not exist: uid: {}, invoice: {:?}",
+                                    uid,
+                                    invoice
+                                );
+                                return;
+                            }
+                        }
                     };
 
-                    let mut rate = msg.rate.unwrap();
+                    let mut rate = rate;
                     let amount = amount_in_btc / rate;
 
                     // we are resetting the rate because we made the conversions
@@ -1414,19 +1512,8 @@ impl BankEngine {
 
                     self.ledger.fee_account = fee_account;
 
-                    {
-                        let owner_user_account = self.ledger.user_accounts.get_mut(&owner).unwrap();
-                        owner_user_account
-                            .accounts
-                            .insert(invoice_owner_account.account_id, invoice_owner_account.clone());
-                    }
-
-                    {
-                        let payer_user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-                        payer_user_account
-                            .accounts
-                            .insert(invoice_payer_account.account_id, invoice_payer_account.clone());
-                    }
+                    self.insert_into_ledger(&owner, invoice_owner_account.account_id, invoice_owner_account.clone());
+                    self.insert_into_ledger(&uid, invoice_payer_account.account_id, invoice_payer_account.clone());
 
                     // Update DB.
                     self.update_account(&invoice_payer_account, uid as u64);
@@ -1534,14 +1621,8 @@ impl BankEngine {
                         return;
                     }
 
-                    let user_account = self.ledger.user_accounts.get_mut(&msg.uid).unwrap();
-
-                    user_account
-                        .accounts
-                        .insert(outbound_account.account_id, outbound_account.clone());
-                    user_account
-                        .accounts
-                        .insert(inbound_account.account_id, inbound_account.clone());
+                    self.insert_into_ledger(&uid, outbound_account.account_id, outbound_account.clone());
+                    self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
                     self.update_account(&outbound_account, uid);
                     self.update_account(&inbound_account, uid);
@@ -1650,7 +1731,14 @@ impl BankEngine {
 
                     let lnurl_path = String::from("https://lndhubx.kollider.xyz/api/lnurl_withdrawal/request");
                     let q = msg.req_id;
-                    let lnurl = utils::lnurl::encode(lnurl_path, Some(q.to_string()));
+                    let lnurl = if let Ok(encoded) = utils::lnurl::encode(lnurl_path, Some(q.to_string())) {
+                        encoded
+                    } else {
+                        response.error = Some(CreateLnurlWithdrawalError::FailedToCreateLnUrl);
+                        let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    };
                     response.lnurl = Some(lnurl);
                     self.lnurl_withdrawal_requests
                         .insert(payment_request.req_id, (now, payment_request));
@@ -1790,19 +1878,20 @@ impl BankEngine {
 
                             self.ledger.external_account = external_account.clone();
 
-                            let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
+                            self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
-                            user_account
-                                .accounts
-                                .insert(inbound_account.account_id, inbound_account.clone());
-
-                            self.update_account(&inbound_account, res.uid);
+                            self.update_account(&inbound_account, uid);
                             self.update_account(&external_account, BANK_UID);
                         }
 
                         payment_response.success = true;
 
-                        let pr = payment_response.clone().payment_request.unwrap();
+                        let pr = payment_response.clone().payment_request.unwrap_or_else(|| {
+                            panic!(
+                                "Payment request has not been specified in the payment response: {:?}",
+                                payment_response
+                            )
+                        });
 
                         let mut invoice =
                             if let Ok(invoice) = models::invoices::Invoice::get_by_invoice_hash(&psql_connection, pr) {
@@ -1835,11 +1924,7 @@ impl BankEngine {
 
                         self.ledger.external_account = external_account.clone();
 
-                        let user_account = self.ledger.user_accounts.get_mut(&uid).unwrap();
-
-                        user_account
-                            .accounts
-                            .insert(inbound_account.account_id, inbound_account.clone());
+                        self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
                         self.update_account(&inbound_account, res.uid);
                         self.update_account(&external_account, BANK_UID);
@@ -1874,7 +1959,11 @@ impl BankEngine {
             Err(_) => return,
         };
 
-        let amount_in_sats = Decimal::new(decoded.amount_milli_satoshis().unwrap() as i64, 0) / dec!(1000);
+        let amount_in_milli_satoshi = decoded
+            .amount_milli_satoshis()
+            .unwrap_or_else(|| panic!("Amount in millisatoshi is not specified: {:?}", decoded));
+        // scale 3, which corresponds to dividing by 10^3 = 1000
+        let amount_in_sats = Decimal::new(amount_in_milli_satoshi as i64, 3);
 
         let invoice_type_text = if is_insurance_invoice { "insurance " } else { "" };
 
@@ -2067,12 +2156,7 @@ impl BankEngine {
         } else if is_outbound_insurance_account {
             self.ledger.insurance_fund_account = outbound_account;
         } else {
-            self.ledger
-                .user_accounts
-                .get_mut(&outbound_uid)
-                .unwrap()
-                .accounts
-                .insert(outbound_account_id, outbound_account);
+            self.insert_into_ledger(&outbound_uid, outbound_account_id, outbound_account);
         };
 
         if is_inbound_external_account {
@@ -2080,12 +2164,7 @@ impl BankEngine {
         } else if is_inbound_insurance_account {
             self.ledger.insurance_fund_account = inbound_account
         } else {
-            self.ledger
-                .user_accounts
-                .get_mut(&inbound_uid)
-                .unwrap()
-                .accounts
-                .insert(inbound_account_id, inbound_account);
+            self.insert_into_ledger(&inbound_uid, inbound_account_id, inbound_account);
         };
 
         Ok(())
