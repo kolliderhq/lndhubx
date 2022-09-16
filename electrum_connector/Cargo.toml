@@ -6,6 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bitcoincore-rpc = { version = "^0.16" }
 reqwest = { version = "^0.11" }
 serde = { version = "^1" }
 serde_json = { version = "^1" }
+
+[dependencies.utils]
+path = "../utils"

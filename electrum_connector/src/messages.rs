@@ -147,8 +147,3 @@ pub struct AddrRequest {
     pub uid: i64,
     pub address: String,
 }
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Error {
-    pub error: String,
-}

@@ -1,4 +1,5 @@
 use crate::bitcoin::{Output, Transaction};
+use crate::error::Error;
 use crate::messages::*;
 use reqwest::Client as HttpClient;
 use serde::Serialize;
