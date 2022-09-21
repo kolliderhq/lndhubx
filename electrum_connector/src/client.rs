@@ -1,12 +1,11 @@
 use crate::bitcoin::{Output, Transaction};
 use crate::error::Error;
 use crate::messages::*;
+use crate::SATS_IN_BITCOIN;
 use reqwest::Client as HttpClient;
 use serde::Serialize;
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
-
-const SATS_IN_BITCOIN: i64 = 100_000_000;
 
 const JSON_RPC_VER: &str = "2.0";
 const CURL_TEXT_ID: &str = "curltext";
@@ -204,8 +203,9 @@ impl Client {
             };
             let mut outputs = Vec::with_capacity(etx.outputs.len());
             for eout in etx.outputs {
-                let value = if let Ok(value) = eout.value.parse::<i64>() {
-                    value * SATS_IN_BITCOIN
+                let value = if let Ok(value) = eout.value.parse::<f64>() {
+                    let sats = value * SATS_IN_BITCOIN;
+                    sats as i64
                 } else {
                     eprintln!(
                         "Failed to convert output value: {} to f64. Discarding electrum transaction output: {:?}",

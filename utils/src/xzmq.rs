@@ -30,7 +30,12 @@ impl SocketContext {
         }
     }
 
-    fn create_connecting_socket(&self, address: &str, socket_type: SocketType) -> ZmqSocket {
+    fn create_connecting_socket(
+        &self,
+        address: &str,
+        socket_type: SocketType,
+        subscriber_topic: Option<&[u8]>,
+    ) -> ZmqSocket {
         let socket = match self.context.socket(socket_type) {
             Ok(created) => created,
             Err(err) => {
@@ -41,7 +46,8 @@ impl SocketContext {
             }
         };
         if socket_type == zmq::SUB {
-            if let Err(err) = socket.set_subscribe(&[]) {
+            let topic = subscriber_topic.unwrap_or(&[]);
+            if let Err(err) = socket.set_subscribe(topic) {
                 panic!("Failed to set subscribe on the socket, reason {:?}", err);
             }
         }
@@ -58,11 +64,15 @@ impl SocketContext {
     }
 
     pub fn create_subscriber(&self, address: &str) -> ZmqSocket {
-        self.create_connecting_socket(address, zmq::SUB)
+        self.create_subscriber_with_topic(address, &[])
+    }
+
+    pub fn create_subscriber_with_topic(&self, address: &str, topic: &[u8]) -> ZmqSocket {
+        self.create_connecting_socket(address, zmq::SUB, Some(topic))
     }
 
     pub fn create_push(&self, address: &str) -> ZmqSocket {
-        self.create_connecting_socket(address, zmq::PUSH)
+        self.create_connecting_socket(address, zmq::PUSH, None)
     }
 
     pub fn create_pull(&self, address: &str) -> ZmqSocket {
@@ -70,7 +80,7 @@ impl SocketContext {
     }
 
     pub fn create_request(&self, address: &str) -> ZmqSocket {
-        self.create_connecting_socket(address, zmq::REQ)
+        self.create_connecting_socket(address, zmq::REQ, None)
     }
 
     pub fn create_response(&self, address: &str) -> ZmqSocket {
