@@ -16,6 +16,7 @@ const IS_MINE_METHOD: &str = "ismine";
 const VALIDATE_ADDRESS_METHOD: &str = "validateaddress";
 const ON_CHAIN_HISTORY_METHOD: &str = "onchain_history";
 
+#[derive(Clone, Debug)]
 pub struct ElectrumClient {
     username: String,
     password: String,

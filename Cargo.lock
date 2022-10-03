@@ -1218,6 +1218,7 @@ version = "0.1.0"
 dependencies = [
  "bitcoin 0.29.1",
  "bitcoincore-rpc",
+ "crossbeam-channel",
  "hex",
  "reqwest 0.11.11",
  "serde 1.0.144",

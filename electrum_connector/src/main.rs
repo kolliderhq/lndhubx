@@ -1,6 +1,7 @@
 use electrum_connector::connector_config::ConnectorConfig;
 use electrum_connector::electrum_client::ElectrumClient;
 use electrum_connector::explorer::BlockExplorer;
+use std::time::Duration;
 use utils::xzmq::SocketContext;
 
 #[tokio::main]
@@ -13,8 +14,9 @@ async fn main() {
         &config.electrum_url,
     );
     let zmq_context = SocketContext::new();
-    let mut block_explorer = BlockExplorer::new(config, zmq_context, electrum_client)
+    let listener = |tx_state| println!("Received transaction state: {:?}", tx_state);
+    let _block_explorer = BlockExplorer::new(config, zmq_context, &electrum_client, listener)
         .await
         .expect("Failed to create block explorer");
-    block_explorer.raw_block_handler().await
+    std::thread::sleep(Duration::from_secs(3600));
 }
