@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Input {
+    pub address: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Output {
     pub address: String,
     pub value: i64,
@@ -31,6 +36,29 @@ pub struct TransactionState {
     pub is_confirmed: bool,
     pub network: String,
     pub value: i64,
+}
+
+impl From<TrackedTransaction> for TransactionState {
+    fn from(tracked_tx: TrackedTransaction) -> Self {
+        let timestamp = tracked_tx
+            .timestamp
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("System time may not be set to earlier than epoch start")
+            .as_secs();
+        Self {
+            uid: tracked_tx.uid,
+            txid: tracked_tx.txid,
+            timestamp,
+            address: tracked_tx.address,
+            block_number: tracked_tx.block_number,
+            confirmations: 0,
+            fee: tracked_tx.fee,
+            tx_type: tracked_tx.tx_type,
+            is_confirmed: false,
+            network: "Bitcoin".to_string(),
+            value: tracked_tx.value,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

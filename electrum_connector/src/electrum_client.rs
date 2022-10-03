@@ -16,7 +16,7 @@ const IS_MINE_METHOD: &str = "ismine";
 const VALIDATE_ADDRESS_METHOD: &str = "validateaddress";
 const ON_CHAIN_HISTORY_METHOD: &str = "onchain_history";
 
-pub struct Client {
+pub struct ElectrumClient {
     username: String,
     password: String,
     wallet_path: String,
@@ -24,7 +24,7 @@ pub struct Client {
     http_client: HttpClient,
 }
 
-impl Client {
+impl ElectrumClient {
     pub fn new(username: &str, password: &str, wallet_path: &str, rpc_url: &str) -> Self {
         let http_client = reqwest::Client::new();
         Self {

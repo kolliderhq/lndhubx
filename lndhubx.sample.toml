@@ -6,6 +6,20 @@ influx_org = "<INFLUX-ORG>"
 influx_bucket = "<INFLUX-BUCKET>"
 influx_token = "<INFLUX-TOKEN>"
 
+electrum_username = "<USERNAME>"
+electrum_password = "<TOKEN>"
+electrum_path = "<WALLET-PATH>"
+electrum_url = "0.0.0.0:7777"
+
+raw_tx_socket = "tcp://0.0.0.0:5656"
+raw_block_socket = "tcp://0.0.0.0:29000"
+rpc_user = "<USERNAME>"
+rpc_password = "<PASSWORD>"
+bitcoind_url = "0.0.0.0:8332"
+
+min_confs = 2
+
+
 api_zmq_push_address = "tcp://0.0.0.0:5555"
 api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
 
