@@ -162,6 +162,7 @@ pub enum ServiceIdentity {
     Dealer,
     Loopback,
     ElectrumConnector,
+    Cli,
 }
 
 #[derive(Debug, Clone)]

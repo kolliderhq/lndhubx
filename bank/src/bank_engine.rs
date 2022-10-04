@@ -952,10 +952,17 @@ impl BankEngine {
                                 to_insert,
                                 err
                             );
+                            return;
                         }
                     }
+                    let msg = Message::Blockchain(Blockchain::BtcReceiveAddress(received_address));
+                    listener(msg, ServiceIdentity::Cli);
                 }
-                _ => {}
+                Blockchain::BtcReceiveAddressRequest(address_request) => {
+                    slog::info!(self.logger, "Received bitcoin address request: {:?}", address_request);
+                    let msg = Message::Blockchain(Blockchain::BtcReceiveAddressRequest(address_request));
+                    listener(msg, ServiceIdentity::ElectrumConnector);
+                }
             },
             Message::Api(msg) => match msg {
                 Api::InvoiceRequest(msg) => {

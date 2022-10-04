@@ -146,11 +146,18 @@ pub async fn start(
                 panic!("Failed to send priority message: {:?}", err);
             }
         }
+        ServiceIdentity::Cli => {
+            utils::xzmq::send_as_json(&cli_socket, &msg);
+        }
         _ => {}
     };
 
-    let mut cli_listener = |msg: Message, _destination: ServiceIdentity| {
-        utils::xzmq::send_as_json(&cli_socket, &msg);
+    let mut cli_listener = |msg: Message, destination: ServiceIdentity| {
+        if let ServiceIdentity::ElectrumConnector = destination {
+            utils::xzmq::send_as_bincode(&electrum_sender, &msg);
+        } else {
+            utils::xzmq::send_as_json(&cli_socket, &msg);
+        }
     };
 
     loop {

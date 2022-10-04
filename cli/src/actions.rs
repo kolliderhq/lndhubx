@@ -1,4 +1,5 @@
 use core_types::{Currency, UserId};
+use msgs::blockchain::{Blockchain, BtcReceiveAddressRequest};
 use msgs::cli::{Cli, MakeTx};
 use msgs::dealer::{BankStateRequest, CreateInvoiceRequest, Dealer};
 use msgs::Message;
@@ -26,6 +27,10 @@ pub enum Action {
         amount: Decimal,
         #[structopt(short = "c", long = "currency")]
         currency: Currency,
+    },
+    GetOnchainAddress {
+        #[structopt(long = "uid")]
+        uid: UserId,
     },
 }
 
@@ -57,6 +62,9 @@ impl Action {
                 amount,
                 currency,
             })),
+            Self::GetOnchainAddress { uid } => {
+                Message::Blockchain(Blockchain::BtcReceiveAddressRequest(BtcReceiveAddressRequest { uid }))
+            }
         }
     }
 }
