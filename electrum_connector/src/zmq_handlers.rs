@@ -1,8 +1,9 @@
-use crate::bitcoin::{Input, Output, TrackedTransaction, TransactionState};
+use crate::bitcoin::{Input, Output, TrackedTransaction};
 use crate::tracked_state::SharedState;
 use crate::{util, MAX_BLOCK};
 use bitcoin::{Block, Transaction};
 use bitcoincore_rpc::{Client as BitcoinRpcClient, RpcApi};
+use msgs::blockchain::{BcTransactionState, TxType};
 use std::time::SystemTime;
 use utils::xzmq::ZmqSocket;
 
@@ -18,7 +19,7 @@ pub fn raw_tx_handler<F>(
     rpc_client: BitcoinRpcClient,
     mut listener: F,
 ) where
-    F: FnMut(TransactionState),
+    F: FnMut(BcTransactionState),
 {
     while let Ok(frames) = raw_tx_socket.recv_multipart(0x00) {
         if let Ok(tx) = bitcoin::consensus::encode::deserialize::<Transaction>(&frames[1]) {
@@ -88,11 +89,11 @@ pub fn raw_tx_handler<F>(
                                     address: output.address.clone(),
                                     block_number: MAX_BLOCK,
                                     fee,
-                                    tx_type: "Inbound".to_string(),
+                                    tx_type: TxType::Inbound,
                                     value: output.value,
                                 };
                                 tracked_transactions.insert(raw_tx_msg.txid.clone(), tracked_tx.clone());
-                                let transaction_state = TransactionState::from(tracked_tx);
+                                let transaction_state = BcTransactionState::from(tracked_tx);
                                 listener(transaction_state);
                             }
                             Err(err) => {
@@ -114,7 +115,7 @@ pub fn raw_block_handler<F>(
     min_confirmations: i64,
     mut listener: F,
 ) where
-    F: FnMut(TransactionState),
+    F: FnMut(BcTransactionState),
 {
     while let Ok(frames) = raw_block_socket.recv_multipart(0x00) {
         let block = bitcoin::consensus::deserialize::<Block>(&frames[1]).unwrap();
@@ -137,7 +138,7 @@ pub fn raw_block_handler<F>(
                             .unwrap()
                             .tracked_transactions
                             .insert(txid.clone(), tracked_tx.clone());
-                        let mut transaction_state = TransactionState::from(tracked_tx);
+                        let mut transaction_state = BcTransactionState::from(tracked_tx);
                         transaction_state.confirmations = 1;
                         listener(transaction_state);
                     }
@@ -159,7 +160,7 @@ struct TxToRemove {
 
 fn check_tx_confirmations<F>(shared_state: &mut SharedState, height: i64, min_confirmations: i64, listener: &mut F)
 where
-    F: FnMut(TransactionState),
+    F: FnMut(BcTransactionState),
 {
     let mut transaction_to_remove = Vec::new();
     for (txid, tracked_tx) in shared_state.lock().unwrap().tracked_transactions.iter() {
@@ -168,7 +169,7 @@ where
         }
         let confirmations = height + 1 - tracked_tx.block_number;
         if confirmations > 1 {
-            let mut transaction_state = TransactionState::from(tracked_tx.clone());
+            let mut transaction_state = BcTransactionState::from(tracked_tx.clone());
             transaction_state.confirmations = confirmations;
             println!(
                 "Tx state: {} updated by check_tx_confs, confirmations: {}",

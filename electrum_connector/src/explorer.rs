@@ -1,4 +1,3 @@
-use crate::bitcoin::TransactionState;
 use crate::connector_config::ConnectorConfig;
 use crate::electrum_client::ElectrumClient;
 use crate::error::Error;
@@ -7,6 +6,7 @@ use crate::{util, zmq_handlers};
 use bitcoincore_rpc::bitcoin::{Block, BlockHash};
 use bitcoincore_rpc::json::GetRawTransactionResult;
 use bitcoincore_rpc::{Auth, Client as BitcoinRpcClient, RpcApi};
+use msgs::blockchain::BcTransactionState;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -24,7 +24,7 @@ impl BlockExplorer {
         mut listener: F,
     ) -> Result<Self, Error>
     where
-        F: FnMut(TransactionState) + Send + 'static,
+        F: FnMut(BcTransactionState) + Send + 'static,
     {
         let shared_state = Arc::new(Mutex::new(State {
             tracked_addresses: HashMap::new(),

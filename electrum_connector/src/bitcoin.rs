@@ -1,3 +1,4 @@
+use msgs::blockchain::{BcTransactionState, Network, TxType};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
@@ -23,22 +24,7 @@ pub struct Transaction {
     pub confirmations: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct TransactionState {
-    pub uid: i64,
-    pub txid: String,
-    pub timestamp: u64,
-    pub address: String,
-    pub block_number: i64,
-    pub confirmations: i64,
-    pub fee: i64,
-    pub tx_type: String,
-    pub is_confirmed: bool,
-    pub network: String,
-    pub value: i64,
-}
-
-impl From<TrackedTransaction> for TransactionState {
+impl From<TrackedTransaction> for BcTransactionState {
     fn from(tracked_tx: TrackedTransaction) -> Self {
         let timestamp = tracked_tx
             .timestamp
@@ -55,7 +41,7 @@ impl From<TrackedTransaction> for TransactionState {
             fee: tracked_tx.fee,
             tx_type: tracked_tx.tx_type,
             is_confirmed: false,
-            network: "Bitcoin".to_string(),
+            network: Network::Bitcoin,
             value: tracked_tx.value,
         }
     }
@@ -63,18 +49,18 @@ impl From<TrackedTransaction> for TransactionState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TrackedTransaction {
-    pub uid: i64,
+    pub uid: u64,
     pub txid: String,
     pub timestamp: SystemTime,
     pub address: String,
     pub block_number: i64,
     pub fee: i64,
-    pub tx_type: String,
+    pub tx_type: TxType,
     pub value: i64,
 }
 
 #[derive(Debug, Clone)]
 pub struct TrackedAddr {
-    pub uid: i64,
+    pub uid: u64,
     pub timestamp: SystemTime,
 }

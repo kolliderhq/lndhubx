@@ -1,9 +1,10 @@
-use crate::bitcoin::{TrackedAddr, TrackedTransaction, TransactionState};
+use crate::bitcoin::{TrackedAddr, TrackedTransaction};
 use crate::electrum_client::ElectrumClient;
 use crate::error::Error;
 use crate::{util, SATS_IN_BITCOIN};
 use bitcoincore_rpc::Client as BitcoinRpcClient;
 use crossbeam_channel::Sender;
+use msgs::blockchain::{BcTransactionState, Network, TxType};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -19,7 +20,7 @@ impl State {
         electrum_client: &ElectrumClient,
         rpc_client: &BitcoinRpcClient,
         min_confirmations: i64,
-        event_sender: Sender<TransactionState>,
+        event_sender: Sender<BcTransactionState>,
     ) -> Result<(), Error> {
         println!("Initializing electrum wallet history");
         let wallet_txs = electrum_client.get_wallet_history().await?;
@@ -50,7 +51,7 @@ impl State {
                                 })
                                 .as_secs()
                         };
-                        let transaction_state = TransactionState {
+                        let transaction_state = BcTransactionState {
                             uid: 0,
                             txid: txid.clone(),
                             timestamp,
@@ -58,9 +59,9 @@ impl State {
                             block_number: tx.height,
                             confirmations: tx.confirmations,
                             fee,
-                            tx_type: "Inbound".to_string(),
+                            tx_type: TxType::Inbound,
                             is_confirmed: false,
-                            network: "Bitcoin".to_string(),
+                            network: Network::Bitcoin,
                             value,
                         };
 
@@ -78,7 +79,7 @@ impl State {
                                 address,
                                 block_number: tx.height,
                                 fee,
-                                tx_type: "Inbound".to_string(),
+                                tx_type: TxType::Inbound,
                                 value,
                             };
                             self.tracked_transactions.insert(txid, tracked_tx);

@@ -4,10 +4,12 @@ use serde::{Deserialize, Serialize};
 
 pub mod api;
 pub mod bank;
+pub mod blockchain;
 pub mod cli;
 pub mod dealer;
 pub mod kollider_client;
 
+use crate::blockchain::Blockchain;
 use api::*;
 use bank::*;
 use cli::*;
@@ -33,6 +35,7 @@ pub enum Message {
     KolliderApiResponse(KolliderApiResponse),
     Bank(Bank),
     Cli(Cli),
+    Blockchain(Blockchain),
 }
 
 #[cfg(test)]
