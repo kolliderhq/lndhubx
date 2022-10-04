@@ -21,6 +21,7 @@ use xerror::bank_engine::*;
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 
+use msgs::blockchain::Blockchain;
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +52,7 @@ pub struct BankEngineSettings {
     pub bank_cli_resp_address: String,
     pub bank_electrum_connector_address: String,
     pub electrum_connector_bank_address: String,
+    pub min_confs: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -167,6 +169,7 @@ pub struct BankEngine {
     pub payment_thread_sender: crossbeam_channel::Sender<Message>,
     pub lnd_connector_settings: LndConnectorSettings,
     pub payment_threads: FuturesUnordered<tokio::task::JoinHandle<()>>,
+    pub min_onchain_confirmations: i64,
 }
 
 impl BankEngine {
@@ -211,6 +214,7 @@ impl BankEngine {
             payment_threads: FuturesUnordered::new(),
             payment_thread_sender,
             lnd_connector_settings,
+            min_onchain_confirmations: settings.min_confs,
         }
     }
 
@@ -840,6 +844,119 @@ impl BankEngine {
                     self.update_account(&external_account, BANK_UID);
                 }
             }
+            Message::Blockchain(msg) => match msg {
+                Blockchain::BcTransactionState(tx_state) => {
+                    slog::info!(self.logger, "Received transaction state: {:?}", tx_state);
+                    if tx_state.confirmations >= self.min_onchain_confirmations {
+                        let conn = match &self.conn_pool {
+                            Some(conn) => conn,
+                            None => {
+                                slog::error!(self.logger, "DB connection pool does not exist");
+                                return;
+                            }
+                        };
+
+                        let c = match conn.get() {
+                            Ok(psql_connection) => psql_connection,
+                            Err(_) => {
+                                slog::error!(self.logger, "Could not get psql connection");
+                                return;
+                            }
+                        };
+
+                        let inbound_uid = match models::on_chain::BitcoinAddress::get_by_address(&c, &tx_state.address)
+                        {
+                            Ok(existing_address) => existing_address.uid as u64,
+                            Err(_) => {
+                                slog::warn!(
+                                    self.logger,
+                                    "Could not identify owner of bitcoin address: {}. Ignoring transaction state update: {:?}",
+                                    tx_state.address,
+                                    tx_state);
+                                return;
+                            }
+                        };
+                        let mut inbound_account = {
+                            let user_account = self
+                                .ledger
+                                .user_accounts
+                                .entry(inbound_uid)
+                                .or_insert_with(|| UserAccount::new(inbound_uid));
+
+                            user_account.get_default_account(Currency::BTC)
+                        };
+
+                        let mut external_account = self.ledger.external_account.clone();
+
+                        // Making the transaction and inserting it into the DB.
+                        let amount = Decimal::new(tx_state.value, 0);
+                        if self
+                            .make_tx(
+                                &mut external_account,
+                                BANK_UID,
+                                &mut inbound_account,
+                                inbound_uid,
+                                amount,
+                                Decimal::ONE,
+                            )
+                            .is_err()
+                        {
+                            return;
+                        }
+
+                        // Updating cache of external account.
+                        self.ledger.external_account = external_account.clone();
+
+                        // Updating db of internal account.
+                        self.update_account(&inbound_account, inbound_uid);
+
+                        // Updating db of internal account.
+                        self.update_account(&external_account, BANK_UID);
+                    }
+                }
+                Blockchain::BtcReceiveAddress(received_address) => {
+                    slog::info!(self.logger, "Received bitcoin address: {:?}", received_address);
+                    let (address, uid) = match received_address.address {
+                        Some(ref address) => (address.clone(), received_address.uid as i32),
+                        None => {
+                            slog::error!(
+                                self.logger,
+                                "Failed to get a bitcoin address for uid: {}",
+                                received_address.uid
+                            );
+                            return;
+                        }
+                    };
+                    let conn = match &self.conn_pool {
+                        Some(conn) => conn,
+                        None => {
+                            slog::error!(self.logger, "DB connection pool does not exist");
+                            return;
+                        }
+                    };
+
+                    let c = match conn.get() {
+                        Ok(psql_connection) => psql_connection,
+                        Err(_) => {
+                            slog::error!(self.logger, "Could not get psql connection");
+                            return;
+                        }
+                    };
+
+                    if models::on_chain::BitcoinAddress::get_by_address(&c, &address).is_err() {
+                        let to_insert = models::on_chain::BitcoinAddress { address, uid };
+                        if let Err(err) = to_insert.insert(&c) {
+                            slog::error!(
+                                self.logger,
+                                "Failed to insert new bitcoin address: {:?} into DB: {:?}",
+                                to_insert,
+                                err
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            },
             Message::Api(msg) => match msg {
                 Api::InvoiceRequest(msg) => {
                     slog::info!(self.logger, "Received invoice request: {:?}", msg);

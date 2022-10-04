@@ -9,6 +9,13 @@ table! {
 }
 
 table! {
+    bitcoin_addresses (address) {
+        address -> Text,
+        uid -> Int4,
+    }
+}
+
+table! {
     internal_user_mappings (username) {
         username -> Text,
         uid -> Int4,
@@ -33,6 +40,13 @@ table! {
         owner -> Nullable<Int4>,
         fees -> Nullable<Int8>,
         currency -> Nullable<Text>,
+    }
+}
+
+table! {
+    onchain_transactions (txid) {
+        txid -> Text,
+        is_settled -> Bool,
     }
 }
 
@@ -72,12 +86,15 @@ table! {
 }
 
 joinable!(accounts -> users (uid));
+joinable!(bitcoin_addresses -> users (uid));
 joinable!(internal_user_mappings -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
+    bitcoin_addresses,
     internal_user_mappings,
     invoices,
+    onchain_transactions,
     pre_signups,
     transactions,
     users,

@@ -8,6 +8,7 @@ pub mod conversions;
 mod error;
 pub mod internal_user_mappings;
 pub mod invoices;
+pub mod on_chain;
 pub mod pre_signups;
 mod schema;
 pub mod transactions;
