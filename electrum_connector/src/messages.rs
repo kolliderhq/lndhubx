@@ -107,7 +107,7 @@ pub struct ElectrumTransaction {
     pub incoming: bool,
     pub outputs: Vec<ElectrumOutput>,
     pub bc_value: String,
-    pub timestamp: i64,
+    pub timestamp: Option<i64>,
     pub height: i64,
     pub confirmations: i64,
 }

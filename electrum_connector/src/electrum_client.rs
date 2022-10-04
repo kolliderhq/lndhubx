@@ -241,7 +241,11 @@ impl ElectrumClient {
                 };
                 outputs.push(output);
             }
-            let timestamp = SystemTime::UNIX_EPOCH.add(Duration::from_secs(etx.timestamp as u64));
+
+            let timestamp = match etx.timestamp {
+                Some(epoch_secs) => SystemTime::UNIX_EPOCH.add(Duration::from_secs(epoch_secs as u64)),
+                None => SystemTime::now(),
+            };
             let transaction = Transaction {
                 txid: etx.txid,
                 incoming: etx.incoming,
