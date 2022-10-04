@@ -2,7 +2,7 @@ pub mod bank_engine;
 
 use utils::xzmq::SocketContext;
 
-use bank::{bank_engine::*, start};
+use bank::{bank_engine::*, start, BankSockets};
 use lnd_connector::connector::LndConnectorSettings;
 
 #[tokio::main]
@@ -20,14 +20,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli_socket = context.create_response(&settings.bank_cli_resp_address);
 
-    start(
-        settings,
-        lnd_connector_settings,
-        api_rx,
-        api_tx,
-        dealer_tx,
-        dealer_rx,
+    let electrum_connector_tx = context.create_push(&settings.bank_electrum_connector_address);
+    let electrum_connector_rx = context.create_pull(&settings.electrum_connector_bank_address);
+
+    let sockets = BankSockets {
+        api_recv: api_rx,
+        api_sender: api_tx,
+        dealer_sender: dealer_tx,
+        dealer_recv: dealer_rx,
         cli_socket,
-    )
-    .await
+        electrum_sender: electrum_connector_tx,
+        electrum_recv: electrum_connector_rx,
+    };
+    start(settings, lnd_connector_settings, sockets).await
 }

@@ -161,6 +161,7 @@ pub enum ServiceIdentity {
     BankEngine,
     Dealer,
     Loopback,
+    ElectrumConnector,
 }
 
 #[derive(Debug, Clone)]

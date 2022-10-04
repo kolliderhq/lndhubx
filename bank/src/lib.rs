@@ -66,14 +66,20 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
     }
 }
 
+pub struct BankSockets {
+    pub api_recv: ZmqSocket,
+    pub api_sender: ZmqSocket,
+    pub dealer_sender: ZmqSocket,
+    pub dealer_recv: ZmqSocket,
+    pub cli_socket: ZmqSocket,
+    pub electrum_sender: ZmqSocket,
+    pub electrum_recv: ZmqSocket,
+}
+
 pub async fn start(
     settings: BankEngineSettings,
     lnd_connector_settings: LndConnectorSettings,
-    api_recv: ZmqSocket,
-    api_sender: ZmqSocket,
-    dealer_sender: ZmqSocket,
-    dealer_recv: ZmqSocket,
-    cli_socket: ZmqSocket,
+    sockets: BankSockets,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
@@ -115,12 +121,25 @@ pub async fn start(
 
     insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
 
+    let BankSockets {
+        api_recv,
+        api_sender,
+        dealer_sender,
+        dealer_recv,
+        cli_socket,
+        electrum_sender,
+        electrum_recv,
+    } = sockets;
+
     let mut listener = |msg: Message, destination: ServiceIdentity| match destination {
         ServiceIdentity::Api => {
             utils::xzmq::send_multipart_as_bincode(&api_sender, &msg);
         }
         ServiceIdentity::Dealer => {
             utils::xzmq::send_as_bincode(&dealer_sender, &msg);
+        }
+        ServiceIdentity::ElectrumConnector => {
+            utils::xzmq::send_as_bincode(&electrum_sender, &msg);
         }
         ServiceIdentity::Loopback => {
             if let Err(err) = priority_tx.send(msg) {
@@ -152,6 +171,13 @@ pub async fn start(
 
         // Receiving msgs from dealer.
         if let Ok(frame) = dealer_recv.recv_msg(1) {
+            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
+                bank_engine.process_msg(message, &mut listener).await;
+            };
+        }
+
+        // Receiving msgs from electrum connector.
+        if let Ok(frame) = electrum_recv.recv_msg(1) {
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
                 bank_engine.process_msg(message, &mut listener).await;
             };

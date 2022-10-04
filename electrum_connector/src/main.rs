@@ -15,8 +15,8 @@ async fn main() {
         &config.electrum_url,
     );
     let zmq_context = SocketContext::new();
-    let pull_socket = zmq_context.create_pull("tcp://abcd:1234");
-    let push_socket = zmq_context.create_push("tcp://dcba:4321");
+    let pull_socket = zmq_context.create_pull(&config.bank_electrum_connector_address);
+    let push_socket = zmq_context.create_push(&config.electrum_connector_bank_address);
 
     let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(2048);
 

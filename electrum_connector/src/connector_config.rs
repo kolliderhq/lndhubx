@@ -12,4 +12,6 @@ pub struct ConnectorConfig {
     pub rpc_password: String,
     pub bitcoind_url: String,
     pub min_confs: i64,
+    pub bank_electrum_connector_address: String,
+    pub electrum_connector_bank_address: String,
 }
