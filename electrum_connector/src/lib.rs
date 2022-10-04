@@ -3,6 +3,7 @@ use crate::electrum_client::ElectrumClient;
 use crate::explorer::BlockExplorer;
 use msgs::blockchain::{Blockchain, BtcReceiveAddress};
 use msgs::Message;
+use std::collections::HashMap;
 use utils::xzmq::SocketContext;
 
 pub mod bitcoin;
@@ -47,13 +48,23 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
         .expect("Failed to create block explorer");
 
     tokio::spawn(async move {
+        let mut address_cache: HashMap<u64, String> = HashMap::new();
         while let Some(uid) = address_uid_rx.recv().await {
-            let response = match electrum_client.get_new_address().await {
-                Ok(address) => BtcReceiveAddress {
+            let response = match address_cache.get(&uid) {
+                Some(existing_address) => BtcReceiveAddress {
                     uid,
-                    address: Some(address),
+                    address: Some(existing_address.clone()),
                 },
-                Err(_) => BtcReceiveAddress { uid, address: None },
+                None => match electrum_client.get_new_address().await {
+                    Ok(address) => {
+                        address_cache.insert(uid, address.clone());
+                        BtcReceiveAddress {
+                            uid,
+                            address: Some(address),
+                        }
+                    }
+                    Err(_) => BtcReceiveAddress { uid, address: None },
+                },
             };
             let msg = Message::Blockchain(Blockchain::BtcReceiveAddress(response));
             if let Err(err) = events_tx.send(msg).await {
