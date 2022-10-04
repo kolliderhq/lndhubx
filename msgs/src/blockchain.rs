@@ -35,7 +35,9 @@ pub struct BtcReceiveAddressRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BtcReceiveAddress {
     pub uid: u64,
-    pub address: String,
+    // it is None when an address could not be provided by the connector
+    // and it should be treated as an error response
+    pub address: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
