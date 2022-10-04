@@ -21,7 +21,7 @@ use xerror::bank_engine::*;
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 
-use msgs::blockchain::Blockchain;
+use msgs::blockchain::{Blockchain, BtcReceiveAddress};
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use serde::{Deserialize, Serialize};
 
@@ -952,6 +952,11 @@ impl BankEngine {
                                 to_insert,
                                 err
                             );
+                            let msg = Message::Blockchain(Blockchain::BtcReceiveAddress(BtcReceiveAddress {
+                                uid: 0,
+                                address: None,
+                            }));
+                            listener(msg, ServiceIdentity::Cli);
                             return;
                         }
                     }
