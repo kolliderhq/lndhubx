@@ -19,7 +19,7 @@ pub struct BlockExplorer {
 impl BlockExplorer {
     pub async fn new<F>(
         config: ConnectorConfig,
-        zmq_context: SocketContext,
+        zmq_context: &SocketContext,
         electrum_client: &ElectrumClient,
         mut listener: F,
     ) -> Result<Self, Error>
