@@ -34,7 +34,7 @@ pub fn get_transaction(rpc_client: &BitcoinRpcClient, tx_hash: &str) -> Result<(
                 },
                 Err(err) => {
                     eprintln!(
-                        "Failed to lookup vin txid: {}, error: {}, vin dump: {:?}",
+                        "Failed to lookup vin txid: {} in get_transaction, error: {}, vin dump: {:?}",
                         vin_txid, err, vin
                     );
                     continue;

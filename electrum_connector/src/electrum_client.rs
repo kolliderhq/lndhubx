@@ -3,7 +3,7 @@ use crate::error::Error;
 use crate::messages::*;
 use crate::SATS_IN_BITCOIN;
 use reqwest::Client as HttpClient;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::ops::Add;
 use std::time::{Duration, SystemTime};
 
@@ -15,6 +15,17 @@ const CREATE_NEW_ADDRESS_METHOD: &str = "createnewaddress";
 const IS_MINE_METHOD: &str = "ismine";
 const VALIDATE_ADDRESS_METHOD: &str = "validateaddress";
 const ON_CHAIN_HISTORY_METHOD: &str = "onchain_history";
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct RawAddrBalance {
+    pub confirmed: String,
+    pub unconfirmed: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct RawAddrBalanceResp {
+    pub result: RawAddrBalance,
+}
 
 #[derive(Clone, Debug)]
 pub struct ElectrumClient {
@@ -40,8 +51,8 @@ impl ElectrumClient {
     pub async fn get_total_balance(&self) -> Result<GetTotalBalanceResp, Error> {
         let all_addresses = self.get_all_addresses().await?;
         let mut total_balance = GetTotalBalanceResp {
-            confirmed: 0,
-            unconfirmed: 0,
+            confirmed: 0.0,
+            unconfirmed: 0.0,
         };
         for addr in all_addresses {
             let addr_balance = self.get_address_balance(addr).await?;
@@ -157,8 +168,18 @@ impl ElectrumClient {
         if resp.status() == reqwest::StatusCode::OK {
             let body = resp.bytes().await.map_err(|err| Error { error: err.to_string() })?;
             let address_balance =
-                serde_json::from_slice::<GetAddrBalanceResp>(&body).map_err(|err| Error { error: err.to_string() })?;
-            Ok(address_balance.result)
+                serde_json::from_slice::<RawAddrBalanceResp>(&body).map_err(|err| Error { error: err.to_string() })?;
+            let confirmed = address_balance
+                .result
+                .confirmed
+                .parse::<f64>()
+                .map_err(|err| Error { error: err.to_string() })?;
+            let unconfirmed = address_balance
+                .result
+                .unconfirmed
+                .parse::<f64>()
+                .map_err(|err| Error { error: err.to_string() })?;
+            Ok(GetAddrBalance { confirmed, unconfirmed })
         } else {
             Err(Error {
                 error: format!("Could not get {} address balance", msg.params.address),

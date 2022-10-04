@@ -7,8 +7,8 @@ pub struct WalletPathParam {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetTotalBalanceResp {
-    pub confirmed: i64,
-    pub unconfirmed: i64,
+    pub confirmed: f64,
+    pub unconfirmed: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -39,8 +39,8 @@ pub struct GetAddrBalanceBody {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetAddrBalance {
-    pub confirmed: i64,
-    pub unconfirmed: i64,
+    pub confirmed: f64,
+    pub unconfirmed: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

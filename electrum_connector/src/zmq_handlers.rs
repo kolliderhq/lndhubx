@@ -1,7 +1,7 @@
 use crate::bitcoin::{Input, Output, TrackedTransaction, TransactionState};
 use crate::tracked_state::SharedState;
 use crate::{util, MAX_BLOCK};
-use bitcoin::Block;
+use bitcoin::{Block, Transaction};
 use bitcoincore_rpc::{Client as BitcoinRpcClient, RpcApi};
 use std::time::SystemTime;
 use utils::xzmq::ZmqSocket;
@@ -21,11 +21,7 @@ pub fn raw_tx_handler<F>(
     F: FnMut(TransactionState),
 {
     while let Ok(frames) = raw_tx_socket.recv_multipart(0x00) {
-        if let Ok(tx) =
-            <bitcoin::blockdata::transaction::Transaction as bitcoin::psbt::serialize::Deserialize>::deserialize(
-                &frames[1],
-            )
-        {
+        if let Ok(tx) = bitcoin::consensus::encode::deserialize::<Transaction>(&frames[1]) {
             let mut _inputs = Vec::new();
             let mut outputs = Vec::new();
             for vin in tx.input.iter() {
@@ -45,7 +41,7 @@ pub fn raw_tx_handler<F>(
                         }
                         Err(err) => {
                             eprintln!(
-                                "Failed to lookup vin txid: {}, error: {}, vin dump: {:?}",
+                                "Failed to lookup vin txid: {} in raw_tx_handler, error: {}, vin dump: {:?}",
                                 vin_txid, err, vin
                             );
                             continue;
@@ -55,17 +51,19 @@ pub fn raw_tx_handler<F>(
             }
 
             for vout in tx.output.iter() {
-                match bitcoin::util::address::Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin) {
-                    Ok(address) => {
-                        let value = vout.value as i64;
-                        outputs.push(Output {
-                            address: address.to_string(),
-                            value,
-                        });
-                    }
-                    Err(err) => {
-                        eprintln!("Failed to get address for vout's script {:?}, error: {:?}", vout, err);
-                        continue;
+                if vout.value > 0 {
+                    match bitcoin::util::address::Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin) {
+                        Ok(address) => {
+                            let value = vout.value as i64;
+                            outputs.push(Output {
+                                address: address.to_string(),
+                                value,
+                            });
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to get address for vout's script {:?}, error: {:?}", vout, err);
+                            continue;
+                        }
                     }
                 }
             }
