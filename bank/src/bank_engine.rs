@@ -889,7 +889,7 @@ impl BankEngine {
                         let mut external_account = self.ledger.external_account.clone();
 
                         // Making the transaction and inserting it into the DB.
-                        let amount = Decimal::new(tx_state.value, 0);
+                        let amount = Decimal::new(tx_state.value, SATS_DECIMALS);
                         if self
                             .make_tx(
                                 &mut external_account,
