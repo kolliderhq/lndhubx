@@ -847,71 +847,102 @@ impl BankEngine {
             Message::Blockchain(msg) => match msg {
                 Blockchain::BcTransactionState(tx_state) => {
                     slog::info!(self.logger, "Received transaction state: {:?}", tx_state);
-                    if tx_state.confirmations >= self.min_onchain_confirmations {
-                        let conn = match &self.conn_pool {
-                            Some(conn) => conn,
-                            None => {
-                                slog::error!(self.logger, "DB connection pool does not exist");
-                                return;
-                            }
-                        };
+                    if tx_state.confirmations < self.min_onchain_confirmations {
+                        return;
+                    }
+                    let conn = match &self.conn_pool {
+                        Some(conn) => conn,
+                        None => {
+                            slog::error!(self.logger, "DB connection pool does not exist");
+                            return;
+                        }
+                    };
 
-                        let c = match conn.get() {
-                            Ok(psql_connection) => psql_connection,
-                            Err(_) => {
-                                slog::error!(self.logger, "Could not get psql connection");
-                                return;
-                            }
-                        };
+                    let c = match conn.get() {
+                        Ok(psql_connection) => psql_connection,
+                        Err(_) => {
+                            slog::error!(self.logger, "Could not get psql connection");
+                            return;
+                        }
+                    };
 
-                        let inbound_uid = match models::on_chain::BitcoinAddress::get_by_address(&c, &tx_state.address)
-                        {
-                            Ok(existing_address) => existing_address.uid as u64,
-                            Err(_) => {
-                                slog::warn!(
+                    let db_tx_state = match models::on_chain::OnchainTransaction::get_by_txid(&c, &tx_state.txid) {
+                        Ok(db_state) => db_state,
+                        Err(_) => {
+                            let tx_state_to_insert = models::on_chain::OnchainTransaction {
+                                txid: tx_state.txid.clone(),
+                                is_settled: false,
+                            };
+                            match tx_state_to_insert.insert(&c) {
+                                Ok(inserted) => inserted,
+                                Err(err) => {
+                                    slog::error!(self.logger, "Could not insert transaction into db: {:?}", err);
+                                    return;
+                                }
+                            }
+                        }
+                    };
+
+                    if db_tx_state.is_settled {
+                        slog::info!(self.logger, "Ignoring already settled transaction: {:?}", tx_state);
+                        return;
+                    }
+
+                    let inbound_uid = match models::on_chain::BitcoinAddress::get_by_address(&c, &tx_state.address) {
+                        Ok(existing_address) => existing_address.uid as u64,
+                        Err(_) => {
+                            slog::warn!(
                                     self.logger,
                                     "Could not identify owner of bitcoin address: {}. Ignoring transaction state update: {:?}",
                                     tx_state.address,
                                     tx_state);
-                                return;
-                            }
-                        };
-                        let mut inbound_account = {
-                            let user_account = self
-                                .ledger
-                                .user_accounts
-                                .entry(inbound_uid)
-                                .or_insert_with(|| UserAccount::new(inbound_uid));
-
-                            user_account.get_default_account(Currency::BTC)
-                        };
-
-                        let mut external_account = self.ledger.external_account.clone();
-
-                        // Making the transaction and inserting it into the DB.
-                        let amount = Decimal::new(tx_state.value, SATS_DECIMALS);
-                        if self
-                            .make_tx(
-                                &mut external_account,
-                                BANK_UID,
-                                &mut inbound_account,
-                                inbound_uid,
-                                amount,
-                                Decimal::ONE,
-                            )
-                            .is_err()
-                        {
                             return;
                         }
+                    };
+                    let mut inbound_account = {
+                        let user_account = self
+                            .ledger
+                            .user_accounts
+                            .entry(inbound_uid)
+                            .or_insert_with(|| UserAccount::new(inbound_uid));
 
-                        // Updating cache of external account.
-                        self.ledger.external_account = external_account.clone();
+                        user_account.get_default_account(Currency::BTC)
+                    };
 
-                        // Updating db of internal account.
-                        self.update_account(&inbound_account, inbound_uid);
+                    let mut external_account = self.ledger.external_account.clone();
 
-                        // Updating db of internal account.
-                        self.update_account(&external_account, BANK_UID);
+                    // Making the transaction and inserting it into the DB.
+                    let amount = Decimal::new(tx_state.value, SATS_DECIMALS);
+                    if self
+                        .make_tx(
+                            &mut external_account,
+                            BANK_UID,
+                            &mut inbound_account,
+                            inbound_uid,
+                            amount,
+                            Decimal::ONE,
+                        )
+                        .is_err()
+                    {
+                        return;
+                    }
+
+                    // Updating cache of external account.
+                    self.ledger.external_account = external_account.clone();
+
+                    // Updating db of internal account.
+                    self.update_account(&inbound_account, inbound_uid);
+
+                    // Updating db of internal account.
+                    self.update_account(&external_account, BANK_UID);
+
+                    if let Err(err) = models::on_chain::OnchainTransaction::set_settled(&c, &tx_state.txid) {
+                        slog::error!(
+                            self.logger,
+                            "Failed to set transaction: {:?} as settled: {:?}",
+                            tx_state,
+                            err
+                        );
                     }
                 }
                 Blockchain::BtcReceiveAddress(received_address) => {
