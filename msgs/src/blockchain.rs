@@ -1,17 +1,5 @@
-use core_types::ServiceIdentity;
+use core_types::{Network, ServiceIdentity, TxType};
 use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub enum TxType {
-    Inbound,
-    Outbound,
-    Internal,
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub enum Network {
-    Bitcoin,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BcTransactionState {

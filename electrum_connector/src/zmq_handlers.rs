@@ -3,7 +3,8 @@ use crate::tracked_state::SharedState;
 use crate::{util, MAX_BLOCK};
 use bitcoin::{Block, Transaction};
 use bitcoincore_rpc::{Client as BitcoinRpcClient, RpcApi};
-use msgs::blockchain::{BcTransactionState, TxType};
+use core_types::TxType;
+use msgs::blockchain::BcTransactionState;
 use std::time::SystemTime;
 use utils::xzmq::ZmqSocket;
 

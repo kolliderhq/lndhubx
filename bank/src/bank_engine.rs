@@ -847,7 +847,7 @@ impl BankEngine {
             Message::Blockchain(msg) => match msg {
                 Blockchain::BcTransactionState(tx_state) => {
                     slog::info!(self.logger, "Received transaction state: {:?}", tx_state);
-                    if tx_state.confirmations < self.min_onchain_confirmations {
+                    if tx_state.tx_type != TxType::Inbound || tx_state.confirmations < self.min_onchain_confirmations {
                         return;
                     }
                     let conn = match &self.conn_pool {

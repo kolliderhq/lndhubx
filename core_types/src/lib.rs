@@ -18,10 +18,11 @@ pub enum TxState {
     Confirmed,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum TxType {
     Internal,
-    External,
+    Inbound,
+    Outbound,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
@@ -234,6 +235,11 @@ impl Default for LndNodeInfo {
             testnet: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+pub enum Network {
+    Bitcoin,
 }
 
 #[cfg(test)]

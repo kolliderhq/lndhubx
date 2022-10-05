@@ -1,4 +1,5 @@
-use msgs::blockchain::{BcTransactionState, Network, TxType};
+use core_types::{Network, TxType};
+use msgs::blockchain::BcTransactionState;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
