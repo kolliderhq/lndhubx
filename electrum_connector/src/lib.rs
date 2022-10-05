@@ -52,11 +52,13 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
         while let Some(address_request) = address_uid_rx.recv().await {
             let uid = address_request.uid;
             let requesting_identity = address_request.requesting_identity;
+            let req_id = address_request.req_id;
             let response = match address_cache.get(&address_request.uid) {
                 Some(existing_address) => BtcReceiveAddress {
                     uid,
                     address: Some(existing_address.clone()),
                     requesting_identity,
+                    req_id,
                 },
                 None => match electrum_client.get_new_address().await {
                     Ok(address) => {
@@ -65,12 +67,14 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
                             uid,
                             address: Some(address),
                             requesting_identity,
+                            req_id,
                         }
                     }
                     Err(_) => BtcReceiveAddress {
                         uid,
                         address: None,
                         requesting_identity,
+                        req_id,
                     },
                 },
             };

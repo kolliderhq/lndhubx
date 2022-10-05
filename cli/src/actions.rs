@@ -68,6 +68,7 @@ impl Action {
                 Message::Blockchain(Blockchain::BtcReceiveAddressRequest(BtcReceiveAddressRequest {
                     uid,
                     requesting_identity: ServiceIdentity::Cli,
+                    req_id: Uuid::new_v4(),
                 }))
             }
         }

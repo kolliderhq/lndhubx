@@ -1,5 +1,6 @@
 use core_types::{Network, ServiceIdentity, TxType};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BcTransactionState {
@@ -20,6 +21,7 @@ pub struct BcTransactionState {
 pub struct BtcReceiveAddressRequest {
     pub uid: u64,
     pub requesting_identity: ServiceIdentity,
+    pub req_id: Uuid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -29,6 +31,7 @@ pub struct BtcReceiveAddress {
     // and it should be treated as an error response
     pub address: Option<String>,
     pub requesting_identity: ServiceIdentity,
+    pub req_id: Uuid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

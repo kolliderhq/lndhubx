@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse,
 };
 
-use core_types::Currency;
+use core_types::{Currency, ServiceIdentity};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -26,6 +26,7 @@ use crate::WebSender;
 
 use models::invoices::*;
 use models::transactions::Transaction;
+use msgs::blockchain::{Blockchain, BtcReceiveAddressRequest};
 
 #[get("/balance")]
 pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
@@ -431,6 +432,41 @@ pub async fn get_query_route(query: Query<QueryRouteParams>, web_sender: WebSend
         .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
 
     if let Ok(Some(Ok(Message::Api(Api::QueryRouteResponse(response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&response));
+    }
+    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+}
+
+#[get("/btc_address")]
+pub async fn get_btc_address(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+    let req_id = Uuid::new_v4();
+    let request = BtcReceiveAddressRequest {
+        uid,
+        requesting_identity: ServiceIdentity::Api,
+        req_id,
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::BtcAddress(response)) if response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Blockchain(Blockchain::BtcReceiveAddressRequest(request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::BtcAddress(response))))) =
         timeout(Duration::from_secs(5), response_rx.recv()).await
     {
         return Ok(HttpResponse::Ok().json(&response));

@@ -266,6 +266,7 @@ pub struct QueryRouteResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BtcAddress {
     pub address: Option<String>,
+    pub req_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

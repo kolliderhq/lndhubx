@@ -983,13 +983,17 @@ impl BankEngine {
                                 to_insert,
                                 err
                             );
-                            let msg = Message::Api(Api::BtcAddress(BtcAddress { address: None }));
+                            let msg = Message::Api(Api::BtcAddress(BtcAddress {
+                                address: None,
+                                req_id: received_address.req_id,
+                            }));
                             listener(msg, received_address.requesting_identity);
                             return;
                         }
                     }
                     let msg = Message::Api(Api::BtcAddress(BtcAddress {
                         address: received_address.address,
+                        req_id: received_address.req_id,
                     }));
                     listener(msg, received_address.requesting_identity);
                 }
