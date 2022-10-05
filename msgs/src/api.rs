@@ -264,6 +264,11 @@ pub struct QueryRouteResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BtcAddress {
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
     InvoiceRequest(InvoiceRequest),
     InvoiceResponse(InvoiceResponse),
@@ -287,4 +292,5 @@ pub enum Api {
     PayLnurlWithdrawalResponse(PayLnurlWithdrawalResponse),
     QueryRouteRequest(QueryRouteRequest),
     QueryRouteResponse(QueryRouteResponse),
+    BtcAddress(BtcAddress),
 }

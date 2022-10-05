@@ -1,4 +1,4 @@
-use core_types::{Currency, UserId};
+use core_types::{Currency, ServiceIdentity, UserId};
 use msgs::blockchain::{Blockchain, BtcReceiveAddressRequest};
 use msgs::cli::{Cli, MakeTx};
 use msgs::dealer::{BankStateRequest, CreateInvoiceRequest, Dealer};
@@ -42,11 +42,13 @@ impl Action {
                     req_id: Uuid::new_v4(),
                     amount,
                     memo: "Insurance fund top-up".to_string(),
+                    requesting_identity: ServiceIdentity::Cli,
                 }))
             }
-            Self::GetBankState => {
-                Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }))
-            }
+            Self::GetBankState => Message::Dealer(Dealer::BankStateRequest(BankStateRequest {
+                req_id: Uuid::new_v4(),
+                requesting_identity: ServiceIdentity::Cli,
+            })),
             Self::MakeTx {
                 outbound_uid,
                 outbound_account_id,
@@ -63,7 +65,10 @@ impl Action {
                 currency,
             })),
             Self::GetOnchainAddress { uid } => {
-                Message::Blockchain(Blockchain::BtcReceiveAddressRequest(BtcReceiveAddressRequest { uid }))
+                Message::Blockchain(Blockchain::BtcReceiveAddressRequest(BtcReceiveAddressRequest {
+                    uid,
+                    requesting_identity: ServiceIdentity::Cli,
+                }))
             }
         }
     }

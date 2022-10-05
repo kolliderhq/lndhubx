@@ -21,7 +21,7 @@ use xerror::bank_engine::*;
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 
-use msgs::blockchain::{Blockchain, BtcReceiveAddress};
+use msgs::blockchain::Blockchain;
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use serde::{Deserialize, Serialize};
 
@@ -669,10 +669,10 @@ impl BankEngine {
                         self.available_currencies = Vec::new();
                     }
                 }
-                Dealer::BankStateRequest(_) => {
+                Dealer::BankStateRequest(request) => {
                     let bank_state = self.get_bank_state();
                     let msg = Message::Dealer(Dealer::BankState(bank_state));
-                    listener(msg, ServiceIdentity::Dealer);
+                    listener(msg, request.requesting_identity);
                 }
                 Dealer::PayInvoice(pay_invoice) => {
                     self.process_pay_invoice(pay_invoice, false).await;
@@ -952,16 +952,15 @@ impl BankEngine {
                                 to_insert,
                                 err
                             );
-                            let msg = Message::Blockchain(Blockchain::BtcReceiveAddress(BtcReceiveAddress {
-                                uid: 0,
-                                address: None,
-                            }));
-                            listener(msg, ServiceIdentity::Cli);
+                            let msg = Message::Api(Api::BtcAddress(BtcAddress { address: None }));
+                            listener(msg, received_address.requesting_identity);
                             return;
                         }
                     }
-                    let msg = Message::Blockchain(Blockchain::BtcReceiveAddress(received_address));
-                    listener(msg, ServiceIdentity::Cli);
+                    let msg = Message::Api(Api::BtcAddress(BtcAddress {
+                        address: received_address.address,
+                    }));
+                    listener(msg, received_address.requesting_identity);
                 }
                 Blockchain::BtcReceiveAddressRequest(address_request) => {
                     slog::info!(self.logger, "Received bitcoin address request: {:?}", address_request);
@@ -2072,9 +2071,7 @@ impl BankEngine {
                     Err(err) => err.to_string(),
                 };
                 let msg = Message::Cli(Cli::MakeTxResult(MakeTxResult { tx, result }));
-                // the identity is ignored by cli listener, so we are using ServiceIdentity::Api here
-                // just to pass some argument
-                listener(msg, ServiceIdentity::Api);
+                listener(msg, ServiceIdentity::Cli);
             }
             _ => {}
         }
@@ -2199,7 +2196,7 @@ impl BankEngine {
             };
 
             let msg = Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response));
-            listener(msg, ServiceIdentity::Dealer)
+            listener(msg, req.requesting_identity)
         }
     }
 

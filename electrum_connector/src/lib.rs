@@ -1,7 +1,7 @@
 use crate::connector_config::ConnectorConfig;
 use crate::electrum_client::ElectrumClient;
 use crate::explorer::BlockExplorer;
-use msgs::blockchain::{Blockchain, BtcReceiveAddress};
+use msgs::blockchain::{Blockchain, BtcReceiveAddress, BtcReceiveAddressRequest};
 use msgs::Message;
 use std::collections::HashMap;
 use utils::xzmq::SocketContext;
@@ -31,7 +31,7 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
     );
 
     let (events_tx, mut events_rx) = tokio::sync::mpsc::channel(2048);
-    let (address_uid_tx, mut address_uid_rx) = tokio::sync::mpsc::channel(2048);
+    let (address_uid_tx, mut address_uid_rx) = tokio::sync::mpsc::channel::<BtcReceiveAddressRequest>(2048);
 
     let block_explorer_listener_tx = events_tx.clone();
     let block_explorer_listener = move |tx_state| {
@@ -49,11 +49,14 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
 
     tokio::spawn(async move {
         let mut address_cache: HashMap<u64, String> = HashMap::new();
-        while let Some(uid) = address_uid_rx.recv().await {
-            let response = match address_cache.get(&uid) {
+        while let Some(address_request) = address_uid_rx.recv().await {
+            let uid = address_request.uid;
+            let requesting_identity = address_request.requesting_identity;
+            let response = match address_cache.get(&address_request.uid) {
                 Some(existing_address) => BtcReceiveAddress {
                     uid,
                     address: Some(existing_address.clone()),
+                    requesting_identity,
                 },
                 None => match electrum_client.get_new_address().await {
                     Ok(address) => {
@@ -61,9 +64,14 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
                         BtcReceiveAddress {
                             uid,
                             address: Some(address),
+                            requesting_identity,
                         }
                     }
-                    Err(_) => BtcReceiveAddress { uid, address: None },
+                    Err(_) => BtcReceiveAddress {
+                        uid,
+                        address: None,
+                        requesting_identity,
+                    },
                 },
             };
             let msg = Message::Blockchain(Blockchain::BtcReceiveAddress(response));
@@ -77,7 +85,7 @@ pub async fn start(config: ConnectorConfig, zmq_context: &SocketContext) {
         while let Ok(data) = pull_socket.recv_msg(0x00) {
             if let Ok(incoming_msg) = bincode::deserialize::<Message>(&data) {
                 if let Message::Blockchain(Blockchain::BtcReceiveAddressRequest(address_request)) = incoming_msg {
-                    if let Err(err) = address_uid_tx.blocking_send(address_request.uid) {
+                    if let Err(err) = address_uid_tx.blocking_send(address_request) {
                         eprintln!("Failed to send message: {:?}", err);
                     }
                 }

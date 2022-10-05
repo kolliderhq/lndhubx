@@ -152,14 +152,6 @@ pub async fn start(
         _ => {}
     };
 
-    let mut cli_listener = |msg: Message, destination: ServiceIdentity| {
-        if let ServiceIdentity::ElectrumConnector = destination {
-            utils::xzmq::send_as_bincode(&electrum_sender, &msg);
-        } else {
-            utils::xzmq::send_as_json(&cli_socket, &msg);
-        }
-    };
-
     loop {
         if let Ok(msg) = payment_thread_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
@@ -196,7 +188,7 @@ pub async fn start(
 
         if let Ok(frame) = cli_socket.recv_msg(1) {
             if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                bank_engine.process_msg(message, &mut cli_listener).await;
+                bank_engine.process_msg(message, &mut listener).await;
             };
         }
 

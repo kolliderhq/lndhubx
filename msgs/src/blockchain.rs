@@ -1,3 +1,4 @@
+use core_types::ServiceIdentity;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -30,6 +31,7 @@ pub struct BcTransactionState {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BtcReceiveAddressRequest {
     pub uid: u64,
+    pub requesting_identity: ServiceIdentity,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,6 +40,7 @@ pub struct BtcReceiveAddress {
     // it is None when an address could not be provided by the connector
     // and it should be treated as an error response
     pub address: Option<String>,
+    pub requesting_identity: ServiceIdentity,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

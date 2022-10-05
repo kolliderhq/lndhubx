@@ -196,6 +196,7 @@ impl DealerEngine {
                             req_id: Uuid::new_v4(),
                             amount,
                             memo: "Excess funds withdrawal".to_string(),
+                            requesting_identity: ServiceIdentity::Dealer,
                         }));
                         listener(msg);
                     } else {
@@ -600,6 +601,7 @@ impl DealerEngine {
                                 req_id: Uuid::new_v4(),
                                 amount,
                                 memo: format!("Withdrawal upon settlement on {}", settlement_request.symbol),
+                                requesting_identity: ServiceIdentity::Dealer,
                             }));
                             listener(msg);
                         } else {
@@ -661,6 +663,7 @@ impl DealerEngine {
                                         req_id: Uuid::new_v4(),
                                         amount,
                                         memo,
+                                        requesting_identity: ServiceIdentity::Dealer,
                                     }));
                                 listener(msg);
                             } else {
