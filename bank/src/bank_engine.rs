@@ -921,7 +921,6 @@ impl BankEngine {
                         return;
                     }
 
-                    // Making the transaction and inserting it into the DB.
                     let amount = Decimal::new(tx_state.value, SATS_DECIMALS);
                     if self
                         .make_tx(
