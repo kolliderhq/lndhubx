@@ -936,7 +936,8 @@ impl BankEngine {
                         return;
                     }
 
-                    // Updating cache of external account.
+                    // Updating cached accounts
+                    self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
                     self.ledger.external_account = external_account.clone();
 
                     // Updating db of internal account.
