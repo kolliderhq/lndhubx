@@ -911,6 +911,16 @@ impl BankEngine {
 
                     let mut external_account = self.ledger.external_account.clone();
 
+                    if let Err(err) = models::on_chain::OnchainTransaction::set_settled(&c, &tx_state.txid) {
+                        slog::error!(
+                            self.logger,
+                            "Failed to set transaction: {:?} as settled: {:?}",
+                            tx_state,
+                            err
+                        );
+                        return;
+                    }
+
                     // Making the transaction and inserting it into the DB.
                     let amount = Decimal::new(tx_state.value, SATS_DECIMALS);
                     if self
@@ -935,15 +945,6 @@ impl BankEngine {
 
                     // Updating db of internal account.
                     self.update_account(&external_account, BANK_UID);
-
-                    if let Err(err) = models::on_chain::OnchainTransaction::set_settled(&c, &tx_state.txid) {
-                        slog::error!(
-                            self.logger,
-                            "Failed to set transaction: {:?} as settled: {:?}",
-                            tx_state,
-                            err
-                        );
-                    }
                 }
                 Blockchain::BtcReceiveAddress(received_address) => {
                     slog::info!(self.logger, "Received bitcoin address: {:?}", received_address);
