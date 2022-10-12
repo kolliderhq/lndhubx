@@ -46,7 +46,16 @@ table! {
 table! {
     onchain_transactions (txid) {
         txid -> Text,
-        is_settled -> Bool,
+        uid -> Int4,
+        timestamp -> Int8,
+        address -> Text,
+        block_number -> Int8,
+        confirmations -> Int8,
+        fee -> Int8,
+        tx_type -> Text,
+        is_confirmed -> Bool,
+        network -> Text,
+        value -> Int8,
     }
 }
 

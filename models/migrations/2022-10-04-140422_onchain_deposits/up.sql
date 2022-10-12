@@ -7,5 +7,14 @@ CREATE TABLE bitcoin_addresses (
 
 CREATE TABLE onchain_transactions (
     txid TEXT PRIMARY KEY,
-    is_settled BOOL NOT NULL
+    uid INT NOT NULL,
+    timestamp BIGINT NOT NULL,
+    address TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    confirmations BIGINT NOT NULL,
+    fee BIGINT NOT NULL,
+    tx_type TEXT NOT NULL,
+    is_confirmed BOOL NOT NULL,
+    network TEXT NOT NULL,
+    value BIGINT NOT NULL
 );

@@ -847,9 +847,11 @@ impl BankEngine {
             Message::Blockchain(msg) => match msg {
                 Blockchain::BcTransactionState(tx_state) => {
                     slog::info!(self.logger, "Received transaction state: {:?}", tx_state);
-                    if tx_state.tx_type != TxType::Inbound || tx_state.confirmations < self.min_onchain_confirmations {
+
+                    if tx_state.tx_type != TxType::Inbound {
                         return;
                     }
+
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
@@ -866,12 +868,22 @@ impl BankEngine {
                         }
                     };
 
+                    let is_confirmed = tx_state.confirmations >= self.min_onchain_confirmations;
                     let db_tx_state = match models::on_chain::OnchainTransaction::get_by_txid(&c, &tx_state.txid) {
                         Ok(db_state) => db_state,
                         Err(_) => {
                             let tx_state_to_insert = models::on_chain::OnchainTransaction {
                                 txid: tx_state.txid.clone(),
-                                is_settled: false,
+                                uid: tx_state.uid as i32,
+                                timestamp: tx_state.timestamp as i64,
+                                address: tx_state.address.clone(),
+                                block_number: tx_state.block_number,
+                                confirmations: tx_state.confirmations,
+                                fee: tx_state.fee,
+                                tx_type: tx_state.tx_type.to_string(),
+                                is_confirmed,
+                                network: tx_state.network.to_string(),
+                                value: tx_state.value,
                             };
                             match tx_state_to_insert.insert(&c) {
                                 Ok(inserted) => inserted,
@@ -883,8 +895,7 @@ impl BankEngine {
                         }
                     };
 
-                    if db_tx_state.is_settled {
-                        slog::info!(self.logger, "Ignoring already settled transaction: {:?}", tx_state);
+                    if !is_confirmed || db_tx_state.is_confirmed {
                         return;
                     }
 
@@ -911,13 +922,32 @@ impl BankEngine {
 
                     let mut external_account = self.ledger.external_account.clone();
 
-                    if let Err(err) = models::on_chain::OnchainTransaction::set_settled(&c, &tx_state.txid) {
-                        slog::error!(
-                            self.logger,
-                            "Failed to set transaction: {:?} as settled: {:?}",
-                            tx_state,
-                            err
-                        );
+                    let txid = tx_state.txid.clone();
+                    let uid = Some(tx_state.uid as i32);
+                    let timestamp = Some(tx_state.timestamp as i64);
+                    let address = Some(tx_state.address.clone());
+                    let block_number = Some(tx_state.block_number);
+                    let confirmations = Some(tx_state.confirmations);
+                    let fee = Some(tx_state.fee);
+                    let tx_type = Some(tx_state.tx_type.to_string());
+                    let network = Some(tx_state.network.to_string());
+                    let value = Some(tx_state.value);
+                    let tx_state_to_update = models::on_chain::OnchainTransactionUpdate {
+                        txid,
+                        uid,
+                        timestamp,
+                        address,
+                        block_number,
+                        confirmations,
+                        fee,
+                        tx_type,
+                        is_confirmed: Some(is_confirmed),
+                        network,
+                        value,
+                    };
+
+                    if !matches!(tx_state_to_update.update(&c), Ok(1)) {
+                        slog::error!(self.logger, "Failed to set transaction: {:?} as confirmed", tx_state);
                         return;
                     }
 

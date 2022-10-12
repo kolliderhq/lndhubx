@@ -25,6 +25,18 @@ pub enum TxType {
     Outbound,
 }
 
+impl fmt::Display for TxType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sign = match self {
+            Self::Internal => "Internal",
+            Self::Inbound => "Inbound",
+            Self::Outbound => "Outbound",
+        };
+
+        write!(f, "{}", sign)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum AccountType {
     Internal,
@@ -240,6 +252,15 @@ impl Default for LndNodeInfo {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum Network {
     Bitcoin,
+}
+
+impl fmt::Display for Network {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            Self::Bitcoin => "Bitcoin",
+        };
+        write!(f, "{}", text)
+    }
 }
 
 #[cfg(test)]
