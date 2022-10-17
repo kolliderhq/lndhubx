@@ -1,4 +1,5 @@
 pub mod bank_engine;
+pub mod ledger;
 
 use utils::xzmq::SocketContext;
 

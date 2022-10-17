@@ -48,6 +48,13 @@ pub enum CommsError {
 }
 
 #[derive(Debug, Error, Serialize)]
+#[error(display = "An Error has occured when making this request.")]
+pub enum RequestError {
+    #[error(display = "Invalid data supplied")]
+    InvalidDataSupplied,
+}
+
+#[derive(Debug, Error, Serialize)]
 pub enum ApiError {
     #[error(display = "Auth error.")]
     Auth(AuthError),
@@ -55,8 +62,10 @@ pub enum ApiError {
     Db(DbError),
     #[error(display = "Comms error.")]
     Comms(CommsError),
-    #[error(display = "Comms error.")]
+    #[error(display = "JWT error.")]
     JWT(JWTError),
+    #[error(display = "Request error.")]
+    Request(RequestError),
 }
 
 impl error::ResponseError for ApiError {
@@ -86,6 +95,9 @@ impl error::ResponseError for ApiError {
                 JWTError::NotSupplied => HttpResponse::Unauthorized().json("Jwt token is not supplied."),
                 JWTError::EncodingFailed => HttpResponse::Unauthorized().json("Jwt token could not be generated."),
             },
+            ApiError::Request(request) => match request {
+                RequestError::InvalidDataSupplied=>  HttpResponse::InternalServerError().json("Invalid data supplied"),
+            }
         }
     }
 
@@ -111,6 +123,9 @@ impl error::ResponseError for ApiError {
                 JWTError::NotSupplied => StatusCode::UNAUTHORIZED,
                 JWTError::EncodingFailed => StatusCode::UNAUTHORIZED,
             },
+            ApiError::Request(request) => match request {
+                RequestError::InvalidDataSupplied => StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 }

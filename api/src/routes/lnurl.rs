@@ -7,6 +7,7 @@ use tokio::time::timeout;
 use std::{sync::Arc, time::Duration};
 
 use rust_decimal::prelude::Decimal;
+use rust_decimal_macros::*;
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -34,6 +35,10 @@ pub async fn create_lnurl_withdrawal(
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+
+    if query.amount <= dec!(0) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
 
     let request = CreateLnurlWithdrawalRequest {
         uid,

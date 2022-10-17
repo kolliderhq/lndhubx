@@ -13,4 +13,5 @@ members = [
     "kollider_hedging",
     "ws_client",
     "cli",
+    "actix-ratelimit",
 ]

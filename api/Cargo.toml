@@ -51,3 +51,6 @@ path = "../msgs"
 
 [dependencies.core_types]
 path = "../core_types"
+
+[dependencies.actix-ratelimit]
+path = "../actix-ratelimit"
