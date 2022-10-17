@@ -1085,6 +1085,12 @@ impl BankEngine {
                         slog::warn!(self.logger, "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request.");
                     }
 
+                    if let Some(amount) = msg.amount {
+                        if amount <= dec!(0) {
+                            return
+                        }
+                    }
+
                     // If user specified a username then we attempt to make an internal transaction.
                     if msg.receipient.is_some() {
                         self.make_internal_tx(msg, listener);
