@@ -1,6 +1,8 @@
 extern crate core;
 
 pub mod bank_engine;
+pub mod ledger;
+pub mod accountant;
 
 use bank_engine::*;
 use futures::prelude::*;
@@ -19,6 +21,8 @@ use rust_decimal_macros::*;
 
 use futures::stream::FuturesUnordered;
 use influxdb2::Client;
+
+use accountant::*;
 
 pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str) {
     let mut btc_balance = dec!(0);
@@ -112,6 +116,7 @@ pub async fn start(
     bank_engine.init_accounts();
 
     let mut state_insertion_interval = Instant::now();
+    let mut reconciliation_interval = Instant::now();
 
     insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
 
@@ -169,6 +174,7 @@ pub async fn start(
 
         if state_insertion_interval.elapsed().as_secs() > 5 {
             insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
+
             state_insertion_interval = Instant::now();
             // Cleaning up the payment threads.
             bank_engine.payment_threads = bank_engine
@@ -176,6 +182,18 @@ pub async fn start(
                 .into_iter()
                 .filter(|t| t.is_finished())
                 .collect::<FuturesUnordered<tokio::task::JoinHandle<()>>>();
+
         }
+
+        if reconciliation_interval.elapsed().as_secs() > 3 {
+            reconciliation_interval = Instant::now();
+            if let Err(error) = reconcile_ledger(&bank_engine.ledger) {
+                slog::warn!(&bank_engine.logger, "{:?}", error);
+                // Giving logger to send out log.
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                panic!("Reconciliation error! Shutting down.");
+            }
+        }
+
     }
 }

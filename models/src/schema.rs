@@ -5,6 +5,14 @@ table! {
         currency -> Text,
         account_type -> Text,
         uid -> Int4,
+        created_at -> Int8,
+    }
+}
+
+table! {
+    clients (id) {
+        id -> Int4,
+        name -> Text,
     }
 }
 
@@ -62,6 +70,13 @@ table! {
 }
 
 table! {
+    user_types (id) {
+        id -> Int4,
+        name -> Text,
+    }
+}
+
+table! {
     users (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -76,9 +91,11 @@ joinable!(internal_user_mappings -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
+    clients,
     internal_user_mappings,
     invoices,
     pre_signups,
     transactions,
+    user_types,
     users,
 );

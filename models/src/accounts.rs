@@ -15,6 +15,7 @@ pub struct Account {
     pub currency: String,
     pub account_type: String,
     pub uid: i32,
+    pub created_at: i64, 
 }
 
 impl Default for Account {
@@ -25,6 +26,7 @@ impl Default for Account {
             currency: String::from("BTC"),
             account_type: String::from("Internal"),
             uid: 0,
+            created_at: 0,
         }
     }
 }
@@ -72,6 +74,7 @@ impl Account {
                 accounts::currency,
                 accounts::account_type,
                 accounts::uid,
+                accounts::created_at,
             ))
             .filter(users::is_internal.eq(false))
             .load::<Self>(conn)
@@ -93,6 +96,7 @@ impl Account {
                 accounts::currency,
                 accounts::account_type,
                 accounts::uid,
+                accounts::created_at,
             ))
             .filter(users::uid.eq(uid))
             .filter(users::is_internal.eq(true))

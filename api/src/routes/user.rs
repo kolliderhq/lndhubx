@@ -11,6 +11,7 @@ use tokio::time::timeout;
 use std::{sync::Arc, time::Duration};
 
 use rust_decimal::prelude::Decimal;
+use rust_decimal_macros::*;
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -78,6 +79,25 @@ pub async fn pay_invoice(
 
     let uid = auth_data.uid as u64;
 
+    if let Some(amount) = pay_invoice_data.amount {
+        if amount <= dec!(0) {
+            return Err(ApiError::Request(RequestError::InvalidDataSupplied))
+        }
+    }
+
+    if let Some(receipient) = &pay_invoice_data.receipient {
+        if receipient.len() > 128 {
+            return Err(ApiError::Request(RequestError::InvalidDataSupplied))
+        }
+    }
+
+    if let Some(payment_request) = &pay_invoice_data.payment_request {
+        // TODO: We probably have to be a little bit smarter here.
+        if payment_request.len() > 1024 {
+            return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+        }
+    }
+
     let currency = match pay_invoice_data.currency {
         Some(c) => c,
         None => Currency::BTC,
@@ -141,10 +161,18 @@ pub async fn add_invoice(
 
     let uid = auth_data.uid as u64;
 
+    if query.amount <= dec!(0) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
     let meta = match &query.meta {
         Some(m) => m.clone(),
-        None => "Create invoice".to_string(),
+        None => "Lndhubx Invoice".to_string(),
     };
+
+    if meta.len() > 128 {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
 
     let currency = match &query.currency {
         Some(c) => *c,
@@ -198,6 +226,10 @@ pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapDat
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+
+    if data.amount <= dec!(0) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
 
     let swap_request = SwapRequest {
         req_id,
@@ -263,6 +295,10 @@ pub async fn quote(
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+
+    if query.amount <= dec!(0) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
 
     let quote_request = QuoteRequest {
         req_id,
