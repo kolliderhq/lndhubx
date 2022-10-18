@@ -1849,21 +1849,23 @@ impl BankEngine {
 
                     let mut payment_response = res.payment_response;
 
+                    let mut bank_fee_account = self.ledger.fee_account.clone();
+
                     if res.is_success {
-                        // Fees are recoded in Sats so we need to convert to BTC.
+                        // If successful and there are excess fees we send it to the bank fee account.
                         let fees_payed_in_btc = payment_response.fees / Decimal::new(SATS_IN_BITCOIN as i64, 0);
 
                         let excess_fees_in_btc = res.amount - (payment_response.amount + fees_payed_in_btc);
 
                         assert!(excess_fees_in_btc >= dec!(0));
 
-                        if excess_fees_in_btc != dec!(0) {
+                        if excess_fees_in_btc > dec!(0) {
                             if self
                                 .make_tx(
                                     &mut external_account,
                                     BANK_UID,
-                                    &mut inbound_account,
-                                    uid,
+                                    &mut bank_fee_account,
+                                    BANK_UID,
                                     excess_fees_in_btc,
                                     inv_rate,
                                 )
@@ -1873,10 +1875,9 @@ impl BankEngine {
                             }
 
                             self.ledger.external_account = external_account.clone();
+                            self.ledger.fee_account = bank_fee_account.clone();
 
-                            self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
-
-                            self.update_account(&inbound_account, uid);
+                            self.update_account(&bank_fee_account, BANK_UID);
                             self.update_account(&external_account, BANK_UID);
                         }
 
