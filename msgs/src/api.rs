@@ -35,6 +35,7 @@ pub enum SwapResponseError {
     CurrencyNotAvailable,
     InvalidQuoteId,
     NotEnoughAvailableBalance,
+    BTCNotFromTo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +44,7 @@ pub enum QuoteResponseError {
     ServiceNotAvailable,
     CurrencyNotAvailable,
     MarketNotAvailable,
+    BTCNotFromTo,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

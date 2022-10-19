@@ -382,6 +382,13 @@ impl DealerEngine {
                         error: None,
                         fees: None,
                     };
+                    if swap_request.from != Currency::BTC && swap_request.to != Currency::BTC {
+                        swap_response.success = false;
+                        swap_response.error = Some(SwapResponseError::BTCNotFromTo);
+                        let msg = Message::Api(Api::SwapResponse(swap_response));
+                        listener(msg);
+                        return;
+                    }
                     let time_now = SystemTime::now();
                     let invalidated_quotes = time_now
                         .sub(Duration::from_millis(QUOTE_TTL_MS))
@@ -389,7 +396,6 @@ impl DealerEngine {
                         .expect("System time should not be set to earlier than epoch start")
                         .as_micros();
                     self.guaranteed_quotes = self.guaranteed_quotes.split_off(&invalidated_quotes);
-
                     let conversion_info = ConversionInfo::new(swap_request.from, swap_request.to);
                     let (current_rate, fees) = self.get_rate(Some(swap_request.amount), None, conversion_info.clone());
 
@@ -442,6 +448,12 @@ impl DealerEngine {
                         error: None,
                         fees: None,
                     };
+                    if quote_request.from != Currency::BTC && quote_request.to != Currency::BTC {
+                        quote_response.error = Some(QuoteResponseError::BTCNotFromTo);
+                        let msg = Message::Api(Api::QuoteResponse(quote_response));
+                        listener(msg);
+                        return;
+                    }
                     let conversion_info = ConversionInfo::new(quote_request.from, quote_request.to);
                     let (rate, fees) = self.get_rate(Some(quote_request.amount), None, conversion_info);
                     if rate.is_some() {
