@@ -83,6 +83,7 @@ table! {
         username -> Text,
         password -> Text,
         is_internal -> Bool,
+        is_suspended -> Bool,
     }
 }
 

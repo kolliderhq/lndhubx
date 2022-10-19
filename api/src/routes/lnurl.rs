@@ -13,12 +13,14 @@ use serde_json::json;
 use uuid::Uuid;
 use xerror::api::*;
 
+use models::users::User;
 use msgs::api::*;
 use msgs::*;
 
 use crate::comms::*;
 use crate::jwt::*;
 use crate::WebSender;
+use crate::WebDbPool;
 
 #[derive(Deserialize, Debug)]
 pub struct CreateLnurlWithdrawalParams {
@@ -28,6 +30,7 @@ pub struct CreateLnurlWithdrawalParams {
 
 #[get("/lnurl_withdrawal/create")]
 pub async fn create_lnurl_withdrawal(
+    pool: WebDbPool,
     auth_data: AuthData,
     query: Query<CreateLnurlWithdrawalParams>,
     web_sender: WebSender,
@@ -35,6 +38,14 @@ pub async fn create_lnurl_withdrawal(
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     if query.amount <= dec!(0) {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));

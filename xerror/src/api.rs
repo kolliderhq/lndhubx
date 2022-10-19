@@ -52,6 +52,8 @@ pub enum CommsError {
 pub enum RequestError {
     #[error(display = "Invalid data supplied")]
     InvalidDataSupplied,
+    #[error(display = "User suspended")]
+    SuspendedUser,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -96,7 +98,8 @@ impl error::ResponseError for ApiError {
                 JWTError::EncodingFailed => HttpResponse::Unauthorized().json("Jwt token could not be generated."),
             },
             ApiError::Request(request) => match request {
-                RequestError::InvalidDataSupplied=>  HttpResponse::InternalServerError().json("Invalid data supplied"),
+                RequestError::InvalidDataSupplied => HttpResponse::InternalServerError().json("Invalid data supplied"),
+                RequestError::SuspendedUser => HttpResponse::InternalServerError().json("User suspended"),
             }
         }
     }
@@ -124,7 +127,8 @@ impl error::ResponseError for ApiError {
                 JWTError::EncodingFailed => StatusCode::UNAUTHORIZED,
             },
             ApiError::Request(request) => match request {
-                RequestError::InvalidDataSupplied => StatusCode::INTERNAL_SERVER_ERROR
+                RequestError::InvalidDataSupplied => StatusCode::INTERNAL_SERVER_ERROR,
+                RequestError::SuspendedUser => StatusCode::INTERNAL_SERVER_ERROR,
             }
         }
     }

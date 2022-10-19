@@ -17,6 +17,7 @@ use serde_json::json;
 use uuid::Uuid;
 use xerror::api::*;
 
+use models::users::User;
 use msgs::api::*;
 use msgs::*;
 
@@ -29,10 +30,22 @@ use models::invoices::*;
 use models::transactions::Transaction;
 
 #[get("/balance")]
-pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+pub async fn balance(
+    pool: WebDbPool,
+    web_sender: WebSender, 
+    auth_data: AuthData
+) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     let get_balances = GetBalances { req_id, uid };
 
@@ -71,6 +84,7 @@ pub struct PayInvoiceData {
 
 #[post("/payinvoice")]
 pub async fn pay_invoice(
+    pool: WebDbPool,
     auth_data: AuthData,
     web_sender: WebSender,
     pay_invoice_data: Json<PayInvoiceData>,
@@ -78,6 +92,14 @@ pub async fn pay_invoice(
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     if let Some(amount) = pay_invoice_data.amount {
         if amount <= dec!(0) {
@@ -153,6 +175,7 @@ pub struct CreateInvoiceParams {
 
 #[get("/addinvoice")]
 pub async fn add_invoice(
+    pool: WebDbPool,
     auth_data: AuthData,
     web_sender: WebSender,
     query: Query<CreateInvoiceParams>,
@@ -160,6 +183,14 @@ pub async fn add_invoice(
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     if query.amount <= dec!(0) {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
@@ -222,10 +253,23 @@ pub struct SwapData {
 }
 
 #[post("/swap")]
-pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapData>) -> Result<HttpResponse, ApiError> {
+pub async fn swap(
+    pool: WebDbPool,
+    auth_data: AuthData, 
+    web_sender: WebSender, 
+    data: Json<SwapData>
+) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     if data.amount <= dec!(0) {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
@@ -268,6 +312,14 @@ pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapDat
 #[get("/getuserinvoices")]
 pub async fn get_user_invoices(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
@@ -288,6 +340,7 @@ pub struct QuoteParams {
 
 #[get("/quote")]
 pub async fn quote(
+    pool: WebDbPool,
     auth_data: AuthData,
     web_sender: WebSender,
     query: Query<QuoteParams>,
@@ -295,6 +348,14 @@ pub async fn quote(
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
 
     if query.amount <= dec!(0) {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
@@ -348,6 +409,13 @@ pub async fn get_txs(
 ) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+    if user.is_suspended {
+        return Err(ApiError::Request(RequestError::SuspendedUser));
+    }
     if let Some(currency) = query.currency {
         let transactions = match Transaction::get_historical_by_uid_and_currency(
             &conn,

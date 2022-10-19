@@ -36,6 +36,7 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
         username,
         password: hashed_password,
         is_internal: false,
+        is_suspended: false,
     };
 
     if let Err(error) = user.insert(&conn) {
