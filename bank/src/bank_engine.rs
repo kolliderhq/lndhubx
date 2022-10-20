@@ -873,7 +873,7 @@ impl BankEngine {
                         }
                     } else {
                         // If user does not specify an account_id we select or create one for him.
-                        let account = user_account.get_default_account(Currency::BTC);
+                        let account = user_account.get_default_account(msg.currency);
                         target_account = account;
                     }
 
