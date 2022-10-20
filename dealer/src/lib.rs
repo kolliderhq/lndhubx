@@ -25,7 +25,7 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     ];
 
     let builder = fields.into_iter().fold(
-        influxdb2::models::DataPoint::builder("bank_states"),
+        influxdb2::models::DataPoint::builder("dealer_states"),
         |builder, (field_name, value)| {
             if let Ok(defined) = value {
                 match defined.to_f64() {
