@@ -842,13 +842,6 @@ impl BankEngine {
                     let amount = msg.amount;
                     let currency = msg.currency;
 
-                    // If user wants to deposit another currency we have to go through the dealer.
-                    if currency != Currency::BTC {
-                        let msg = Message::Api(Api::InvoiceRequest(msg));
-                        listener(msg, ServiceIdentity::Dealer);
-                        return;
-                    }
-
                     let mut target_account = Account::new(msg.currency, AccountType::Internal);
 
                     if let Some(account_id) = msg.account_id {
@@ -873,7 +866,7 @@ impl BankEngine {
                         }
                     } else {
                         // If user does not specify an account_id we select or create one for him.
-                        let account = user_account.get_default_account(Currency::BTC);
+                        let account = user_account.get_default_account(currency);
                         target_account = account;
                     }
 
@@ -897,6 +890,12 @@ impl BankEngine {
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+                    // If user wants to deposit another currency we have to go through the dealer.
+                    if currency != Currency::BTC {
+                        let msg = Message::Api(Api::InvoiceRequest(msg));
+                        listener(msg, ServiceIdentity::Dealer);
                         return;
                     }
 
@@ -976,7 +975,7 @@ impl BankEngine {
                         .entry(msg.uid)
                         .or_insert_with(|| UserAccount::new(msg.uid));
 
-                    let mut target_account = Account::new(Currency::BTC, AccountType::Internal);
+                    let mut target_account = Account::new(msg.currency, AccountType::Internal);
 
                     if let Some(account_id) = msg.account_id {
                         if let Some(acc) = user_account.accounts.get(&account_id) {
@@ -1000,7 +999,7 @@ impl BankEngine {
                         }
                     } else {
                         // If user does not specify an account_id we select or create one for him.
-                        let account = user_account.get_default_account(Currency::BTC);
+                        let account = user_account.get_default_account(msg.currency);
                         target_account = account;
                     }
 
