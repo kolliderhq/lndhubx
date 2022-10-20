@@ -842,13 +842,6 @@ impl BankEngine {
                     let amount = msg.amount;
                     let currency = msg.currency;
 
-                    // If user wants to deposit another currency we have to go through the dealer.
-                    if currency != Currency::BTC {
-                        let msg = Message::Api(Api::InvoiceRequest(msg));
-                        listener(msg, ServiceIdentity::Dealer);
-                        return;
-                    }
-
                     let mut target_account = Account::new(msg.currency, AccountType::Internal);
 
                     if let Some(account_id) = msg.account_id {
@@ -897,6 +890,13 @@ impl BankEngine {
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
+                    // If user wants to deposit another currency we have to go through the dealer.
+                    if currency != Currency::BTC {
+                        let msg = Message::Api(Api::InvoiceRequest(msg));
+                        listener(msg, ServiceIdentity::Dealer);
                         return;
                     }
 
