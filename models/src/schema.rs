@@ -41,6 +41,7 @@ table! {
         owner -> Nullable<Int4>,
         fees -> Nullable<Int8>,
         currency -> Nullable<Text>,
+        target_account_currency -> Nullable<Text>,
     }
 }
 

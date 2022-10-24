@@ -70,6 +70,14 @@ EUR = 5
 BTC = 0.00025
 GBP = 5
 
+[withdrawal_request_rate_limiter_settings]
+request_limit = 1
+replenishment_interval = 5000
+
+[deposit_request_rate_limiter_settings]
+request_limit = 1
+replenishment_interval = 5000
+
 ## Logging
 [logging_settings]
 log_path = "lndhubx.log"

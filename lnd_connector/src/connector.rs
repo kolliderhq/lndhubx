@@ -118,6 +118,7 @@ impl LndConnector {
                 incoming: true,
                 fees: None,
                 currency: None,
+                target_account_currency: None,
             };
             return Ok(invoice);
         }

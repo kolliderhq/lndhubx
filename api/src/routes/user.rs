@@ -149,6 +149,7 @@ pub struct CreateInvoiceParams {
     pub meta: Option<String>,
     pub account_id: Option<Uuid>,
     pub currency: Option<Currency>,
+    pub target_account_currency: Option<Currency>,
 }
 
 #[get("/addinvoice")]
@@ -183,9 +184,10 @@ pub async fn add_invoice(
         req_id,
         meta,
         uid,
+        currency,
         account_id: query.account_id,
         amount: query.amount,
-        currency,
+        target_account_currency: query.target_account_currency,
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(

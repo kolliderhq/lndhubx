@@ -11,6 +11,7 @@ pub enum InvoiceResponseError {
     RateNotAvailable,
     WithdrawalOnly,
     DepositLimitExceeded,
+    RequestLimitExceeded,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +66,7 @@ pub struct InvoiceRequest {
     pub meta: String,
     pub currency: Currency,
     pub account_id: Option<Uuid>,
+    pub target_account_currency: Option<Currency>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +78,7 @@ pub struct InvoiceResponse {
     pub amount: Decimal,
     pub rate: Option<Decimal>,
     pub currency: Currency,
+    pub target_account_currency: Option<Currency>,
     pub account_id: Option<Uuid>,
     pub error: Option<InvoiceResponseError>,
     pub fees: Option<Decimal>,
@@ -102,6 +105,7 @@ pub enum PaymentResponseError {
     SelfPayment,
     RateNotAvailable,
     UserDoesNotExist,
+    RequestLimitExceeded,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

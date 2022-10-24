@@ -507,6 +507,7 @@ impl DealerEngine {
                         uid: invoice_request.uid,
                         meta: invoice_request.meta,
                         currency: invoice_request.currency,
+                        target_account_currency: invoice_request.target_account_currency,
                         payment_request: None,
                         account_id: None,
                         error: None,

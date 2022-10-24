@@ -3,6 +3,7 @@ use rust_decimal_macros::*;
 
 use bigdecimal::BigDecimal;
 use std::collections::HashMap;
+use std::time::Instant;
 use uuid::Uuid;
 
 use core_types::*;
@@ -30,6 +31,12 @@ const BANK_UID: u64 = 23193913;
 const DEALER_UID: u64 = 52172712;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RateLimiterSettings {
+    pub request_limit: u64,
+    pub replenishment_interval: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BankEngineSettings {
     /// url to the postgres database.
     pub psql_url: String,
@@ -51,6 +58,8 @@ pub struct BankEngineSettings {
     pub influx_bucket: String,
     pub influx_token: String,
     pub bank_cli_resp_address: String,
+    pub withdrawal_request_rate_limiter_settings: RateLimiterSettings,
+    pub deposit_request_rate_limiter_settings: RateLimiterSettings,
 }
 
 impl Default for Ledger {
@@ -105,6 +114,10 @@ pub struct BankEngine {
     pub payment_thread_sender: crossbeam_channel::Sender<Message>,
     pub lnd_connector_settings: LndConnectorSettings,
     pub payment_threads: FuturesUnordered<tokio::task::JoinHandle<()>>,
+    pub withdrawal_request_rate_limiter_settings: RateLimiterSettings,
+    pub deposit_request_rate_limiter_settings: RateLimiterSettings,
+    pub withdrawal_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
+    pub deposit_request_rate_limiter: HashMap<UserId, (u64, Instant)>
 }
 
 impl BankEngine {
@@ -147,9 +160,41 @@ impl BankEngine {
             tx_seq: 0,
             lnurl_withdrawal_requests: HashMap::new(),
             payment_threads: FuturesUnordered::new(),
+            withdrawal_request_rate_limiter_settings: settings.withdrawal_request_rate_limiter_settings,
+            deposit_request_rate_limiter_settings: settings.deposit_request_rate_limiter_settings,
+            withdrawal_request_rate_limiter: HashMap::new(),
+            deposit_request_rate_limiter: HashMap::new(),
             payment_thread_sender,
             lnd_connector_settings,
         }
+    }
+
+    fn check_deposit_request_rate_limit(&mut self, user_id: UserId) -> bool {
+        let (counter, last_request) = self.deposit_request_rate_limiter.entry(user_id).or_insert_with(|| (0, Instant::now()));
+        if (last_request.elapsed().as_millis() as u64) < self.deposit_request_rate_limiter_settings.replenishment_interval {
+            *counter += 1;
+            if *counter > self.deposit_request_rate_limiter_settings.request_limit {
+                return false
+            }
+        } else {
+            *counter = 0;
+            *last_request = Instant::now();
+        }
+        return true
+    }
+
+    fn check_withdrawal_request_rate_limit(&mut self, user_id: UserId) -> bool {
+        let (counter, last_request) = self.withdrawal_request_rate_limiter.entry(user_id).or_insert_with(|| (0, Instant::now()));
+        if (last_request.elapsed().as_millis() as u64) < self.withdrawal_request_rate_limiter_settings.replenishment_interval {
+            *counter += 1;
+            if *counter > self.withdrawal_request_rate_limiter_settings.request_limit {
+                return false
+            }
+        } else {
+            *counter = 0;
+            *last_request = Instant::now();
+        }
+        return true
     }
 
     fn fetch_internal_user_account<F: FnMut(&diesel::PgConnection) -> Result<Vec<accounts::Account>, DieselError>>(
@@ -720,11 +765,24 @@ impl BankEngine {
                         None => Currency::BTC,
                     };
 
+                    // If user wants to deposit into a fiat account.
+                    let target_account_currency = match invoice.target_account_currency {
+                        Some(c) => match Currency::from_str(&c) {
+                            Ok(converted) => converted,
+                            Err(err) => {
+                                panic!("Failed to convert {} into a valid currency, reason: {:?}", c, err);
+                            }
+                        },
+                        None => Currency::BTC,
+                    };
+
                     // If its not a fiat deposit we need to get the current rate.
-                    if currency != Currency::BTC {
+                    // Note a user could deposit with a sat specified invoice and then deposit into a fiat account.
+                    if currency != Currency::BTC || (currency == Currency::BTC && target_account_currency != Currency::BTC) {
+                        let c = if currency == Currency::BTC { target_account_currency } else {currency};
                         let fiat_deposit_request = FiatDepositRequest {
-                            currency,
                             uid: invoice.uid as u64,
+                            currency: c,
                             req_id: Uuid::new_v4(),
                             amount: value,
                         };
@@ -787,6 +845,25 @@ impl BankEngine {
                 Api::InvoiceRequest(msg) => {
                     slog::warn!(self.logger, "Received invoice request: {:?}", msg);
 
+                    if !self.check_deposit_request_rate_limit(msg.uid) {
+                        let invoice_response = InvoiceResponse {
+                            amount: msg.amount,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            meta: msg.meta,
+                            rate: None,
+                            payment_request: None,
+                            currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
+                            account_id: None,
+                            error: Some(InvoiceResponseError::RequestLimitExceeded),
+                            fees: None,
+                        };
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
                     if self.is_insurance_fund_depleted() {
                         slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
                         return
@@ -798,12 +875,6 @@ impl BankEngine {
                         .entry(msg.uid)
                         .or_insert_with(|| UserAccount::new(msg.uid));
 
-                    // Making sure users are not abusing the node.
-                    if user_account.last_deposit_request.elapsed().unwrap().as_secs() < 5 {
-                        dbg!("Too many invoice requests! {:?}", msg);
-                        return
-                    }
-
                     if self.withdrawal_only {
                         slog::info!(self.logger, "Bank is in withdrawal only mode");
                         let invoice_response = InvoiceResponse {
@@ -814,10 +885,12 @@ impl BankEngine {
                             rate: None,
                             payment_request: None,
                             currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
                             account_id: None,
                             error: Some(InvoiceResponseError::WithdrawalOnly),
                             fees: None,
                         };
+
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                         listener(msg, ServiceIdentity::Api);
                         return;
@@ -856,6 +929,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
                                 account_id: Some(target_account.account_id),
                                 error: Some(InvoiceResponseError::AccountDoesNotExist),
                                 fees: None,
@@ -884,6 +958,7 @@ impl BankEngine {
                             meta: msg.meta.clone(),
                             payment_request: None,
                             currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
                             error: Some(InvoiceResponseError::DepositLimitExceeded),
                             fees: None,
@@ -915,6 +990,11 @@ impl BankEngine {
                         .await
                     {
                         invoice.currency = Some(msg.currency.to_string());
+                        if let Some(target_account_currency) = msg.target_account_currency {
+                            invoice.target_account_currency = Some(target_account_currency.to_string());
+                        } else {
+                            invoice.target_account_currency = None
+                        }
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
                             return;
@@ -928,6 +1008,7 @@ impl BankEngine {
                             rate: None,
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
                             error: None,
                             fees: None,
@@ -990,6 +1071,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
                                 account_id: Some(target_account.account_id),
                                 error: Some(InvoiceResponseError::AccountDoesNotExist),
                                 fees: None,
@@ -1020,6 +1102,7 @@ impl BankEngine {
                             meta: msg.meta.clone(),
                             payment_request: None,
                             currency,
+                            target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
                             error: Some(InvoiceResponseError::DepositLimitExceeded),
                             fees: None,
@@ -1048,6 +1131,7 @@ impl BankEngine {
                             rate: msg.rate,
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
                             error: None,
                             fees: msg.fees,
@@ -1062,22 +1146,29 @@ impl BankEngine {
 
                     let uid = msg.uid;
 
+                    if !self.check_withdrawal_request_rate_limit(uid) {
+                        let payment_response = PaymentResponse {
+                            error: Some(PaymentResponseError::RequestLimitExceeded),
+                            amount: dec!(0),
+                            payment_hash: Uuid::new_v4().to_string(),
+                            req_id: msg.req_id,
+                            uid,
+                            success: false,
+                            payment_request: None,
+                            currency: msg.currency,
+                            fees: dec!(0),
+                            rate: msg.rate.unwrap_or(Decimal::ONE),
+                        };
+                        let msg = Message::Api(Api::PaymentResponse(payment_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
                     let mut outbound_account = {
                         let user_account = match self.ledger.user_accounts.get_mut(&uid) {
                             Some(ua) => ua,
                             None => return,
                         };
-
-                        let elapsed = user_account.last_withdrawal_request.elapsed().unwrap();
-
-                        // Users can only make 1 withdrawal request every 5 seconds.
-                        if elapsed.as_secs() < 5 {
-                            dbg!("Too many withdrawal request for user.");
-                            return
-                        } else {
-                            user_account.last_withdrawal_request = std::time::SystemTime::now();
-                        }
-
                         user_account.get_default_account(msg.currency)
                     };
 
@@ -1187,6 +1278,7 @@ impl BankEngine {
                             fees: None,
                             incoming: false,
                             currency: Some(msg.currency.to_string()),
+                            target_account_currency: None,
                         };
                         invoice
                             .insert(&psql_connection)
