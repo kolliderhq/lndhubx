@@ -84,6 +84,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::lnurl::create_lnurl_withdrawal)
             .service(routes::lnurl::get_lnurl_withdrawal)
             .service(routes::lnurl::pay_lnurl_withdrawal)
+            .service(routes::external::get_spot_prices)
     })
     .bind("127.0.0.1:8080")?
     .run()
