@@ -55,6 +55,13 @@ pub enum RequestError {
 }
 
 #[derive(Debug, Error, Serialize)]
+#[error(display = "An Error has whilst fetching external data.")]
+pub enum ExternalError {
+    #[error(display = "Error fetching external data.")]
+    FailedToFetchExternalData,
+}
+
+#[derive(Debug, Error, Serialize)]
 pub enum ApiError {
     #[error(display = "Auth error.")]
     Auth(AuthError),
@@ -66,6 +73,8 @@ pub enum ApiError {
     JWT(JWTError),
     #[error(display = "Request error.")]
     Request(RequestError),
+    #[error(display = "External error.")]
+    External(ExternalError),
 }
 
 impl error::ResponseError for ApiError {
@@ -98,6 +107,9 @@ impl error::ResponseError for ApiError {
             ApiError::Request(request) => match request {
                 RequestError::InvalidDataSupplied=>  HttpResponse::InternalServerError().json("Invalid data supplied"),
             }
+            ApiError::External(external) => match external {
+                ExternalError::FailedToFetchExternalData => HttpResponse::InternalServerError().json("Failed to fetch external data."),
+            }
         }
     }
 
@@ -125,6 +137,9 @@ impl error::ResponseError for ApiError {
             },
             ApiError::Request(request) => match request {
                 RequestError::InvalidDataSupplied => StatusCode::INTERNAL_SERVER_ERROR
+            }
+            ApiError::External(external) => match external {
+                ExternalError::FailedToFetchExternalData => StatusCode::INTERNAL_SERVER_ERROR
             }
         }
     }
