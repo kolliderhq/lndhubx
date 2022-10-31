@@ -1799,10 +1799,6 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::GetNodeInfoRequest(msg) => {
-                    if self.suspended_users.contains_key(&msg.uid) {
-                        slog::error!(self.logger, "Suspended user attempted a GetNodeInfoRequest: {:?}", msg);
-                        return;
-                    }
                     let lnd_node_info = match self.lnd_connector.get_node_info().await {
                         Ok(ni) => ni,
                         Err(_) => LndNodeInfo::default(),
