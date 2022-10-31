@@ -1779,10 +1779,6 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Api::QuoteRequest(msg) => {
-                    if self.suspended_users.contains_key(&msg.uid) {
-                        slog::error!(self.logger, "Suspended user attempted a QuoteRequest: {:?}", msg);
-                        return;
-                    }
                     let msg = Message::Api(Api::QuoteRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
                 }
