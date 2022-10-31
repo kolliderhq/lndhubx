@@ -1947,10 +1947,6 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::QueryRouteRequest(msg) => {
-                    if self.suspended_users.contains_key(&msg.uid) {
-                        slog::error!(self.logger, "Suspended user attempted a QueryRouteRequest: {:?}", msg);
-                        return;
-                    }
                     let settings = self.lnd_connector_settings.clone();
                     let mut lnd_connector = LndConnector::new(settings).await;
 
