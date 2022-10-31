@@ -117,7 +117,8 @@ pub struct BankEngine {
     pub withdrawal_request_rate_limiter_settings: RateLimiterSettings,
     pub deposit_request_rate_limiter_settings: RateLimiterSettings,
     pub withdrawal_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
-    pub deposit_request_rate_limiter: HashMap<UserId, (u64, Instant)>
+    pub deposit_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
+    pub suspended_users: HashMap<u64, bool>
 }
 
 impl BankEngine {
@@ -156,6 +157,7 @@ impl BankEngine {
                     )
                 })
                 .collect::<HashMap<Currency, Decimal>>(),
+            suspended_users: HashMap::new(),
             logger,
             tx_seq: 0,
             lnurl_withdrawal_requests: HashMap::new(),
@@ -281,6 +283,32 @@ impl BankEngine {
         self.ledger.insurance_fund_account.balance < Decimal::new(10, SATS_DECIMALS)
     }
 
+    pub fn init_suspensions(&mut self) {
+        let conn = match &self.conn_pool {
+            Some(conn) => conn,
+            None => {
+                slog::error!(self.logger, "No database provided.");
+                return;
+            }
+        };
+
+        let c = match conn.get() {
+            Ok(psql_connection) => psql_connection,
+            Err(_) => {
+                slog::error!(self.logger, "Couldn't get psql connection.");
+                return;
+            }
+        };
+
+        let suspended_accounts = match User::get_all_suspended(&c) {
+            Ok(suspended_accs) => suspended_accs,
+            Err(_) => return,
+        };
+        for account in suspended_accounts {
+            self.suspended_users.insert(account.uid as u64, true);
+        }
+    }
+
     pub fn init_accounts(&mut self) {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
@@ -383,6 +411,11 @@ impl BankEngine {
     }
 
     pub fn update_account(&mut self, account: &Account, uid: UserId) {
+        if self.suspended_users.contains_key(uid) {
+            slog::error!(self.logger, "Attempted to update_account for suspended user");
+            return;
+        }
+
         let conn = match &self.conn_pool {
             Some(conn) => conn,
             None => {
@@ -441,6 +474,10 @@ impl BankEngine {
         amount: Decimal,
         rate: Decimal,
     ) -> Result<(), BankError> {
+        if self.suspended_users.contains_key(&outbound_uid) {
+            slog::error!(self.logger, "Attempted to make_tx for suspended outbound user");
+            return Err(BankError::UserSuspended);
+        }
 
         if amount <= dec!(0) {
             return Err(BankError::FailedTransaction)
@@ -555,6 +592,10 @@ impl BankEngine {
             .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
             .clone();
         let outbound_uid = payment_request.uid;
+        if self.suspended_users.contains_key(&outbound_uid) {
+            slog::error!(self.logger, "Attempted to make_internal_tx for suspended outbound user");
+            return;
+        }
         let amount = *payment_request
             .amount
             .as_ref()
@@ -843,6 +884,10 @@ impl BankEngine {
             }
             Message::Api(msg) => match msg {
                 Api::InvoiceRequest(msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted an InvoiceRequest: {:?}", msg);
+                        return;
+                    }
                     slog::warn!(self.logger, "Received invoice request: {:?}", msg);
 
                     if !self.check_deposit_request_rate_limit(msg.uid) {
@@ -1142,6 +1187,10 @@ impl BankEngine {
                     }
                 }
                 Api::PaymentRequest(mut msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a PaymentRequest: {:?}", msg);
+                        return;
+                    }
                     slog::warn!(self.logger, "Received withdrawal request: {:?}", msg);
 
                     let uid = msg.uid;
@@ -1606,6 +1655,10 @@ impl BankEngine {
                         slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
                         return
                     }
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a SwapRequest: {:?}", msg);
+                        return;
+                    }
                     slog::warn!(self.logger, "Received swap request: {:?}", msg);
                     let msg = Message::Api(Api::SwapRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
@@ -1711,6 +1764,10 @@ impl BankEngine {
                 }
 
                 Api::GetBalances(msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a GetBalances: {:?}", msg);
+                        return;
+                    }
                     let user_account = self
                         .ledger
                         .user_accounts
@@ -1726,6 +1783,10 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Api::QuoteRequest(msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a QuoteRequest: {:?}", msg);
+                        return;
+                    }
                     let msg = Message::Api(Api::QuoteRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
                 }
@@ -1734,6 +1795,10 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::AvailableCurrenciesRequest(msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a AvailableCurrenciesRequest: {:?}", msg);
+                        return;
+                    }
                     let msg = Message::Api(Api::AvailableCurrenciesRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
                 }
@@ -1742,6 +1807,10 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::GetNodeInfoRequest(msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a GetNodeInfoRequest: {:?}", msg);
+                        return;
+                    }
                     let lnd_node_info = match self.lnd_connector.get_node_info().await {
                         Ok(ni) => ni,
                         Err(_) => LndNodeInfo::default(),
@@ -1759,6 +1828,10 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::CreateLnurlWithdrawalRequest(msg) => {
+                    if self.suspended_users.contains_key(&msg.uid) {
+                        slog::error!(self.logger, "Suspended user attempted a CreateLnurlWithdrawalRequest: {:?}", msg);
+                        return;
+                    }
                     if self.is_insurance_fund_depleted() {
                         slog::warn!(self.logger, "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request.");
                     }

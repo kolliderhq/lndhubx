@@ -113,6 +113,7 @@ pub async fn start(
         payment_thread_tx,
     )
     .await;
+    bank_engine.init_suspensions();
     bank_engine.init_accounts();
 
     let mut state_insertion_interval = Instant::now();

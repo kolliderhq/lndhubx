@@ -4,6 +4,7 @@ pub enum BankError {
     AccountNotFound,
     UserAccountAlreadyExists,
     FailedTransaction,
+    UserSuspended,
     SwapError,
 }
 
@@ -14,6 +15,7 @@ impl std::fmt::Display for BankError {
             BankError::AccountNotFound => "AccountNotFound",
             BankError::UserAccountAlreadyExists => "UserAccountAlreadyExists",
             BankError::FailedTransaction => "FailedTransaction",
+            BankError::UserSuspended => "UserSuspended",
             BankError::SwapError => "SwapError",
         };
         write!(f, "{}", output)
