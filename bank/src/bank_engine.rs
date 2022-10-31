@@ -1791,10 +1791,6 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::AvailableCurrenciesRequest(msg) => {
-                    if self.suspended_users.contains_key(&msg.uid) {
-                        slog::error!(self.logger, "Suspended user attempted a AvailableCurrenciesRequest: {:?}", msg);
-                        return;
-                    }
                     let msg = Message::Api(Api::AvailableCurrenciesRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
                 }
