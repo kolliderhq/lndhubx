@@ -546,6 +546,7 @@ dependencies = [
  "crossbeam-channel",
  "diesel",
  "futures 0.3.24",
+ "hex 0.4.3",
  "influxdb2",
  "lightning-invoice",
  "lnd_connector",

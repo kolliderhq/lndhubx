@@ -2,6 +2,7 @@ use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
 
 use bigdecimal::BigDecimal;
+use hex;
 use std::collections::HashMap;
 use std::time::Instant;
 use uuid::Uuid;
@@ -2048,7 +2049,7 @@ impl BankEngine {
             Ok(d) => d,
             Err(_) => return,
         };
-        let payment_hash = decoded.payment_hash().to_ascii_lowercase();
+        let payment_hash = hex::decode(decoded.payment_hash().to_string()).expect("Payment hash decoding failed");
 
         let amount_in_milli_satoshi = decoded
             .amount_milli_satoshis()
