@@ -125,6 +125,35 @@ impl LndConnector {
         Err(LndConnectorError::FailedToCreateInvoice)
     }
 
+    pub async fn pay_to_route(
+        &mut self,
+        payment_hash: Vec<u8>,
+        route: tonic_openssl_lnd::lnrpc::Route,
+    ) -> Result<PayResponse, LndConnectorError> {
+        let send_payment_with_route = tonic_openssl_lnd::lnrpc::SendToRouteRequest {
+            payment_hash: payment_hash,
+            route: Some(route),
+            ..Default::default()
+        };
+        if let Ok(resp) = self.ln_client.send_to_route_sync(send_payment_with_route).await {
+            let r = resp.into_inner();
+            if !r.payment_error.is_empty() {
+                dbg!(format!("Payment error: {:?}", r.payment_error));
+                return Err(LndConnectorError::FailedToSendPayment);
+            }
+            let fee = match r.payment_route {
+                Some(pr) => pr.total_fees.try_into().unwrap_or(0),
+                None => 0,
+            };
+            let response = PayResponse {
+                fee,
+                payment_hash: hex::encode(r.payment_hash),
+            };
+            return Ok(response);
+        }
+        Err(LndConnectorError::FailedToSendPayment)
+    }
+
     pub async fn pay_invoice(
         &mut self,
         payment_request: String,

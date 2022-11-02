@@ -29,6 +29,7 @@ use crate::ledger::*;
 
 const BANK_UID: u64 = 23193913;
 const DEALER_UID: u64 = 52172712;
+const MINIMUM_FEE: i64 = 10;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RateLimiterSettings {
@@ -2047,6 +2048,7 @@ impl BankEngine {
             Ok(d) => d,
             Err(_) => return,
         };
+        let payment_hash = decoded.payment_hash().to_ascii_lowercase();
 
         let amount_in_milli_satoshi = decoded
             .amount_milli_satoshis()
@@ -2060,55 +2062,70 @@ impl BankEngine {
             self.logger,
             "Dealer requests to pay {}invoice: {} of amount: {}",
             invoice_type_text,
-            pay_invoice.payment_request,
+            pay_invoice.clone().payment_request,
             amount_in_sats
         );
 
-        match self
-            .lnd_connector
-            .pay_invoice(
-                pay_invoice.payment_request.clone(),
-                amount_in_sats,
-                Some(self.ln_network_max_fee),
-                None,
-            )
-            .await
-        {
-            Ok(result) => {
-                slog::debug!(self.logger, "{:?}", result);
-                if is_insurance_invoice {
-                    let mut external_account = self.ledger.external_account.clone();
-                    let mut insurance_fund_account = self.ledger.insurance_fund_account.clone();
-                    if self
-                        .make_tx(
-                            &mut insurance_fund_account,
-                            DEALER_UID,
-                            &mut external_account,
-                            BANK_UID,
-                            amount_in_sats * Decimal::new(1, SATS_DECIMALS),
-                            Decimal::ONE,
-                        )
-                        .is_err()
-                    {
-                        return;
-                    }
+        let max_fee = dec!(0.0005);
+        let max_fee = (amount_in_sats * max_fee)
+            .round_dp(0)
+            .to_i64()
+            .unwrap_or(MINIMUM_FEE);
 
-                    self.update_account(&external_account, BANK_UID);
-                    self.update_account(&insurance_fund_account, DEALER_UID);
-                    self.ledger.external_account = external_account;
-                    self.ledger.insurance_fund_account = insurance_fund_account;
+        if let Ok(res) = self
+            .lnd_connector
+            .probe(pay_invoice.clone().payment_request, Decimal::new(max_fee, 0))
+            .await {
+            if !res.is_empty() {
+                let best_route = res[0].clone();
+                match self
+                    .lnd_connector
+                    .pay_to_route(
+                        payment_hash,
+                        best_route,
+                    ).await
+                {
+                    Ok(result) => {
+                        slog::debug!(self.logger, "{:?}", result);
+                        if is_insurance_invoice {
+                            let mut external_account = self.ledger.external_account.clone();
+                            let mut insurance_fund_account = self.ledger.insurance_fund_account.clone();
+                            if self
+                                .make_tx(
+                                    &mut insurance_fund_account,
+                                    DEALER_UID,
+                                    &mut external_account,
+                                    BANK_UID,
+                                    amount_in_sats * Decimal::new(1, SATS_DECIMALS),
+                                    Decimal::ONE,
+                                )
+                                .is_err()
+                            {
+                                return;
+                            }
+
+                            self.update_account(&external_account, BANK_UID);
+                            self.update_account(&insurance_fund_account, DEALER_UID);
+                            self.ledger.external_account = external_account;
+                            self.ledger.insurance_fund_account = insurance_fund_account;
+                        }
+                    }
+                    Err(err) => {
+                        slog::error!(
+                            self.logger,
+                            "Failed to pay {}invoice {:?}, reason: {:?}",
+                            invoice_type_text,
+                            pay_invoice,
+                            err
+                        );
+                    }
                 }
+            } else {
+                slog::error!(self.logger, "QueryRoutes returned no routes for {} invoice", invoice_type_text);
             }
-            Err(err) => {
-                slog::error!(
-                    self.logger,
-                    "Failed to pay {}invoice {:?}, reason: {:?}",
-                    invoice_type_text,
-                    pay_invoice,
-                    err
-                );
-            }
-        }
+        } else {
+            slog::error!(self.logger, "Failed to probe {} invoice {:?}", invoice_type_text, pay_invoice);
+        };
     }
 
     async fn process_create_invoice_request<F: FnMut(Message, ServiceIdentity)>(
