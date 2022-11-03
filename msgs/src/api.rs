@@ -12,6 +12,8 @@ pub enum InvoiceResponseError {
     WithdrawalOnly,
     DepositLimitExceeded,
     RequestLimitExceeded,
+    DatabaseConnectionFailed,
+    InvoicingSuspended,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +41,9 @@ pub enum SwapResponseError {
     InvalidQuoteId,
     NotEnoughAvailableBalance,
     BTCNotFromTo,
+    UserAccountNotFound,
+    DatabaseConnectionFailed,
+    TransactionFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,7 +193,11 @@ pub struct Balances {
     pub req_id: RequestId,
     pub uid: UserId,
     pub accounts: HashMap<AccountId, Account>,
+    pub error: Option<BalancesResponseError>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BalancesResponseError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuoteRequest {
@@ -240,7 +249,11 @@ pub struct GetNodeInfoResponse {
     pub reserve_ratio: Decimal,
     pub external_tx_fee: Decimal,
     pub internal_tx_fee: Decimal,
+    pub error: Option<GetNodeInfoResponseError>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GetNodeInfoResponseError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateLnurlWithdrawalRequest {

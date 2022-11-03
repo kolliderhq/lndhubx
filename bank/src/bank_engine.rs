@@ -185,7 +185,7 @@ impl BankEngine {
             *counter = 0;
             *last_request = Instant::now();
         }
-        return true;
+        true
     }
 
     fn check_withdrawal_request_rate_limit(&mut self, user_id: UserId) -> bool {
@@ -204,7 +204,7 @@ impl BankEngine {
             *counter = 0;
             *last_request = Instant::now();
         }
-        return true;
+        true
     }
 
     fn fetch_internal_user_account<F: FnMut(&diesel::PgConnection) -> Result<Vec<accounts::Account>, DieselError>>(
@@ -881,6 +881,21 @@ impl BankEngine {
 
                     if self.is_insurance_fund_depleted() {
                         slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
+                        let invoice_response = InvoiceResponse {
+                            amount: msg.amount,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            rate: None,
+                            meta: msg.meta.clone(),
+                            payment_request: None,
+                            currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
+                            account_id: None,
+                            error: Some(InvoiceResponseError::InvoicingSuspended),
+                            fees: None,
+                        };
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api);
                         return;
                     }
 
@@ -915,6 +930,21 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -923,6 +953,21 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1012,6 +1057,21 @@ impl BankEngine {
                         }
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
+                            let invoice_response = InvoiceResponse {
+                                amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: Some(target_account.account_id),
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
 
@@ -1054,6 +1114,21 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1062,6 +1137,21 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1135,6 +1225,21 @@ impl BankEngine {
                         invoice.currency = Some(msg.currency.to_string());
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: Some(target_account.account_id),
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
 
@@ -1712,6 +1817,10 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            swap_response.success = false;
+                            swap_response.error = Some(SwapResponseError::DatabaseConnectionFailed);
+                            let msg = Message::Api(Api::SwapResponse(swap_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1720,6 +1829,10 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            swap_response.success = false;
+                            swap_response.error = Some(SwapResponseError::DatabaseConnectionFailed);
+                            let msg = Message::Api(Api::SwapResponse(swap_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1741,7 +1854,13 @@ impl BankEngine {
                     let (mut outbound_account, mut inbound_account) = {
                         let user_account = match self.ledger.user_accounts.get_mut(&msg.uid) {
                             Some(ua) => ua,
-                            None => return,
+                            None => {
+                                swap_response.success = false;
+                                swap_response.error = Some(SwapResponseError::UserAccountNotFound);
+                                let msg = Message::Api(Api::SwapResponse(swap_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
                         };
 
                         let outbound_account = user_account.get_default_account(msg.from);
@@ -1769,6 +1888,10 @@ impl BankEngine {
                         .is_err()
                     {
                         slog::info!(self.logger, "Tx failed to go through.");
+                        swap_response.success = false;
+                        swap_response.error = Some(SwapResponseError::TransactionFailed);
+                        let msg = Message::Api(Api::SwapResponse(swap_response));
+                        listener(msg, ServiceIdentity::Api);
                         return;
                     }
 
@@ -1797,10 +1920,15 @@ impl BankEngine {
                         req_id: msg.req_id,
                         uid: msg.uid,
                         accounts: user_account.accounts.clone(),
+                        error: None,
                     };
+                    let uid = msg.uid;
                     let msg = Message::Api(Api::Balances(balances));
-                    listener(msg.clone(), ServiceIdentity::Api);
-                    listener(msg, ServiceIdentity::Dealer);
+                    if uid == DEALER_UID {
+                        listener(msg, ServiceIdentity::Dealer);
+                    } else {
+                        listener(msg, ServiceIdentity::Api);
+                    }
                 }
                 Api::QuoteRequest(msg) => {
                     let msg = Message::Api(Api::QuoteRequest(msg));
@@ -1831,6 +1959,7 @@ impl BankEngine {
                         internal_tx_fee: self.internal_tx_fee,
                         external_tx_fee: self.external_tx_fee,
                         reserve_ratio: self.reserve_ratio,
+                        error: None,
                     };
                     let msg = Message::Api(Api::GetNodeInfoResponse(response));
                     listener(msg, ServiceIdentity::Api);
@@ -1993,7 +2122,6 @@ impl BankEngine {
 
                     if res.amount <= dec!(0) {
                         panic!("Amount is smaller than zero.");
-                        return;
                     }
 
                     let conn = match &self.conn_pool {
