@@ -50,6 +50,8 @@ pub enum DbError {
 pub enum CommsError {
     #[error(display = "Unable to send message.")]
     FailedToSendMessage,
+    #[error(display = "Timeout while waiting for a response.")]
+    ServerResponseTimeout,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -99,6 +101,7 @@ impl error::ResponseError for ApiError {
             },
             ApiError::Comms(comms) => match comms {
                 CommsError::FailedToSendMessage => HttpResponse::InternalServerError(),
+                CommsError::ServerResponseTimeout => HttpResponse::InternalServerError(),
             },
             ApiError::JWT(_) => HttpResponse::Unauthorized(),
             ApiError::Request(request) => match request {
@@ -126,6 +129,7 @@ impl error::ResponseError for ApiError {
             },
             ApiError::Comms(comms) => match comms {
                 CommsError::FailedToSendMessage => StatusCode::INTERNAL_SERVER_ERROR,
+                CommsError::ServerResponseTimeout => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ApiError::JWT(_) => StatusCode::UNAUTHORIZED,
 

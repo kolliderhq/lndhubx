@@ -58,7 +58,7 @@ pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpR
     {
         return Ok(HttpResponse::Ok().json(&balances));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize)]
@@ -81,13 +81,13 @@ pub async fn pay_invoice(
 
     if let Some(amount) = pay_invoice_data.amount {
         if amount <= dec!(0) {
-            return Err(ApiError::Request(RequestError::InvalidDataSupplied))
+            return Err(ApiError::Request(RequestError::InvalidDataSupplied));
         }
     }
 
     if let Some(receipient) = &pay_invoice_data.receipient {
         if receipient.len() > 128 {
-            return Err(ApiError::Request(RequestError::InvalidDataSupplied))
+            return Err(ApiError::Request(RequestError::InvalidDataSupplied));
         }
     }
 
@@ -140,7 +140,7 @@ pub async fn pay_invoice(
     {
         return Ok(HttpResponse::Ok().json(&response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize, Debug)]
@@ -212,7 +212,7 @@ pub async fn add_invoice(
     {
         return Ok(HttpResponse::Ok().json(&invoice));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize)]
@@ -264,7 +264,7 @@ pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapDat
     {
         return Ok(HttpResponse::Ok().json(&swap_response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[get("/getuserinvoices")]
@@ -332,7 +332,7 @@ pub async fn quote(
     {
         return Ok(HttpResponse::Ok().json(&quote_response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize)]
@@ -398,7 +398,7 @@ pub async fn get_available_currencies(web_sender: WebSender) -> Result<HttpRespo
     {
         return Ok(HttpResponse::Ok().json(&response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[get("/nodeinfo")]
@@ -430,7 +430,7 @@ pub async fn get_node_info(web_sender: WebSender) -> Result<HttpResponse, ApiErr
     {
         return Ok(HttpResponse::Ok().json(&response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize)]
@@ -473,5 +473,5 @@ pub async fn get_query_route(query: Query<QueryRouteParams>, web_sender: WebSend
     {
         return Ok(HttpResponse::Ok().json(&response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
