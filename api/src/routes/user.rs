@@ -65,7 +65,7 @@ pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpR
 pub struct PayInvoiceData {
     pub payment_request: Option<String>,
     pub currency: Option<Currency>,
-    pub receipient: Option<String>,
+    pub recipient: Option<String>,
     pub amount: Option<Decimal>,
 }
 
@@ -85,8 +85,8 @@ pub async fn pay_invoice(
         }
     }
 
-    if let Some(receipient) = &pay_invoice_data.receipient {
-        if receipient.len() > 128 {
+    if let Some(recipient) = &pay_invoice_data.recipient {
+        if recipient.len() > 128 {
             return Err(ApiError::Request(RequestError::InvalidDataSupplied));
         }
     }
@@ -110,11 +110,11 @@ pub async fn pay_invoice(
         payment_request: pay_invoice_data.payment_request.clone(),
         rate: None,
         amount: pay_invoice_data.amount,
-        receipient: pay_invoice_data.receipient.clone(),
+        receipient: pay_invoice_data.recipient.clone(),
         fees: None,
     };
 
-    if pay_invoice_data.payment_request.is_none() && pay_invoice_data.receipient.is_none() {
+    if pay_invoice_data.payment_request.is_none() && pay_invoice_data.recipient.is_none() {
         return Ok(HttpResponse::Ok().json(json!({"error": "You have to specify either an invoice or a receipient"})));
     }
 
