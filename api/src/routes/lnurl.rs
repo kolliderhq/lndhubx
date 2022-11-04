@@ -189,10 +189,9 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
 
   let resp = json!({
       "callback": callback,
-      "maxSenable": max_sendable,
-      "minSenable": min_senable,
+      "maxSendable": max_sendable,
+      "minSendable": min_senable,
       "metadata": meta.to_string(),
-      "commentAllowed": 0,
       "tag": "payRequest",
   });
 
