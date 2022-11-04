@@ -81,6 +81,8 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::user::get_available_currencies)
             .service(routes::user::get_node_info)
             .service(routes::user::get_query_route)
+            .service(routes::user::update_username)
+            .service(routes::user::search_user)
             .service(routes::lnurl::create_lnurl_withdrawal)
             .service(routes::lnurl::get_lnurl_withdrawal)
             .service(routes::lnurl::pay_lnurl_withdrawal)

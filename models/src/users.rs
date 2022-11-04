@@ -70,6 +70,20 @@ impl User {
             .filter(users::username.eq(username))
             .first::<Self>(conn)
     }
+
+    pub fn search_by_username_fragment(conn: &diesel::PgConnection, fragment: &str) -> Result<Vec<Self>, DieselError> {
+        let pattern = format!("%{}%", fragment);
+        users::dsl::users
+            .filter(users::username.ilike(pattern))
+            .filter(users::is_internal.eq(false))
+            .load::<Self>(conn)
+    }
+
+    pub fn update_username(conn: &diesel::PgConnection, uid: i32, username: &str) -> Result<usize, DieselError> {
+        diesel::update(users::dsl::users.filter(users::uid.eq(uid)))
+            .set(users::username.eq(username))
+            .execute(conn)
+    }
 }
 
 impl InsertableUser {
@@ -79,4 +93,11 @@ impl InsertableUser {
             .returning(users::uid)
             .get_result(conn)
     }
+}
+
+/// Structure to use to share user data outside the application
+#[derive(Debug, Serialize)]
+pub struct ShareableUser {
+    pub uid: i32,
+    pub username: String,
 }

@@ -43,6 +43,8 @@ pub enum DbError {
     CouldNotFetchData,
     #[error(display = "An unknown error has occurred.")]
     Unknown,
+    #[error(display = "Unable to update the database.")]
+    UpdateFailed,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -98,6 +100,7 @@ impl error::ResponseError for ApiError {
                 DbError::UserDoesNotExist => HttpResponse::InternalServerError(),
                 DbError::CouldNotFetchData => HttpResponse::InternalServerError(),
                 DbError::Unknown => HttpResponse::InternalServerError(),
+                DbError::UpdateFailed => HttpResponse::InternalServerError(),
             },
             ApiError::Comms(comms) => match comms {
                 CommsError::FailedToSendMessage => HttpResponse::InternalServerError(),
@@ -126,6 +129,7 @@ impl error::ResponseError for ApiError {
                 DbError::UserDoesNotExist => StatusCode::INTERNAL_SERVER_ERROR,
                 DbError::CouldNotFetchData => StatusCode::INTERNAL_SERVER_ERROR,
                 DbError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+                DbError::UpdateFailed => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ApiError::Comms(comms) => match comms {
                 CommsError::FailedToSendMessage => StatusCode::INTERNAL_SERVER_ERROR,
