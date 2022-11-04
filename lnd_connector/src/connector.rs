@@ -10,6 +10,7 @@ use utils::time::*;
 use core_types::*;
 use uuid::Uuid;
 use sha256::digest;
+use unescape::unescape;
 
 const MINIMUM_FEE: i64 = 10;
 
@@ -97,7 +98,7 @@ impl LndConnector {
     ) -> Result<Invoice, LndConnectorError> {
 
         let hash = match metadata {
-            Some(m) => digest(m),
+            Some(m) => digest(unescape(&m).unwrap()),
             None => String::from(""),
         };
         let description_hash = hex::decode(hash).expect("Decoding failed");
