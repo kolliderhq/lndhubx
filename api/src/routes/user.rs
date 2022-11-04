@@ -511,7 +511,7 @@ pub async fn search_user(
 
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
-        .json(json!({ "data": response_data, "error": json!(null) })))
+        .json(json!({ "data": response_data, "error": null })))
 }
 
 #[derive(Deserialize)]
@@ -528,7 +528,7 @@ pub async fn update_username(
     let uid = auth_data.uid;
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
     match User::update_username(&conn, uid, &username_data.username) {
-        Ok(1) => Ok(HttpResponse::Ok().json(json!({ "username": username_data.username, "error": json!(null) }))),
+        Ok(1) => Ok(HttpResponse::Ok().json(json!({ "username": username_data.username, "error": null }))),
         _ => Err(ApiError::Db(DbError::UpdateFailed)),
     }
 }
