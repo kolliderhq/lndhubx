@@ -190,7 +190,7 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
   let resp = json!({
       "callback": callback,
       "maxSendable": max_sendable,
-      "minSendable": min_senable,
+      "minSendable": min_sendable,
       "metadata": meta.to_string(),
       "tag": "payRequest",
   });
@@ -213,7 +213,7 @@ pub async fn pay_address(
   let username = path.into_inner();
   let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-  let amount = Decimal::new(query.amount as i64, 0) / dec!(100000000000);
+  let amount = Decimal::new(query.amount as i64, 0) / dec!(100000000);
 
   let user = match User::get_by_username(&conn, username.clone()) {
     Ok(u) => u,
