@@ -509,10 +509,9 @@ pub async fn search_user(
         })
         .collect::<Vec<ShareableUser>>();
 
-    let null_value: Option<i32> = None;
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
-        .json(json!({ "data": response_data, "error": null_value })))
+        .json(json!({ "data": response_data, "error": json!(null) })))
 }
 
 #[derive(Deserialize)]
@@ -529,10 +528,7 @@ pub async fn update_username(
     let uid = auth_data.uid;
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
     match User::update_username(&conn, uid, &username_data.username) {
-        Ok(1) => {
-            let null_value: Option<i32> = None;
-            Ok(HttpResponse::Ok().json(json!({ "username": username_data.username, "error": null_value })))
-        }
+        Ok(1) => Ok(HttpResponse::Ok().json(json!({ "username": username_data.username, "error": json!(null) }))),
         _ => Err(ApiError::Db(DbError::UpdateFailed)),
     }
 }
