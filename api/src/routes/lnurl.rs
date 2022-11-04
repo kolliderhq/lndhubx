@@ -71,7 +71,7 @@ pub async fn create_lnurl_withdrawal(
     {
         return Ok(HttpResponse::Ok().json(&response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize, Debug)]
@@ -119,7 +119,7 @@ pub async fn get_lnurl_withdrawal(
         });
         return Ok(HttpResponse::Ok().json(&response));
     }
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
 
 #[derive(Deserialize)]
@@ -167,5 +167,5 @@ pub async fn pay_lnurl_withdrawal(
         }
         _ => {}
     };
-    Ok(HttpResponse::InternalServerError().json(json!({"status": "timeout"})))
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }

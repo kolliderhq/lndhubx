@@ -117,7 +117,7 @@ pub struct BankEngine {
     pub withdrawal_request_rate_limiter_settings: RateLimiterSettings,
     pub deposit_request_rate_limiter_settings: RateLimiterSettings,
     pub withdrawal_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
-    pub deposit_request_rate_limiter: HashMap<UserId, (u64, Instant)>
+    pub deposit_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
 }
 
 impl BankEngine {
@@ -170,31 +170,41 @@ impl BankEngine {
     }
 
     fn check_deposit_request_rate_limit(&mut self, user_id: UserId) -> bool {
-        let (counter, last_request) = self.deposit_request_rate_limiter.entry(user_id).or_insert_with(|| (0, Instant::now()));
-        if (last_request.elapsed().as_millis() as u64) < self.deposit_request_rate_limiter_settings.replenishment_interval {
+        let (counter, last_request) = self
+            .deposit_request_rate_limiter
+            .entry(user_id)
+            .or_insert_with(|| (0, Instant::now()));
+        if (last_request.elapsed().as_millis() as u64)
+            < self.deposit_request_rate_limiter_settings.replenishment_interval
+        {
             *counter += 1;
             if *counter > self.deposit_request_rate_limiter_settings.request_limit {
-                return false
+                return false;
             }
         } else {
             *counter = 0;
             *last_request = Instant::now();
         }
-        return true
+        true
     }
 
     fn check_withdrawal_request_rate_limit(&mut self, user_id: UserId) -> bool {
-        let (counter, last_request) = self.withdrawal_request_rate_limiter.entry(user_id).or_insert_with(|| (0, Instant::now()));
-        if (last_request.elapsed().as_millis() as u64) < self.withdrawal_request_rate_limiter_settings.replenishment_interval {
+        let (counter, last_request) = self
+            .withdrawal_request_rate_limiter
+            .entry(user_id)
+            .or_insert_with(|| (0, Instant::now()));
+        if (last_request.elapsed().as_millis() as u64)
+            < self.withdrawal_request_rate_limiter_settings.replenishment_interval
+        {
             *counter += 1;
             if *counter > self.withdrawal_request_rate_limiter_settings.request_limit {
-                return false
+                return false;
             }
         } else {
             *counter = 0;
             *last_request = Instant::now();
         }
-        return true
+        true
     }
 
     fn fetch_internal_user_account<F: FnMut(&diesel::PgConnection) -> Result<Vec<accounts::Account>, DieselError>>(
@@ -441,9 +451,8 @@ impl BankEngine {
         amount: Decimal,
         rate: Decimal,
     ) -> Result<(), BankError> {
-
         if amount <= dec!(0) {
-            return Err(BankError::FailedTransaction)
+            return Err(BankError::FailedTransaction);
         }
 
         let conn = match &self.conn_pool {
@@ -778,8 +787,14 @@ impl BankEngine {
 
                     // If its not a fiat deposit we need to get the current rate.
                     // Note a user could deposit with a sat specified invoice and then deposit into a fiat account.
-                    if currency != Currency::BTC || (currency == Currency::BTC && target_account_currency != Currency::BTC) {
-                        let c = if currency == Currency::BTC { target_account_currency } else {currency};
+                    if currency != Currency::BTC
+                        || (currency == Currency::BTC && target_account_currency != Currency::BTC)
+                    {
+                        let c = if currency == Currency::BTC {
+                            target_account_currency
+                        } else {
+                            currency
+                        };
                         let fiat_deposit_request = FiatDepositRequest {
                             uid: invoice.uid as u64,
                             currency: c,
@@ -866,7 +881,22 @@ impl BankEngine {
 
                     if self.is_insurance_fund_depleted() {
                         slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
-                        return
+                        let invoice_response = InvoiceResponse {
+                            amount: msg.amount,
+                            req_id: msg.req_id,
+                            uid: msg.uid,
+                            rate: None,
+                            meta: msg.meta.clone(),
+                            payment_request: None,
+                            currency: msg.currency,
+                            target_account_currency: msg.target_account_currency,
+                            account_id: None,
+                            error: Some(InvoiceResponseError::InvoicingSuspended),
+                            fees: None,
+                        };
+                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
                     }
 
                     let user_account = self
@@ -900,6 +930,21 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -908,6 +953,21 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -997,6 +1057,21 @@ impl BankEngine {
                         }
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
+                            let invoice_response = InvoiceResponse {
+                                amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: Some(target_account.account_id),
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
 
@@ -1039,6 +1114,21 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1047,6 +1137,21 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: None,
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1120,6 +1225,21 @@ impl BankEngine {
                         invoice.currency = Some(msg.currency.to_string());
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
+                            let invoice_response = InvoiceResponse {
+                                amount: msg.amount,
+                                req_id: msg.req_id,
+                                uid: msg.uid,
+                                rate: None,
+                                meta: msg.meta.clone(),
+                                payment_request: None,
+                                currency: msg.currency,
+                                target_account_currency: msg.target_account_currency,
+                                account_id: Some(target_account.account_id),
+                                error: Some(InvoiceResponseError::DatabaseConnectionFailed),
+                                fees: None,
+                            };
+                            let msg = Message::Api(Api::InvoiceResponse(invoice_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
 
@@ -1147,18 +1267,14 @@ impl BankEngine {
                     let uid = msg.uid;
 
                     if !self.check_withdrawal_request_rate_limit(uid) {
-                        let payment_response = PaymentResponse {
-                            error: Some(PaymentResponseError::RequestLimitExceeded),
-                            amount: dec!(0),
-                            payment_hash: Uuid::new_v4().to_string(),
-                            req_id: msg.req_id,
+                        let payment_response = PaymentResponse::error(
+                            PaymentResponseError::RequestLimitExceeded,
+                            msg.req_id,
                             uid,
-                            success: false,
-                            payment_request: None,
-                            currency: msg.currency,
-                            fees: dec!(0),
-                            rate: msg.rate.unwrap_or(Decimal::ONE),
-                        };
+                            msg.payment_request,
+                            msg.currency,
+                            msg.rate,
+                        );
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
                         listener(msg, ServiceIdentity::Api);
                         return;
@@ -1167,18 +1283,43 @@ impl BankEngine {
                     let mut outbound_account = {
                         let user_account = match self.ledger.user_accounts.get_mut(&uid) {
                             Some(ua) => ua,
-                            None => return,
+                            None => {
+                                let payment_response = PaymentResponse::error(
+                                    PaymentResponseError::UserAccountNotFound,
+                                    msg.req_id,
+                                    uid,
+                                    msg.payment_request,
+                                    msg.currency,
+                                    msg.rate,
+                                );
+                                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
                         };
                         user_account.get_default_account(msg.currency)
                     };
 
                     if self.is_insurance_fund_depleted() {
-                        slog::warn!(self.logger, "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request.");
+                        slog::warn!(
+                            self.logger,
+                            "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request."
+                        );
                     }
 
                     if let Some(amount) = msg.amount {
                         if amount <= dec!(0) {
-                            return
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::InvalidAmount,
+                                msg.req_id,
+                                uid,
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
                         }
                     }
 
@@ -1192,6 +1333,16 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::DatabaseConnectionFailed,
+                                msg.req_id,
+                                uid,
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1200,6 +1351,16 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::DatabaseConnectionFailed,
+                                msg.req_id,
+                                uid,
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1211,7 +1372,19 @@ impl BankEngine {
 
                     let decoded = match payment_request.parse::<lightning_invoice::Invoice>() {
                         Ok(d) => d,
-                        Err(_) => return,
+                        Err(_) => {
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::InvalidInvoice,
+                                msg.req_id,
+                                uid,
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
+                        }
                     };
 
                     // If the user supplied a zero-amount invoice, return an error
@@ -1219,18 +1392,14 @@ impl BankEngine {
                         if let Some(millisats) = decoded.amount_milli_satoshis() {
                             (millisats, millisats / 1000)
                         } else {
-                            let payment_response = PaymentResponse {
-                                error: Some(PaymentResponseError::ZeroAmountInvoice),
-                                amount: dec!(0),
-                                payment_hash: Uuid::new_v4().to_string(),
-                                req_id: msg.req_id,
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::ZeroAmountInvoice,
+                                msg.req_id,
                                 uid,
-                                success: false,
-                                payment_request: Some(payment_request.clone()),
-                                currency: msg.currency,
-                                fees: dec!(0),
-                                rate: msg.rate.unwrap_or(Decimal::ONE),
-                            };
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
                             return;
@@ -1290,6 +1459,16 @@ impl BankEngine {
                     let mut invoice = match invoice {
                         None => {
                             slog::error!(self.logger, "Couldn't create invoice. Can't make payment.");
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::RequestLimitExceeded,
+                                msg.req_id,
+                                uid,
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                         Some(inv) => inv,
@@ -1383,6 +1562,9 @@ impl BankEngine {
                             )
                             .is_err()
                         {
+                            payment_response.error = Some(PaymentResponseError::TransactionFailed);
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
 
@@ -1604,7 +1786,7 @@ impl BankEngine {
                 Api::SwapRequest(msg) => {
                     if self.is_insurance_fund_depleted() {
                         slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
-                        return
+                        return;
                     }
                     slog::warn!(self.logger, "Received swap request: {:?}", msg);
                     let msg = Message::Api(Api::SwapRequest(msg));
@@ -1635,6 +1817,10 @@ impl BankEngine {
                         Some(conn) => conn,
                         None => {
                             slog::error!(self.logger, "No database provided.");
+                            swap_response.success = false;
+                            swap_response.error = Some(SwapResponseError::DatabaseConnectionFailed);
+                            let msg = Message::Api(Api::SwapResponse(swap_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1643,6 +1829,10 @@ impl BankEngine {
                         Ok(psql_connection) => psql_connection,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
+                            swap_response.success = false;
+                            swap_response.error = Some(SwapResponseError::DatabaseConnectionFailed);
+                            let msg = Message::Api(Api::SwapResponse(swap_response));
+                            listener(msg, ServiceIdentity::Api);
                             return;
                         }
                     };
@@ -1664,7 +1854,13 @@ impl BankEngine {
                     let (mut outbound_account, mut inbound_account) = {
                         let user_account = match self.ledger.user_accounts.get_mut(&msg.uid) {
                             Some(ua) => ua,
-                            None => return,
+                            None => {
+                                swap_response.success = false;
+                                swap_response.error = Some(SwapResponseError::UserAccountNotFound);
+                                let msg = Message::Api(Api::SwapResponse(swap_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
                         };
 
                         let outbound_account = user_account.get_default_account(msg.from);
@@ -1692,6 +1888,10 @@ impl BankEngine {
                         .is_err()
                     {
                         slog::info!(self.logger, "Tx failed to go through.");
+                        swap_response.success = false;
+                        swap_response.error = Some(SwapResponseError::TransactionFailed);
+                        let msg = Message::Api(Api::SwapResponse(swap_response));
+                        listener(msg, ServiceIdentity::Api);
                         return;
                     }
 
@@ -1720,10 +1920,15 @@ impl BankEngine {
                         req_id: msg.req_id,
                         uid: msg.uid,
                         accounts: user_account.accounts.clone(),
+                        error: None,
                     };
+                    let uid = msg.uid;
                     let msg = Message::Api(Api::Balances(balances));
-                    listener(msg.clone(), ServiceIdentity::Api);
-                    listener(msg, ServiceIdentity::Dealer);
+                    if uid == DEALER_UID {
+                        listener(msg, ServiceIdentity::Dealer);
+                    } else {
+                        listener(msg, ServiceIdentity::Api);
+                    }
                 }
                 Api::QuoteRequest(msg) => {
                     let msg = Message::Api(Api::QuoteRequest(msg));
@@ -1754,26 +1959,44 @@ impl BankEngine {
                         internal_tx_fee: self.internal_tx_fee,
                         external_tx_fee: self.external_tx_fee,
                         reserve_ratio: self.reserve_ratio,
+                        error: None,
                     };
                     let msg = Message::Api(Api::GetNodeInfoResponse(response));
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::CreateLnurlWithdrawalRequest(msg) => {
                     if self.is_insurance_fund_depleted() {
-                        slog::warn!(self.logger, "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request.");
+                        slog::warn!(
+                            self.logger,
+                            "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request."
+                        );
                     }
 
                     slog::warn!(self.logger, "Received LNURL withdrawal request: {:?}", msg);
                     let uid = msg.uid;
 
+                    let mut response = CreateLnurlWithdrawalResponse {
+                        req_id: msg.req_id,
+                        lnurl: None,
+                        error: None,
+                    };
+
                     if msg.amount <= dec!(0) {
-                        return
+                        response.error = Some(CreateLnurlWithdrawalError::InvalidAmount);
+                        let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
                     }
 
                     let outbound_account = {
                         let user_account = match self.ledger.user_accounts.get_mut(&uid) {
                             Some(ua) => ua,
-                            None => return,
+                            None => {
+                                response.error = Some(CreateLnurlWithdrawalError::UserAccountNotFound);
+                                let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
                         };
 
                         user_account.get_default_account(msg.currency)
@@ -1784,12 +2007,6 @@ impl BankEngine {
                         listener(msg, ServiceIdentity::Dealer);
                         return;
                     }
-
-                    let mut response = CreateLnurlWithdrawalResponse {
-                        req_id: msg.req_id,
-                        lnurl: None,
-                        error: None,
-                    };
 
                     if outbound_account.balance < msg.amount {
                         response.error = Some(CreateLnurlWithdrawalError::InsufficientFunds);
@@ -1905,7 +2122,6 @@ impl BankEngine {
 
                     if res.amount <= dec!(0) {
                         panic!("Amount is smaller than zero.");
-                        return
                     }
 
                     let conn = match &self.conn_pool {

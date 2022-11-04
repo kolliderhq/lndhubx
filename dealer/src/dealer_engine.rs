@@ -1258,9 +1258,11 @@ mod tests {
             risk_tolerances: HashMap::new(),
             logging_settings: LoggingSettings {
                 name: String::from(""),
+                slack_hook: "".to_string(),
                 level: String::from("debug"),
                 stdout: false,
                 log_path: None,
+                slack_channel: "".to_string(),
             },
             influx_host: "".to_string(),
             influx_org: "".to_string(),

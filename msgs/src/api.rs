@@ -12,12 +12,16 @@ pub enum InvoiceResponseError {
     WithdrawalOnly,
     DepositLimitExceeded,
     RequestLimitExceeded,
+    DatabaseConnectionFailed,
+    InvoicingSuspended,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CreateLnurlWithdrawalError {
     InsufficientFunds,
     FailedToCreateLnUrl,
+    InvalidAmount,
+    UserAccountNotFound,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +41,9 @@ pub enum SwapResponseError {
     InvalidQuoteId,
     NotEnoughAvailableBalance,
     BTCNotFromTo,
+    UserAccountNotFound,
+    DatabaseConnectionFailed,
+    TransactionFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +113,12 @@ pub enum PaymentResponseError {
     RateNotAvailable,
     UserDoesNotExist,
     RequestLimitExceeded,
+    InvalidAmount,
+    UserAccountNotFound,
+    TransactionFailed,
+    DatabaseConnectionFailed,
+    InvalidInvoice,
+    CreatingInvoiceFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +133,30 @@ pub struct PaymentResponse {
     pub fees: Decimal,
     pub rate: Decimal,
     pub error: Option<PaymentResponseError>,
+}
+
+impl PaymentResponse {
+    pub fn error(
+        error: PaymentResponseError,
+        req_id: RequestId,
+        uid: UserId,
+        payment_request: Option<String>,
+        currency: Currency,
+        rate: Option<Decimal>,
+    ) -> Self {
+        Self {
+            error: Some(error),
+            amount: Decimal::ZERO,
+            payment_hash: Uuid::new_v4().to_string(),
+            req_id,
+            uid,
+            success: false,
+            payment_request,
+            currency,
+            fees: Decimal::ZERO,
+            rate: rate.unwrap_or(Decimal::ZERO),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,7 +193,11 @@ pub struct Balances {
     pub req_id: RequestId,
     pub uid: UserId,
     pub accounts: HashMap<AccountId, Account>,
+    pub error: Option<BalancesResponseError>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BalancesResponseError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuoteRequest {
@@ -208,7 +249,11 @@ pub struct GetNodeInfoResponse {
     pub reserve_ratio: Decimal,
     pub external_tx_fee: Decimal,
     pub internal_tx_fee: Decimal,
+    pub error: Option<GetNodeInfoResponseError>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GetNodeInfoResponseError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateLnurlWithdrawalRequest {

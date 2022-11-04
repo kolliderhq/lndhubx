@@ -2,9 +2,10 @@ use err_derive::Error;
 use serde::Serialize;
 
 use actix_web::{error, http::StatusCode, HttpResponse};
+use serde_json::json;
 
 #[derive(Debug, Error, Serialize)]
-#[error(display = "An Error has occured when authenticating.")]
+#[error(display = "An Error has occurred when authenticating.")]
 pub enum AuthError {
     #[error(display = "User already exists.")]
     UserExists,
@@ -13,20 +14,24 @@ pub enum AuthError {
 }
 
 #[derive(Debug, Error, Serialize)]
-#[error(display = "An Error has occured when authenticating.")]
+#[error(display = "An Error has occurred when authenticating.")]
 pub enum JWTError {
     #[error(display = "No authorization header supplied.")]
+    #[serde(rename = "JwtNotSupplied")]
     NotSupplied,
     #[error(display = "Jwt token that was supplied is invalid.")]
+    #[serde(rename = "JwtInvalid")]
     Invalid,
     #[error(display = "Jwt token that was supplied is invalid.")]
+    #[serde(rename = "JwtExpired")]
     Expired,
     #[error(display = "Jwt could not be generated.")]
+    #[serde(rename = "JwtEncodingFailed")]
     EncodingFailed,
 }
 
 #[derive(Debug, Error, Serialize)]
-#[error(display = "An Error has occured when authenticating.")]
+#[error(display = "An Error has occurred when authenticating.")]
 pub enum DbError {
     #[error(display = "Unable to get connection to Db.")]
     DbConnectionError,
@@ -36,19 +41,21 @@ pub enum DbError {
     UserDoesNotExist,
     #[error(display = "Couldn't fetch data.")]
     CouldNotFetchData,
-    #[error(display = "An unknown error has occured.")]
+    #[error(display = "An unknown error has occurred.")]
     Unknown,
 }
 
 #[derive(Debug, Error, Serialize)]
-#[error(display = "An Error has occured when authenticating.")]
+#[error(display = "An Error has occurred when authenticating.")]
 pub enum CommsError {
-    #[error(display = "Unabel to send message.")]
+    #[error(display = "Unable to send message.")]
     FailedToSendMessage,
+    #[error(display = "Timeout while waiting for a response.")]
+    ServerResponseTimeout,
 }
 
 #[derive(Debug, Error, Serialize)]
-#[error(display = "An Error has occured when making this request.")]
+#[error(display = "An Error has occurred when making this request.")]
 pub enum RequestError {
     #[error(display = "Invalid data supplied")]
     InvalidDataSupplied,
@@ -62,6 +69,7 @@ pub enum ExternalError {
 }
 
 #[derive(Debug, Error, Serialize)]
+#[serde(untagged)]
 pub enum ApiError {
     #[error(display = "Auth error.")]
     Auth(AuthError),
@@ -79,38 +87,31 @@ pub enum ApiError {
 
 impl error::ResponseError for ApiError {
     fn error_response(&self) -> HttpResponse {
-        match self {
+        let mut response_builder = match self {
             ApiError::Auth(auth) => match auth {
-                AuthError::UserExists => HttpResponse::Conflict().json("There was a conflict with your request."),
-                AuthError::IncorrectPassword => {
-                    HttpResponse::Unauthorized().json("You have supplied the wrong password.")
-                }
+                AuthError::UserExists => HttpResponse::Conflict(),
+                AuthError::IncorrectPassword => HttpResponse::Unauthorized(),
             },
             ApiError::Db(db) => match db {
-                DbError::DbConnectionError => HttpResponse::InternalServerError().json("Couldn't connect to Db."),
-                DbError::UserAlreadyExists => HttpResponse::Conflict().json("User already exists."),
-                DbError::UserDoesNotExist => HttpResponse::InternalServerError().json("User does not exist."),
-                DbError::CouldNotFetchData => HttpResponse::InternalServerError().json("Could not fetch data."),
-                DbError::Unknown => HttpResponse::InternalServerError().json("An unknown error has occured."),
+                DbError::DbConnectionError => HttpResponse::InternalServerError(),
+                DbError::UserAlreadyExists => HttpResponse::Conflict(),
+                DbError::UserDoesNotExist => HttpResponse::InternalServerError(),
+                DbError::CouldNotFetchData => HttpResponse::InternalServerError(),
+                DbError::Unknown => HttpResponse::InternalServerError(),
             },
             ApiError::Comms(comms) => match comms {
-                CommsError::FailedToSendMessage => {
-                    HttpResponse::InternalServerError().json("Could not send a message.")
-                }
+                CommsError::FailedToSendMessage => HttpResponse::InternalServerError(),
+                CommsError::ServerResponseTimeout => HttpResponse::InternalServerError(),
             },
-            ApiError::JWT(jwt) => match jwt {
-                JWTError::Invalid => HttpResponse::Unauthorized().json("Jwt token is invalid."),
-                JWTError::Expired => HttpResponse::Unauthorized().json("Jwt token is expired."),
-                JWTError::NotSupplied => HttpResponse::Unauthorized().json("Jwt token is not supplied."),
-                JWTError::EncodingFailed => HttpResponse::Unauthorized().json("Jwt token could not be generated."),
-            },
+            ApiError::JWT(_) => HttpResponse::Unauthorized(),
             ApiError::Request(request) => match request {
-                RequestError::InvalidDataSupplied=>  HttpResponse::InternalServerError().json("Invalid data supplied"),
-            }
+                RequestError::InvalidDataSupplied => HttpResponse::InternalServerError(),
+            },
             ApiError::External(external) => match external {
-                ExternalError::FailedToFetchExternalData => HttpResponse::InternalServerError().json("Failed to fetch external data."),
-            }
-        }
+                ExternalError::FailedToFetchExternalData => HttpResponse::InternalServerError(),
+            },
+        };
+        response_builder.json(json!({ "error": self }))
     }
 
     fn status_code(&self) -> StatusCode {
@@ -128,19 +129,16 @@ impl error::ResponseError for ApiError {
             },
             ApiError::Comms(comms) => match comms {
                 CommsError::FailedToSendMessage => StatusCode::INTERNAL_SERVER_ERROR,
+                CommsError::ServerResponseTimeout => StatusCode::INTERNAL_SERVER_ERROR,
             },
-            ApiError::JWT(jwt) => match jwt {
-                JWTError::Invalid => StatusCode::UNAUTHORIZED,
-                JWTError::Expired => StatusCode::UNAUTHORIZED,
-                JWTError::NotSupplied => StatusCode::UNAUTHORIZED,
-                JWTError::EncodingFailed => StatusCode::UNAUTHORIZED,
-            },
+            ApiError::JWT(_) => StatusCode::UNAUTHORIZED,
+
             ApiError::Request(request) => match request {
-                RequestError::InvalidDataSupplied => StatusCode::INTERNAL_SERVER_ERROR
-            }
+                RequestError::InvalidDataSupplied => StatusCode::INTERNAL_SERVER_ERROR,
+            },
             ApiError::External(external) => match external {
-                ExternalError::FailedToFetchExternalData => StatusCode::INTERNAL_SERVER_ERROR
-            }
+                ExternalError::FailedToFetchExternalData => StatusCode::INTERNAL_SERVER_ERROR,
+            },
         }
     }
 }

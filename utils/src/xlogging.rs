@@ -29,12 +29,17 @@ pub fn init_log(config: &LoggingSettings) -> Logger {
         log_path,
         name,
         slack_channel,
-        slack_hook
+        slack_hook,
     } = config;
 
     let log_path = log_path.clone().unwrap_or_else(|| String::from("/dev/null"));
 
-    let slack_drain = SlackDrain::new_with_hook(slack_hook, slack_channel, name);
+    let slack_drain = if !slack_hook.is_empty() && !slack_channel.is_empty() {
+        let drain = SlackDrain::new_with_hook(slack_hook, slack_channel, name);
+        Some(drain)
+    } else {
+        None
+    };
 
     let drain_stdout_async = if *stdout {
         let decorator = slog_term::TermDecorator::new().build();
@@ -58,9 +63,17 @@ pub fn init_log(config: &LoggingSettings) -> Logger {
     if let Some(drain_stdout) = drain_stdout_async {
         // create a logger w/ both a file drain and a stdout drain
         let drain = slog::Duplicate::new(drain_stdout, file_drain).fuse();
-        let slack_drain = slog::Duplicate::new(drain, slack_drain).fuse();
-        let filter_drain = slog::LevelFilter::new(slack_drain, level).fuse();
-        slog::Logger::root(filter_drain, o!("name" => name.to_string()))
+        match slack_drain {
+            Some(slack) => {
+                let slack_drain = slog::Duplicate::new(drain, slack).fuse();
+                let filter_drain = slog::LevelFilter::new(slack_drain, level).fuse();
+                slog::Logger::root(filter_drain, o!("name" => name.to_string()))
+            }
+            None => {
+                let filter_drain = slog::LevelFilter::new(drain, level).fuse();
+                slog::Logger::root(filter_drain, o!("name" => name.to_string()))
+            }
+        }
     } else {
         // create a logger that only points to a file
         let filter_drain = slog::LevelFilter::new(file_drain, level).fuse();

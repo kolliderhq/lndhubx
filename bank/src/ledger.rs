@@ -1,10 +1,8 @@
+use core_types::{Account, AccountId, AccountType, Currency, UserId};
 use std::collections::HashMap;
-use core_types::{UserId, Account, Currency, AccountType, AccountId};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use utils::time::time_now;
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UserAccount {
@@ -12,7 +10,7 @@ pub struct UserAccount {
     pub accounts: HashMap<AccountId, Account>,
     pub invoices: Vec<String>,
     pub last_withdrawal_request: std::time::SystemTime,
-    pub last_deposit_request: std::time::SystemTime
+    pub last_deposit_request: std::time::SystemTime,
 }
 
 impl UserAccount {
