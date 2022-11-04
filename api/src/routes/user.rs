@@ -8,6 +8,7 @@ use core_types::Currency;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
+use actix_web::http::header;
 use std::{sync::Arc, time::Duration};
 
 use rust_decimal::prelude::Decimal;
@@ -27,6 +28,9 @@ use crate::WebSender;
 
 use models::invoices::*;
 use models::transactions::Transaction;
+use models::users::{ShareableUser, User};
+
+const MINIMUM_PATTERN_LENGTH: usize = 3;
 
 #[get("/balance")]
 pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
@@ -474,4 +478,61 @@ pub async fn get_query_route(query: Query<QueryRouteParams>, web_sender: WebSend
         return Ok(HttpResponse::Ok().json(&response));
     }
     Err(ApiError::Comms(CommsError::ServerResponseTimeout))
+}
+
+#[derive(Deserialize)]
+pub struct SearchUserParams {
+    text: String,
+}
+
+#[get("/search_user")]
+pub async fn search_user(
+    pool: WebDbPool,
+    params: Query<SearchUserParams>,
+    _auth_data: AuthData,
+) -> Result<HttpResponse, ApiError> {
+    if params.text.len() < MINIMUM_PATTERN_LENGTH {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    let escaped = params.text.replace('%', "\\%").replace('_', "\\_");
+    let data = {
+        let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
+        User::search_by_username_fragment(&conn, &escaped).map_err(|_| ApiError::Db(DbError::UserDoesNotExist))
+    }?;
+
+    let response_data = data
+        .into_iter()
+        .map(|user| ShareableUser {
+            uid: user.uid,
+            username: user.username,
+        })
+        .collect::<Vec<ShareableUser>>();
+
+    let null_value: Option<i32> = None;
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(json!({ "data": response_data, "error": null_value })))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUsernameData {
+    pub username: String,
+}
+
+#[post("/update_username")]
+pub async fn update_username(
+    auth_data: AuthData,
+    pool: WebDbPool,
+    username_data: Json<UpdateUsernameData>,
+) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid;
+    let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
+    match User::update_username(&conn, uid, &username_data.username) {
+        Ok(1) => {
+            let null_value: Option<i32> = None;
+            Ok(HttpResponse::Ok().json(json!({ "username": username_data.username, "error": null_value })))
+        }
+        _ => Err(ApiError::Db(DbError::UpdateFailed)),
+    }
 }
