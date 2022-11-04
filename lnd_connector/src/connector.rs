@@ -92,6 +92,7 @@ impl LndConnector {
         memo: String,
         uid: UserId,
         account_id: Uuid,
+        metadata: Option<String>,
     ) -> Result<Invoice, LndConnectorError> {
         let invoice = tonic_openssl_lnd::lnrpc::Invoice {
             value: amount as i64,

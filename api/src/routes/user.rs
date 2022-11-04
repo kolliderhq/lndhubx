@@ -151,6 +151,7 @@ pub async fn pay_invoice(
 pub struct CreateInvoiceParams {
     pub amount: Decimal,
     pub meta: Option<String>,
+    pub metadata: Option<String>,
     pub account_id: Option<Uuid>,
     pub currency: Option<Currency>,
     pub target_account_currency: Option<Currency>,
@@ -187,6 +188,7 @@ pub async fn add_invoice(
     let invoice_request = InvoiceRequest {
         req_id,
         meta,
+        metadata: query.metadata.clone(),
         uid,
         currency,
         account_id: query.account_id,

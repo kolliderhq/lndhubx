@@ -866,6 +866,7 @@ impl BankEngine {
                             req_id: msg.req_id,
                             uid: msg.uid,
                             meta: msg.meta,
+                            metadata: msg.metadata.clone(),
                             rate: None,
                             payment_request: None,
                             currency: msg.currency,
@@ -887,6 +888,7 @@ impl BankEngine {
                             uid: msg.uid,
                             rate: None,
                             meta: msg.meta.clone(),
+                            metadata: msg.metadata.clone(),
                             payment_request: None,
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
@@ -912,6 +914,7 @@ impl BankEngine {
                             req_id: msg.req_id,
                             uid: msg.uid,
                             meta: msg.meta,
+                            metadata: msg.metadata.clone(),
                             rate: None,
                             payment_request: None,
                             currency: msg.currency,
@@ -936,6 +939,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -959,6 +963,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -987,6 +992,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -1016,6 +1022,7 @@ impl BankEngine {
                             uid: msg.uid,
                             rate: None,
                             meta: msg.meta.clone(),
+                            metadata: msg.metadata.clone(),
                             payment_request: None,
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
@@ -1046,7 +1053,7 @@ impl BankEngine {
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id)
+                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id, msg.metadata.clone())
                         .await
                     {
                         invoice.currency = Some(msg.currency.to_string());
@@ -1064,6 +1071,7 @@ impl BankEngine {
                                 rate: None,
                                 meta: msg.meta.clone(),
                                 payment_request: None,
+                                metadata: msg.metadata.clone(),
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: Some(target_account.account_id),
@@ -1080,6 +1088,7 @@ impl BankEngine {
                             req_id: msg.req_id,
                             uid: msg.uid,
                             meta: msg.meta,
+                            metadata: msg.metadata.clone(),
                             rate: None,
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
@@ -1120,6 +1129,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -1143,6 +1153,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -1174,6 +1185,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -1205,6 +1217,7 @@ impl BankEngine {
                             uid: msg.uid,
                             rate: None,
                             meta: msg.meta.clone(),
+                            metadata: msg.metadata.clone(),
                             payment_request: None,
                             currency,
                             target_account_currency: msg.target_account_currency,
@@ -1219,7 +1232,7 @@ impl BankEngine {
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id)
+                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id, msg.metadata.clone())
                         .await
                     {
                         invoice.currency = Some(msg.currency.to_string());
@@ -1231,6 +1244,7 @@ impl BankEngine {
                                 uid: msg.uid,
                                 rate: None,
                                 meta: msg.meta.clone(),
+                                metadata: msg.metadata.clone(),
                                 payment_request: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -1248,6 +1262,7 @@ impl BankEngine {
                             req_id: msg.req_id,
                             uid: msg.uid,
                             meta: msg.meta.clone(),
+                            metadata: msg.metadata.clone(),
                             rate: msg.rate,
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
@@ -2357,7 +2372,7 @@ impl BankEngine {
 
         if let Ok(invoice) = self
             .lnd_connector
-            .create_invoice(req.amount, req.memo, invoice_owner, account_id)
+            .create_invoice(req.amount, req.memo, invoice_owner, account_id, None)
             .await
         {
             slog::info!(self.logger, "Inserting invoice into db: {:?}", invoice);

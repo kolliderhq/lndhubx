@@ -505,6 +505,7 @@ impl DealerEngine {
                         amount: invoice_request.amount,
                         req_id: invoice_request.req_id,
                         uid: invoice_request.uid,
+                        metadata: invoice_request.metadata,
                         meta: invoice_request.meta,
                         currency: invoice_request.currency,
                         target_account_currency: invoice_request.target_account_currency,

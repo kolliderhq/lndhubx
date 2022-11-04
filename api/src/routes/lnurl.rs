@@ -234,9 +234,12 @@ pub async fn pay_address(
     return Err(ApiError::Request(RequestError::InvalidDataSupplied));
   }
 
+  let metadata = Some(String::from("[[\"text/plain]\", \"test\"]]"));
+
   let invoice_request = InvoiceRequest {
     req_id,
     meta,
+    metadata,
     uid,
     currency: Currency::BTC,
     account_id: None,
