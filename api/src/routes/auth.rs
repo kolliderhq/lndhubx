@@ -26,8 +26,8 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
     let username = match &register_data.username {
-        Some(un) => un.clone(),
-        None => Uuid::new_v4().to_string(),
+        Some(un) => un.clone().to_lowercase(),
+        None => Uuid::new_v4().to_string().to_lowercase(),
     };
 
     let hashed_password = hash(&username, &register_data.password);

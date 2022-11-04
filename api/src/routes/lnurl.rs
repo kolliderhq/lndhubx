@@ -23,6 +23,8 @@ use crate::jwt::*;
 use crate::WebDbPool;
 use crate::WebSender;
 
+const RANDOM_META_DATA: &str = "randomstring";
+
 #[derive(Deserialize, Debug)]
 pub struct CreateLnurlWithdrawalParams {
   pub amount: Decimal,
@@ -174,7 +176,6 @@ pub async fn pay_lnurl_withdrawal(
 #[get("/.well-known/lnurlp/{username}")]
 pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<HttpResponse, ApiError> {
   let username = path.into_inner();
-  dbg!(&username);
   let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
   let _user = match User::get_by_username(&conn, username.clone()) {
@@ -185,13 +186,13 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
   let callback = format!("https://lndhubx.com/api/pay/{:}", username);
   let max_sendable = 1000000000;
   let min_sendable = 1000;
-  let meta = json!([["text/plain", "test"]]);
+  let metadata = json!([["text/plain", RANDOM_META_DATA]]);
 
   let resp = json!({
       "callback": callback,
       "maxSendable": max_sendable,
       "minSendable": min_sendable,
-      "metadata": meta.to_string(),
+      "metadata": metadata.to_string(),
       "tag": "payRequest",
   });
 
@@ -234,7 +235,7 @@ pub async fn pay_address(
     return Err(ApiError::Request(RequestError::InvalidDataSupplied));
   }
 
-  let metadata = Some(String::from("[[\"text/plain\", \"test\"]]"));
+  let metadata = Some(format!("[[\"text/plain\",\"{:}\"]]", RANDOM_META_DATA));
 
   let invoice_request = InvoiceRequest {
     req_id,

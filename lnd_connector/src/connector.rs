@@ -98,7 +98,13 @@ impl LndConnector {
     ) -> Result<Invoice, LndConnectorError> {
 
         let hash = match metadata {
-            Some(m) => digest(unescape(&m).unwrap()),
+            Some(m) => {
+                if let Some(une) = unescape(&m) {
+                    digest(une)
+                } else {
+                    return Err(LndConnectorError::FailedToCreateInvoice)
+                }
+            },
             None => String::from(""),
         };
         let description_hash = hex::decode(hash).expect("Decoding failed");
