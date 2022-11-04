@@ -14,7 +14,7 @@ async fn main() {
 
     let mut lnd_connector = LndConnector::new(settings).await;
     lnd_connector
-        .create_invoice(1000, "hello".to_string(), 0, Uuid::new_v4())
+        .create_invoice(1000, "hello".to_string(), 0, Uuid::new_v4(), None)
         .await
         .expect("Failed to create an invoice");
 
