@@ -9,6 +9,7 @@ use utils::time::*;
 
 use core_types::*;
 use uuid::Uuid;
+use sha256::digest;
 
 const MINIMUM_FEE: i64 = 10;
 
@@ -94,10 +95,18 @@ impl LndConnector {
         account_id: Uuid,
         metadata: Option<String>,
     ) -> Result<Invoice, LndConnectorError> {
+
+        let hash = match metadata {
+            Some(m) => digest(m),
+            None => String::from(""),
+        };
+        let description_hash = hex::decode(hash).expect("Decoding failed");
+
         let invoice = tonic_openssl_lnd::lnrpc::Invoice {
             value: amount as i64,
             memo,
             expiry: 86400,
+            description_hash,
             ..Default::default()
         };
         if let Ok(resp) = self.ln_client.add_invoice(invoice).await {
