@@ -517,20 +517,18 @@ pub async fn search_user(
 }
 
 #[derive(Deserialize)]
-pub struct UpdateUsernameData {
+pub struct CheckUsernameData {
     pub username: String,
 }
 
-#[post("/update_username")]
-pub async fn update_username(
-    auth_data: AuthData,
+#[post("/check_username_available")]
+pub async fn check_username_available(
     pool: WebDbPool,
-    username_data: Json<UpdateUsernameData>,
+    username_data: Json<CheckUsernameData>,
 ) -> Result<HttpResponse, ApiError> {
-    let uid = auth_data.uid;
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
-    match User::update_username(&conn, uid, &username_data.username) {
-        Ok(1) => Ok(HttpResponse::Ok().json(json!({ "username": username_data.username, "error": null }))),
-        _ => Err(ApiError::Db(DbError::UpdateFailed)),
+    match User::get_by_username(&conn, username_data.username.clone()) {
+        Ok(_) => Ok(HttpResponse::Ok().json(json!({ "available": false}))),
+        _ => Ok(HttpResponse::Ok().json(json!({ "available": true}))),
     }
 }
