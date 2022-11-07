@@ -581,6 +581,7 @@ impl BankEngine {
             fees: dec!(0),
             error: None,
             rate,
+            preimage: None,
         };
 
         let inbound_user = match User::get_by_username(&c, username) {
@@ -1289,6 +1290,7 @@ impl BankEngine {
                             msg.payment_request,
                             msg.currency,
                             msg.rate,
+                            None,
                         );
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
                         listener(msg, ServiceIdentity::Api);
@@ -1306,6 +1308,7 @@ impl BankEngine {
                                     msg.payment_request,
                                     msg.currency,
                                     msg.rate,
+                                    None,
                                 );
                                 let msg = Message::Api(Api::PaymentResponse(payment_response));
                                 listener(msg, ServiceIdentity::Api);
@@ -1331,6 +1334,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1355,6 +1359,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1373,6 +1378,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1395,6 +1401,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1414,6 +1421,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1481,6 +1489,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1501,6 +1510,7 @@ impl BankEngine {
                         fees: dec!(0),
                         rate,
                         error: None,
+                        preimage: None,
                     };
 
                     if let Some(owner) = invoice.owner {
@@ -1621,6 +1631,7 @@ impl BankEngine {
                                         fees: Decimal::new(result.fee as i64, 0),
                                         rate,
                                         error: None,
+                                        preimage: result.preimage,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                         uid,
@@ -1647,6 +1658,7 @@ impl BankEngine {
                                         fees: dec!(0),
                                         rate,
                                         error: Some(PaymentResponseError::InsufficientFundsForFees),
+                                        preimage: None,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                         uid,

@@ -18,6 +18,7 @@ const MINIMUM_FEE: i64 = 10;
 pub struct PayResponse {
     pub payment_hash: String,
     pub fee: u64,
+    pub preimage: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -184,6 +185,7 @@ impl LndConnector {
             let response = PayResponse {
                 fee,
                 payment_hash: hex::encode(r.payment_hash),
+                preimage: Some(hex::encode(r.payment_preimage)),
             };
             return Ok(response);
         }
