@@ -1667,135 +1667,27 @@ impl BankEngine {
                         return;
                     }
 
-                    if let Some(invoice_currency) = invoice.currency.clone() {
-                        if let Ok(currency) = Currency::from_str(&invoice_currency) {
-                            if currency != msg.currency {
-                                slog::info!(
-                                    self.logger,
-                                    "Cannot send internal tx between two different currency accounts"
-                                );
-                                payment_response.success = false;
-                                let msg = Message::Api(Api::PaymentResponse(payment_response));
-                                listener(msg, ServiceIdentity::Api);
-                                return;
-                            }
-                        } else {
-                            panic!("Failed to convert {} to a valid currency", invoice_currency);
-                        }
-                    } else {
-                        panic!("Invoice currency not specified: {:?}", invoice);
-                    }
-
-                    if msg.currency != Currency::BTC && msg.rate.is_none() {
-                        let msg = Message::Api(Api::PaymentRequest(msg));
-                        listener(msg, ServiceIdentity::Dealer);
-                        return;
-                    }
-
-                    let owner = invoice
-                        .owner
-                        .unwrap_or_else(|| panic!("Invoice owner has not been specified: {:?}", invoice))
-                        as u64;
-
-                    let mut invoice_owner_account = {
-                        let user_account = self
-                            .ledger
-                            .user_accounts
-                            .entry(owner as u64)
-                            .or_insert_with(|| UserAccount::new(owner as u64));
-                        user_account.get_default_account(msg.currency)
-                    };
-
-                    let mut invoice_payer_account = {
-                        match self.ledger.user_accounts.get_mut(&uid) {
-                            Some(user_account) => user_account.get_default_account(msg.currency),
-                            None => {
-                                slog::error!(
-                                    self.logger,
-                                    "Invoice payer's user account does not exist: uid: {}, invoice: {:?}",
-                                    uid,
-                                    invoice
-                                );
-                                return;
-                            }
-                        }
-                    };
-
-                    let mut rate = rate;
-                    let amount = amount_in_btc / rate;
-
-                    // we are resetting the rate because we made the conversions
-                    rate = dec!(1);
-
-                    let internal_tx_fee = amount * self.internal_tx_fee;
-
-                    if internal_tx_fee + amount > invoice_payer_account.balance {
-                        slog::info!(
-                            self.logger,
-                            "User: {} doesn't have enough funds to cover tx fee of {}",
-                            uid,
-                            internal_tx_fee
-                        );
-                        payment_response.success = false;
-                        let msg = Message::Api(Api::PaymentResponse(payment_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
-                    }
-
-                    if self
-                        .make_tx(
-                            &mut invoice_payer_account,
-                            uid,
-                            &mut invoice_owner_account,
-                            owner,
-                            amount,
-                            rate,
-                        )
-                        .is_err()
-                    {
-                        return;
-                    }
-
-                    let mut fee_account = self.ledger.fee_account.clone();
-
-                    // Deducting internal fees
-                    // TODO: This is wrong./
-                    if internal_tx_fee > dec!(0)
-                        && self
-                            .make_tx(
-                                &mut invoice_payer_account,
+                    let owner_username = match models::users::User::get_by_id(&psql_connection, invoice.owner.unwrap()) {
+                        Ok(username) => username,
+                        Err(_) => {
+                            slog::error!(self.logger, "Couldn't get psql connection.");
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::DatabaseConnectionFailed,
+                                msg.req_id,
                                 uid,
-                                &mut fee_account,
-                                BANK_UID,
-                                amount_in_btc,
-                                rate,
-                            )
-                            .is_err()
-                    {
-                        return;
-                    }
+                                msg.payment_request,
+                                msg.currency,
+                                msg.rate,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return;
+                        }
+                    };
 
-                    self.ledger.fee_account = fee_account;
-
-                    self.insert_into_ledger(&owner, invoice_owner_account.account_id, invoice_owner_account.clone());
-                    self.insert_into_ledger(&uid, invoice_payer_account.account_id, invoice_payer_account.clone());
-
-                    // Update DB.
-                    self.update_account(&invoice_payer_account, uid as u64);
-                    self.update_account(&invoice_owner_account, owner as u64);
-
-                    // Update Invoice
-                    invoice.settled = true;
-                    if invoice.update(&psql_connection).is_err() {
-                        slog::info!(self.logger, "Couldn't update invoice.");
-                        return;
-                    }
-
-                    payment_response.success = true;
-                    payment_response.fees = internal_tx_fee;
-
-                    let msg = Message::Api(Api::PaymentResponse(payment_response));
-                    listener(msg, ServiceIdentity::Api);
+                    // If there is an owner we make an internal tx.
+                    msg.receipient = Some(owner_username.username);
+                    self.make_internal_tx(msg, listener);
                 }
 
                 Api::SwapRequest(msg) => {
