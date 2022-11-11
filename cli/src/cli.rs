@@ -2,11 +2,11 @@ use crate::actions::Action;
 use msgs::{cli::Cli as CliMsg, dealer::Dealer, Message};
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use utils::xzmq::ZmqSocket;
+use utils::kafka::{Consumer, Producer};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CliSettings {
-    pub bank_cli_resp_address: String,
+    pub kafka_broker_addresses: String,
 }
 
 #[derive(StructOpt, Debug)]
@@ -17,23 +17,23 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn execute(self, socket: ZmqSocket) -> ResponseHandler {
+    pub fn execute(self, producer: Producer, consumer: Consumer) -> ResponseHandler {
         let msg = self.action.into_request();
-        utils::xzmq::send_as_bincode(&socket, &msg);
+        producer.produce("bank", &msg);
 
-        ResponseHandler { socket }
+        ResponseHandler { consumer }
     }
 }
 
 pub struct ResponseHandler {
-    socket: ZmqSocket,
+    consumer: Consumer,
 }
 
 impl ResponseHandler {
-    pub fn process_response(self) {
-        match self.socket.recv_msg(0) {
-            Ok(frame) => match serde_json::from_slice::<Message>(&frame) {
-                Ok(msg) => match msg {
+    pub fn process_response(mut self) {
+        match self.consumer.consume::<Message>() {
+            Some(payload) => match payload {
+                Some(msg) => match msg {
                     Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response)) => {
                         println!("Received create invoice response: {:?}", create_invoice_response);
                     }
@@ -47,12 +47,12 @@ impl ResponseHandler {
                         println!("Received unhandled message: {:?}", msg)
                     }
                 },
-                Err(err) => {
-                    eprintln!("Error while deserializing a payload into message: {:?}", err)
+                None => {
+                    eprintln!("Received unsupported message format")
                 }
             },
-            Err(err) => {
-                eprintln!("Error while receiving a message: {:?}", err)
+            None => {
+                eprintln!("Failed to receive a message")
             }
         }
     }

@@ -1,5 +1,6 @@
 ### API Config
 psql_url = "postgres://[psql-user]:[psql-password]@localhost:5432/lndhubx"
+kafka_broker_addresses="localhost:9092"
 
 influx_host = "http://localhost:8086"
 influx_org = "<INFLUX-ORG>"

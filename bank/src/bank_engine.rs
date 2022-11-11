@@ -40,10 +40,6 @@ pub struct RateLimiterSettings {
 pub struct BankEngineSettings {
     /// url to the postgres database.
     pub psql_url: String,
-    pub bank_zmq_pull_address: String,
-    pub bank_zmq_publish_address: String,
-    pub bank_dealer_pull_address: String,
-    pub bank_dealer_push_address: String,
     /// The margin users have to keep on their account to account for network fees.
     pub ln_network_fee_margin: Decimal,
     pub ln_network_max_fee: Decimal,
@@ -57,7 +53,7 @@ pub struct BankEngineSettings {
     pub influx_org: String,
     pub influx_bucket: String,
     pub influx_token: String,
-    pub bank_cli_resp_address: String,
+    pub kafka_broker_addresses: String,
     pub withdrawal_request_rate_limiter_settings: RateLimiterSettings,
     pub deposit_request_rate_limiter_settings: RateLimiterSettings,
 }
@@ -1053,7 +1049,13 @@ impl BankEngine {
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id, msg.metadata.clone())
+                        .create_invoice(
+                            amount_in_sats,
+                            msg.meta.clone(),
+                            msg.uid,
+                            target_account.account_id,
+                            msg.metadata.clone(),
+                        )
                         .await
                     {
                         invoice.currency = Some(msg.currency.to_string());
@@ -1232,7 +1234,13 @@ impl BankEngine {
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id, msg.metadata.clone())
+                        .create_invoice(
+                            amount_in_sats,
+                            msg.meta.clone(),
+                            msg.uid,
+                            target_account.account_id,
+                            msg.metadata.clone(),
+                        )
                         .await
                     {
                         invoice.currency = Some(msg.currency.to_string());
@@ -1471,7 +1479,7 @@ impl BankEngine {
                     };
 
                     // If we couldn't create an invoice we cannot proceed with the payment.
-                    let mut invoice = match invoice {
+                    let invoice = match invoice {
                         None => {
                             slog::error!(self.logger, "Couldn't create invoice. Can't make payment.");
                             let payment_response = PaymentResponse::error(
@@ -1667,7 +1675,8 @@ impl BankEngine {
                         return;
                     }
 
-                    let owner_username = match models::users::User::get_by_id(&psql_connection, invoice.owner.unwrap()) {
+                    let owner_username = match models::users::User::get_by_id(&psql_connection, invoice.owner.unwrap())
+                    {
                         Ok(username) => username,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
