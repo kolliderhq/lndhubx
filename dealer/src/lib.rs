@@ -13,7 +13,7 @@ use core_types::*;
 use futures::prelude::*;
 use influxdb2::Client;
 use rust_decimal::prelude::*;
-use utils::xzmq::ZmqSocket;
+use utils::kafka::{Consumer, Producer};
 
 pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
     let usd_hedged_qty = dealer.get_hedged_quantity(Symbol::from("BTCUSD.PERP"));
@@ -41,13 +41,14 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {:?}", err);
         }
     }
 }
 
-pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
+pub async fn start(settings: DealerEngineSettings, kafka_producer: Producer, mut kafka_consumer: Consumer) {
     let (kollider_client_tx, kollider_client_rx) = bounded(2024);
+    let (kafka_tx, kafka_rx) = bounded(2024);
 
     let ws_client = match KolliderHedgingClient::connect(
         &settings.kollider_ws_url,
@@ -75,33 +76,39 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     );
 
     let mut listener = |msg: Message| {
-        utils::xzmq::send_as_bincode(&bank_sender, &msg);
+        kafka_producer.produce("bank", &msg);
     };
 
     let mut last_health_check = Instant::now();
     let mut last_house_keeping = Instant::now();
     let mut last_risk_check = Instant::now();
 
+    std::thread::spawn(move || {
+        while let Some(maybe_message) = kafka_consumer.consume() {
+            if let Some(message) = maybe_message {
+                if let Err(err) = kafka_tx.send(message) {
+                    panic!("Kafka consumer failed to post a message into channel: {:?}", err);
+                }
+            }
+        }
+    });
+
     loop {
         // Before we proceed we have to have received a bank state message
         if !synth_dealer.has_bank_state() && synth_dealer.is_ready() {
             let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }));
             listener(msg);
-            while let Ok(frame) = bank_recv.recv_msg(0) {
-                if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                    if let Message::Dealer(Dealer::BankState(ref _bank_state)) = message {
-                        synth_dealer.process_msg(message, &mut listener);
-                        last_risk_check = Instant::now();
-                        break;
-                    }
-                };
+            while let Ok(message) = kafka_rx.recv() {
+                if let Message::Dealer(Dealer::BankState(ref _bank_state)) = message {
+                    synth_dealer.process_msg(message, &mut listener);
+                    last_risk_check = Instant::now();
+                    break;
+                }
             }
         }
 
-        if let Ok(frame) = bank_recv.recv_msg(1) {
-            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                synth_dealer.process_msg(message, &mut listener);
-            };
+        if let Ok(message) = kafka_rx.try_recv() {
+            synth_dealer.process_msg(message, &mut listener);
         }
 
         if let Ok(message) = kollider_client_rx.try_recv() {

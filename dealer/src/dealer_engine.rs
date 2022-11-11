@@ -35,8 +35,7 @@ pub struct HedgeSettings {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DealerEngineSettings {
     pub psql_url: String,
-    pub dealer_bank_pull_address: String,
-    pub dealer_bank_push_address: String,
+    pub kafka_broker_addresses: String,
 
     pub kollider_api_key: String,
     pub kollider_api_secret: String,
@@ -1250,8 +1249,7 @@ mod tests {
     fn initialise_dealer_engine() -> DealerEngine {
         let settings = DealerEngineSettings {
             psql_url: "".to_string(),
-            dealer_bank_pull_address: "".to_string(),
-            dealer_bank_push_address: "".to_string(),
+            kafka_broker_addresses: "".to_string(),
             kollider_api_key: "".to_string(),
             kollider_api_secret: "".to_string(),
             kollider_api_passphrase: "".to_string(),
