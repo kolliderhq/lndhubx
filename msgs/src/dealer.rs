@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BankStateRequest {
     pub req_id: RequestId,
+    pub requesting_identity: ServiceIdentity,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

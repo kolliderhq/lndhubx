@@ -96,7 +96,10 @@ pub async fn start(settings: DealerEngineSettings, kafka_producer: Producer, mut
     loop {
         // Before we proceed we have to have received a bank state message
         if !synth_dealer.has_bank_state() && synth_dealer.is_ready() {
-            let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }));
+            let msg = Message::Dealer(Dealer::BankStateRequest(BankStateRequest {
+                req_id: Uuid::new_v4(),
+                requesting_identity: ServiceIdentity::Dealer,
+            }));
             listener(msg);
             while let Ok(message) = kafka_rx.recv() {
                 if let Message::Dealer(Dealer::BankState(ref _bank_state)) = message {

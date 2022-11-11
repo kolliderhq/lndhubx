@@ -39,9 +39,6 @@ impl Producer {
     pub fn new(broker_servers: &str) -> Self {
         let producer: ThreadedProducer<ProduceCallbackLogger> = ClientConfig::new()
             .set("bootstrap.servers", broker_servers)
-            .set("message.timeout.ms", "5000")
-            .set("batch.size", "1")
-            .set("linger.ms", "0")
             .set("max.in.flight.requests.per.connection", "1")
             .set("acks", "all")
             .create_with_context(ProduceCallbackLogger {})
@@ -61,8 +58,6 @@ impl Producer {
                 "Failed to send a message: {} into {} topic over kafka, error: {:?}",
                 payload, topic, err
             );
-        } else {
-            eprintln!("===mk=== Sent {} into {} topic", payload, topic);
         }
     }
 }
@@ -90,9 +85,7 @@ impl Consumer {
     }
 
     pub fn consume<T: DeserializeOwned>(&mut self) -> Option<Option<T>> {
-        eprintln!("===mk=== Consume from {} kafka topic", self.topic);
         let msg_result = self.consumer.iter().next()?;
-        eprintln!("===mk=== Consumed from {} kafka topic", self.topic);
         let msg = msg_result.unwrap();
         let topic = msg.topic();
         if topic != self.topic {

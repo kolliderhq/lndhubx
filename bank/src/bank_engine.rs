@@ -658,10 +658,10 @@ impl BankEngine {
                         self.available_currencies = Vec::new();
                     }
                 }
-                Dealer::BankStateRequest(_) => {
+                Dealer::BankStateRequest(request) => {
                     let bank_state = self.get_bank_state();
                     let msg = Message::Dealer(Dealer::BankState(bank_state));
-                    listener(msg, ServiceIdentity::Dealer);
+                    listener(msg, request.requesting_identity);
                 }
                 Dealer::PayInvoice(pay_invoice) => {
                     self.process_pay_invoice(pay_invoice, false).await;

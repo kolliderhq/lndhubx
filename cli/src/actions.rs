@@ -1,4 +1,4 @@
-use core_types::{Currency, UserId};
+use core_types::{Currency, ServiceIdentity, UserId};
 use msgs::cli::{Cli, MakeTx};
 use msgs::dealer::{BankStateRequest, CreateInvoiceRequest, Dealer};
 use msgs::Message;
@@ -39,9 +39,10 @@ impl Action {
                     memo: "Insurance fund top-up".to_string(),
                 }))
             }
-            Self::GetBankState => {
-                Message::Dealer(Dealer::BankStateRequest(BankStateRequest { req_id: Uuid::new_v4() }))
-            }
+            Self::GetBankState => Message::Dealer(Dealer::BankStateRequest(BankStateRequest {
+                req_id: Uuid::new_v4(),
+                requesting_identity: ServiceIdentity::Cli,
+            })),
             Self::MakeTx {
                 outbound_uid,
                 outbound_account_id,
