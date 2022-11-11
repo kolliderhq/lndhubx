@@ -1,9 +1,8 @@
 pub mod config;
+pub mod kafka;
 pub mod lnurl;
 pub mod slack;
 pub mod xlogging;
-pub mod xzmq;
-
 
 pub mod time {
     use serde::Serializer;

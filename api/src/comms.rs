@@ -8,6 +8,7 @@ pub use zmq::Socket as ZmqSocket;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use msgs::*;
+use utils::kafka::{Consumer, Producer};
 
 use utils::time;
 
@@ -32,8 +33,8 @@ impl CommsActor {
     pub async fn start(
         _tx: mpsc::Sender<Envelope>,
         mut rx: mpsc::Receiver<Envelope>,
-        subscriber: ZmqSocket,
-        sender: ZmqSocket,
+        mut kafka_consumer: Consumer,
+        kafka_producer: Producer,
         _api_settings: ApiSettings,
     ) {
         // users of the node actor leave their "contact details" behind so the response can be transfered back later.
@@ -54,8 +55,8 @@ impl CommsActor {
             let a_tx = a_tx.clone();
 
             thread::spawn(move || {
-                while let Ok(frames) = subscriber.recv_multipart(0x00) {
-                    if let Ok(message) = bincode::deserialize::<Message>(&frames[2]) {
+                while let Some(maybe_message) = kafka_consumer.consume() {
+                    if let Some(message) = maybe_message {
                         let _ = a_tx.send(message);
                     };
                 }
@@ -108,7 +109,7 @@ impl CommsActor {
                 waiting.lock().await.push((tx, func, time::time_now()));
             }
 
-            utils::xzmq::send_as_bincode(&sender, &message);
+            kafka_producer.produce("bank", &message);
         }
     }
 }

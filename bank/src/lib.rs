@@ -1,15 +1,14 @@
 extern crate core;
 
+pub mod accountant;
 pub mod bank_engine;
 pub mod ledger;
-pub mod accountant;
 
 use bank_engine::*;
 use futures::prelude::*;
 use std::time::Instant;
 
 use diesel::{r2d2::ConnectionManager, PgConnection};
-use zmq::Socket as ZmqSocket;
 
 use core_types::*;
 use crossbeam_channel::bounded;
@@ -23,6 +22,7 @@ use futures::stream::FuturesUnordered;
 use influxdb2::Client;
 
 use accountant::*;
+use utils::kafka::{Consumer, Producer};
 
 pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str) {
     let mut btc_balance = dec!(0);
@@ -65,7 +65,7 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {:?}", err);
         }
     }
 }
@@ -73,11 +73,8 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
 pub async fn start(
     settings: BankEngineSettings,
     lnd_connector_settings: LndConnectorSettings,
-    api_recv: ZmqSocket,
-    api_sender: ZmqSocket,
-    dealer_sender: ZmqSocket,
-    dealer_recv: ZmqSocket,
-    cli_socket: ZmqSocket,
+    mut kafka_consumer: Consumer,
+    kafka_producer: Producer,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
@@ -93,7 +90,7 @@ pub async fn start(
     );
 
     let (invoice_tx, invoice_rx) = bounded(1024);
-    let (priority_tx, priority_rx) = bounded(1024);
+    let (loopback_tx, loopback_rx) = bounded(1024);
 
     let invoice_task = {
         async move {
@@ -120,34 +117,37 @@ pub async fn start(
 
     insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
 
-    let mut listener = |msg: Message, destination: ServiceIdentity| match destination {
-        ServiceIdentity::Api => {
-            utils::xzmq::send_multipart_as_bincode(&api_sender, &msg);
-        }
-        ServiceIdentity::Dealer => {
-            utils::xzmq::send_as_bincode(&dealer_sender, &msg);
-        }
-        ServiceIdentity::Loopback => {
-            if let Err(err) = priority_tx.send(msg) {
-                panic!("Failed to send priority message: {:?}", err);
+    let kafka_loopback = loopback_tx.clone();
+    std::thread::spawn(move || {
+        while let Some(maybe_message) = kafka_consumer.consume() {
+            if let Some(message) = maybe_message {
+                if let Err(err) = kafka_loopback.send(message) {
+                    panic!("Kafka consumer failed to send a loopback message: {:?}", err);
+                }
             }
         }
-        _ => {}
-    };
+    });
 
-    let mut cli_listener = |msg: Message, _destination: ServiceIdentity| {
-        utils::xzmq::send_as_json(&cli_socket, &msg);
+    let mut listener = |msg: Message, destination: ServiceIdentity| {
+        let topic = match destination {
+            ServiceIdentity::Api => "api",
+            ServiceIdentity::Dealer => "dealer",
+            ServiceIdentity::LndConnector => "lnd_connector",
+            ServiceIdentity::BankEngine => "bank",
+            ServiceIdentity::Cli => "cli",
+            ServiceIdentity::Loopback => {
+                if let Err(err) = loopback_tx.send(msg) {
+                    panic!("Listener failed to send a loopback message: {:?}", err);
+                }
+                return;
+            }
+        };
+        kafka_producer.produce(topic, &msg);
     };
 
     loop {
         if let Ok(msg) = payment_thread_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
-        }
-        // Receiving msgs from the api.
-        if let Ok(frame) = api_recv.recv_msg(1) {
-            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                bank_engine.process_msg(message, &mut listener).await;
-            };
         }
 
         // Receiving msgs from the invoice subscribtion.
@@ -155,21 +155,8 @@ pub async fn start(
             bank_engine.process_msg(msg, &mut listener).await;
         }
 
-        // Receiving msgs from dealer.
-        if let Ok(frame) = dealer_recv.recv_msg(1) {
-            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                bank_engine.process_msg(message, &mut listener).await;
-            };
-        }
-
-        if let Ok(msg) = priority_rx.try_recv() {
+        if let Ok(msg) = loopback_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
-        }
-
-        if let Ok(frame) = cli_socket.recv_msg(1) {
-            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                bank_engine.process_msg(message, &mut cli_listener).await;
-            };
         }
 
         if state_insertion_interval.elapsed().as_secs() > 5 {
@@ -182,7 +169,6 @@ pub async fn start(
                 .into_iter()
                 .filter(|t| t.is_finished())
                 .collect::<FuturesUnordered<tokio::task::JoinHandle<()>>>();
-
         }
 
         if reconciliation_interval.elapsed().as_secs() > 3 {
@@ -194,6 +180,5 @@ pub async fn start(
                 panic!("Reconciliation error! Shutting down.");
             }
         }
-
     }
 }

@@ -10,19 +10,18 @@ use tokio::sync::mpsc;
 
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use core_types::DbPool;
-use utils::xzmq::SocketContext;
 
 pub mod comms;
 pub mod jwt;
 pub mod routes;
 
 use comms::*;
+use utils::kafka::{Consumer, Producer};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ApiSettings {
     psql_url: String,
-    api_zmq_push_address: String,
-    api_zmq_subscribe_address: String,
+    kafka_broker_addresses: String,
     quota_replenishment_interval_millis: u64,
     quota_size: u64,
 }
@@ -42,11 +41,16 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
 
     let (tx, rx) = mpsc::channel(1024);
 
-    let context = SocketContext::new();
-    let subscriber = context.create_subscriber(&settings.api_zmq_subscribe_address);
-    let pusher = context.create_push(&settings.api_zmq_push_address);
+    let kafka_consumer = Consumer::new("api", "api", &settings.kafka_broker_addresses);
+    let kafka_producer = Producer::new(&settings.kafka_broker_addresses);
 
-    tokio::task::spawn(CommsActor::start(tx.clone(), rx, subscriber, pusher, settings.clone()));
+    tokio::task::spawn(CommsActor::start(
+        tx.clone(),
+        rx,
+        kafka_consumer,
+        kafka_producer,
+        settings.clone(),
+    ));
 
     let ratelimiter_store = MemoryStore::new();
 

@@ -1,12 +1,10 @@
 use cli::cli::{Cli, CliSettings};
 use structopt::StructOpt;
-use utils::xzmq::SocketContext;
+use utils::kafka::{Consumer, Producer};
 
 fn main() {
     let settings = utils::config::get_config_from_env::<CliSettings>().expect("Failed to load settings.");
-
-    let context = SocketContext::new();
-    let socket = context.create_request(&settings.bank_cli_resp_address);
-
-    Cli::from_args().execute(socket).process_response();
+    let producer = Producer::new(&settings.kafka_broker_addresses);
+    let consumer = Consumer::new("cli", "cli", &settings.kafka_broker_addresses);
+    Cli::from_args().execute(producer, consumer).process_response();
 }
