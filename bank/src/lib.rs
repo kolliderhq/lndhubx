@@ -65,7 +65,7 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {:?}", err);
         }
     }
 }
@@ -73,6 +73,8 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
 pub async fn start(
     settings: BankEngineSettings,
     lnd_connector_settings: LndConnectorSettings,
+    mut kafka_consumer: Consumer,
+    kafka_producer: Producer,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
@@ -115,7 +117,6 @@ pub async fn start(
 
     insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
 
-    let mut kafka_consumer = Consumer::new("bank", "bank", &settings.kafka_broker_addresses);
     let kafka_loopback = loopback_tx.clone();
     std::thread::spawn(move || {
         while let Some(maybe_message) = kafka_consumer.consume() {
@@ -126,8 +127,6 @@ pub async fn start(
             }
         }
     });
-
-    let kafka_producer = Producer::new(&settings.kafka_broker_addresses);
 
     let mut listener = |msg: Message, destination: ServiceIdentity| {
         let topic = match destination {
