@@ -7,18 +7,6 @@ influx_org = "<INFLUX-ORG>"
 influx_bucket = "<INFLUX-BUCKET>"
 influx_token = "<INFLUX-TOKEN>"
 
-api_zmq_push_address = "tcp://0.0.0.0:5555"
-api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
-
-### Bank Config
-bank_zmq_pull_address = "tcp://0.0.0.0:5555"
-bank_zmq_publish_address = "tcp://0.0.0.0:5556"
-
-bank_dealer_pull_address = "tcp://0.0.0.0:5557"
-bank_dealer_push_address = "tcp://0.0.0.0:5558"
-
-bank_cli_resp_address = "tcp://127.0.0.1:5559"
-
 deposit_limit = 0.001
 withdrawal_only = false
 
@@ -29,11 +17,6 @@ port = 10009
 
 quota_replenishment_interval_millis = 5000
 quota_size = 20
-
-### Dealer Config
-dealer_bank_push_address = "tcp://0.0.0.0:5557"
-dealer_bank_pull_address = "tcp://0.0.0.0:5558"
-
 
 ## The margin users have to keep on their account to account
 ## for network fees.
