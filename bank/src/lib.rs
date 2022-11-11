@@ -116,11 +116,12 @@ pub async fn start(
     insert_bank_state(&bank_engine, &influx_client, &settings.influx_bucket.clone()).await;
 
     let mut kafka_consumer = Consumer::new("bank", "bank", &settings.kafka_broker_addresses);
+    let kafka_loopback = loopback_tx.clone();
     std::thread::spawn(move || {
         while let Some(maybe_message) = kafka_consumer.consume() {
             if let Some(message) = maybe_message {
-                if let Err(err) = loopback_tx.send(message) {
-                    panic!("Failed to send loopback message: {:?}", err);
+                if let Err(err) = kafka_loopback.send(message) {
+                    panic!("Kafka consumer failed to send a loopback message: {:?}", err);
                 }
             }
         }
@@ -132,10 +133,15 @@ pub async fn start(
         let topic = match destination {
             ServiceIdentity::Api => "api",
             ServiceIdentity::Dealer => "dealer",
-            ServiceIdentity::Loopback => "bank",
             ServiceIdentity::LndConnector => "lnd_connector",
             ServiceIdentity::BankEngine => "bank",
             ServiceIdentity::Cli => "cli",
+            ServiceIdentity::Loopback => {
+                if let Err(err) = loopback_tx.send(msg) {
+                    panic!("Listener failed to send a loopback message: {:?}", err);
+                }
+                return;
+            }
         };
         kafka_producer.produce(topic, &msg);
     };
