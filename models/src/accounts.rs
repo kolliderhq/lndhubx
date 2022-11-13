@@ -16,6 +16,7 @@ pub struct Account {
     pub account_type: String,
     pub uid: i32,
     pub created_at: i64, 
+    pub account_class: String,
 }
 
 impl Default for Account {
@@ -25,6 +26,7 @@ impl Default for Account {
             balance: BigDecimal::from(0),
             currency: String::from("BTC"),
             account_type: String::from("Internal"),
+            account_class: String::from("Cash"),
             uid: 0,
             created_at: 0,
         }
@@ -39,6 +41,7 @@ pub struct InsertableAccount {
     pub currency: String,
     pub account_type: String,
     pub uid: i32,
+    pub account_class: String,
 }
 
 #[derive(Default, AsChangeset, Debug, Deserialize)]
@@ -49,6 +52,7 @@ pub struct UpdateAccount {
     pub currency: String,
     pub account_type: Option<String>,
     pub uid: Option<i32>,
+    pub account_class: Option<String>,
 }
 
 impl Account {
@@ -75,6 +79,7 @@ impl Account {
                 accounts::account_type,
                 accounts::uid,
                 accounts::created_at,
+                accounts::account_class,
             ))
             .filter(users::is_internal.eq(false))
             .load::<Self>(conn)
@@ -87,6 +92,7 @@ impl Account {
         uid: i32,
         username: &str,
         account_type: &str,
+        account_class: &str,
     ) -> Result<Vec<Self>, DieselError> {
         users::dsl::users
             .inner_join(accounts::dsl::accounts)
@@ -97,21 +103,23 @@ impl Account {
                 accounts::account_type,
                 accounts::uid,
                 accounts::created_at,
+                accounts::account_class,
             ))
             .filter(users::uid.eq(uid))
             .filter(users::is_internal.eq(true))
             .filter(users::username.eq(username))
             .filter(accounts::account_type.eq(account_type))
             .filter(accounts::currency.eq("BTC"))
+            .filter(accounts::account_class.eq(account_class))
             .load::<Self>(conn)
     }
 
     pub fn get_dealer_btc_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
-        Self::get_internal_user_btc_accounts(conn, 52172712, "dealer", "Internal")
+        Self::get_internal_user_btc_accounts(conn, 52172712, "dealer", "Internal", "Cash")
     }
 
     pub fn get_bank_btc_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
-        Self::get_internal_user_btc_accounts(conn, 23193913, "bank", "External")
+        Self::get_internal_user_btc_accounts(conn, 23193913, "bank", "External", "Cash")
     }
 }
 

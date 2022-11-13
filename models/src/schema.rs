@@ -6,6 +6,7 @@ table! {
         account_type -> Text,
         uid -> Int4,
         created_at -> Int8,
+        account_class -> Text,
     }
 }
 
@@ -67,6 +68,7 @@ table! {
         inbound_currency -> Text,
         exchange_rate -> Numeric,
         tx_type -> Text,
+        fees -> Numeric,
     }
 }
 

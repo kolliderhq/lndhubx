@@ -1,4 +1,4 @@
-use core_types::{Account, AccountId, AccountType, Currency, UserId};
+use core_types::{Account, AccountId, AccountType, Currency, UserId, AccountClass};
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ impl UserAccount {
         if !accounts.is_empty() {
             return accounts[0].1.clone();
         }
-        let new_account = Account::new(currency, AccountType::Internal);
+        let new_account = Account::new(currency, AccountType::Internal, AccountClass::Cash);
         self.accounts.insert(new_account.account_id, new_account.clone());
         new_account
     }
@@ -51,7 +51,7 @@ pub struct Ledger {
     /// An insurance fund exists for each currency.
     pub insurance_fund_account: Account,
     /// Holds all fees collected by the Bank.
-    pub fee_account: Account,
+    pub fee_account: HashMap<Currency, Account>,
     /// The external account is the counterparty for every deposit from an unknown external user.
     pub external_account: Account,
     /// The external account is the counterparty for every deposit from an unknown external user.
@@ -62,10 +62,10 @@ impl Ledger {
     pub fn new() -> Self {
         Self {
             user_accounts: HashMap::new(),
-            insurance_fund_account: Account::new(Currency::BTC, AccountType::Internal),
-            fee_account: Account::new(Currency::BTC, AccountType::Internal),
-            external_account: Account::new(Currency::BTC, AccountType::External),
-            external_fee_account: Account::new(Currency::BTC, AccountType::External),
+            insurance_fund_account: Account::new(Currency::BTC, AccountType::Internal, AccountClass::Cash),
+            fee_account: HashMap::new(),
+            external_account: Account::new(Currency::BTC, AccountType::External, AccountClass::Cash),
+            external_fee_account: Account::new(Currency::BTC, AccountType::External, AccountClass::Cash),
         }
     }
 }

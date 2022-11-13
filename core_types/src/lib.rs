@@ -53,6 +53,35 @@ impl FromStr for AccountType {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+pub enum AccountClass {
+    Cash,
+    Fees,
+}
+
+impl fmt::Display for AccountClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sign = match self {
+            Self::Cash => "Cash",
+            Self::Fees => "Fee",
+        };
+
+        write!(f, "{}", sign)
+    }
+}
+
+impl FromStr for AccountClass {
+    type Err = String;
+
+    fn from_str(accountType: &str) -> Result<AccountClass, Self::Err> {
+        match accountType {
+            "Cash" => Ok(AccountClass::Cash),
+            "Fees" => Ok(AccountClass::Fees),
+            _ => Err("unknown account class".to_string()),
+        }
+    }
+}
+
 /// Available currencies.
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize, Eq, Hash)]
 pub enum Currency {
@@ -139,13 +168,15 @@ pub struct Account {
     pub balance: Decimal,
     pub currency: Currency,
     pub account_type: AccountType,
+    pub account_class: AccountClass,
 }
 
 impl Account {
-    pub fn new(currency: Currency, account_type: AccountType) -> Self {
+    pub fn new(currency: Currency, account_type: AccountType, account_class: AccountClass) -> Self {
         Self {
             currency,
             account_type,
+            account_class,
             balance: dec!(0),
             account_id: Uuid::new_v4(),
         }

@@ -30,6 +30,7 @@ pub struct Transaction {
     pub inbound_currency: String,
     pub exchange_rate: BigDecimal,
     pub tx_type: String,
+    pub fees: BigDecimal,
 }
 
 impl Transaction {
@@ -66,7 +67,6 @@ impl Transaction {
     ) -> Result<Vec<Self>, DieselError> {
         let from = from.unwrap_or(0);
         let to = to.unwrap_or_else(time_now_as_i64);
-        dbg!(&uid);
         let owning_transactions = transactions::outbound_uid
             .eq(uid)
             .or(transactions::inbound_uid.eq(uid))
