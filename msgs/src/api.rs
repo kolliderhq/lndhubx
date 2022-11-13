@@ -135,6 +135,7 @@ pub struct PaymentResponse {
     pub fees: Decimal,
     pub rate: Decimal,
     pub error: Option<PaymentResponseError>,
+    pub preimage: Option<String>,
 }
 
 impl PaymentResponse {
@@ -145,6 +146,7 @@ impl PaymentResponse {
         payment_request: Option<String>,
         currency: Currency,
         rate: Option<Decimal>,
+        preimage: Option<String>,
     ) -> Self {
         Self {
             error: Some(error),
@@ -157,6 +159,7 @@ impl PaymentResponse {
             currency,
             fees: Decimal::ZERO,
             rate: rate.unwrap_or(Decimal::ZERO),
+            preimage: preimage,
         }
     }
 }
