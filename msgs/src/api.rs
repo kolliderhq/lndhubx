@@ -100,6 +100,7 @@ pub struct PaymentRequest {
     pub payment_request: Option<String>,
     pub currency: Currency,
     pub receipient: Option<String>,
+    pub destination: Option<String>,
     pub amount: Option<Decimal>,
     pub rate: Option<Decimal>,
     pub fees: Option<Decimal>,

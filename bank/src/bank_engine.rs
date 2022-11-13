@@ -1742,6 +1742,7 @@ impl BankEngine {
                                 msg.payment_request,
                                 msg.currency,
                                 msg.rate,
+                                None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
                             listener(msg, ServiceIdentity::Api);
@@ -1998,6 +1999,7 @@ impl BankEngine {
                         currency: msg.currency,
                         rate: msg.rate,
                         payment_request: Some(String::from("")),
+                        destination: None,
                         receipient: None,
                         fees: msg.fees,
                     };

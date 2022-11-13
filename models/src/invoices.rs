@@ -33,6 +33,12 @@ impl Invoice {
             .first::<Self>(conn)
     }
 
+    pub fn get_by_payment_hash(conn: &diesel::PgConnection, payment_hash: String) -> Result<Self, DieselError> {
+        invoices::dsl::invoices
+            .filter(invoices::payment_hash.eq(payment_hash))
+            .first::<Self>(conn)
+    }
+
     pub fn get_invoices_by_uid(conn: &diesel::PgConnection, uid: i32) -> Result<Vec<Self>, DieselError> {
         invoices::dsl::invoices.filter(invoices::uid.eq(uid)).load::<Self>(conn)
     }

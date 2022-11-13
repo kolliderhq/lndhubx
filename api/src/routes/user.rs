@@ -13,10 +13,11 @@ use std::{sync::Arc, time::Duration};
 
 use rust_decimal::prelude::Decimal;
 use rust_decimal_macros::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 use xerror::api::*;
+use std::collections::HashMap;
 
 use msgs::api::*;
 use msgs::*;
@@ -115,6 +116,7 @@ pub async fn pay_invoice(
         rate: None,
         amount: pay_invoice_data.amount,
         receipient: pay_invoice_data.recipient.clone(),
+        destination: None,
         fees: None,
     };
 
@@ -531,4 +533,97 @@ pub async fn check_username_available(
         Ok(_) => Ok(HttpResponse::Ok().json(json!({ "available": false}))),
         _ => Ok(HttpResponse::Ok().json(json!({ "available": true}))),
     }
+}
+
+#[derive(Deserialize)]
+pub struct CheckPaymentParams {
+    payment_hash: String,
+}
+
+#[derive(Serialize)]
+pub struct CheckPaymentHashResponse {
+    paid: bool
+}
+
+#[get("/checkpayment")]
+pub async fn check_payment(
+    pool: WebDbPool,
+    params: Query<CheckPaymentParams>,
+) -> Result<HttpResponse, ApiError> {
+
+    let payment_hash = params.payment_hash.clone();
+
+    let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
+
+    let invoice = match Invoice::get_by_payment_hash(&conn, payment_hash) {
+        Ok(i) => i,
+        Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
+    };
+
+    let response = CheckPaymentHashResponse {
+        paid: invoice.settled
+    };
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(&response))
+}
+
+#[derive(Deserialize)]
+pub struct KeySendData {
+    pub amount: u64,
+    pub destination: String,
+    pub memo: String,
+    pub custom_records: Option<HashMap<String, String>>,
+}
+
+#[post("/keysend")]
+pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeySendData>) -> Result<HttpResponse, ApiError> {
+    let req_id = Uuid::new_v4();
+
+    let uid = auth_data.uid as u64;
+
+    if data.amount <= 0 {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    let a = Decimal::new(data.amount as i64, 0);
+
+    let currency = Currency::BTC;
+
+    let payment_request = PaymentRequest {
+        currency,
+        req_id,
+        uid,
+        payment_request: None,
+        rate: None,
+        amount: Some(a),
+        receipient: None,
+        destination: Some(data.destination.clone()),
+        fees: None,
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::PaymentResponse(payment_response)) if payment_response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::PaymentRequest(payment_request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::SwapResponse(payment_response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&payment_response));
+    }
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
