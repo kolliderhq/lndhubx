@@ -299,6 +299,12 @@ impl Money {
             Err("Is not Bitcoin.".to_string())
         }
     }
+    pub fn from_sats(value: Decimal) -> Self {
+        Self {
+            currency: Currency::BTC,
+            value: value / SATS_IN_BITCOIN
+        }
+    }
 }
 
 impl FromStr for Money {

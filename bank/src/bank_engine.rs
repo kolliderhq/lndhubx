@@ -1341,7 +1341,6 @@ impl BankEngine {
                             uid,
                             msg.payment_request,
                             msg.currency,
-                            msg.rate,
                             None,
                         );
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1359,7 +1358,6 @@ impl BankEngine {
                                     uid,
                                     msg.payment_request,
                                     msg.currency,
-                                    msg.rate,
                                     None,
                                 );
                                 let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1378,14 +1376,13 @@ impl BankEngine {
                     }
 
                     if let Some(amount) = msg.amount {
-                        if amount <= dec!(0) {
+                        if amount.value <= dec!(0) {
                             let payment_response = PaymentResponse::error(
                                 PaymentResponseError::InvalidAmount,
                                 msg.req_id,
                                 uid,
                                 msg.payment_request,
                                 msg.currency,
-                                msg.rate,
                                 None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1410,7 +1407,6 @@ impl BankEngine {
                                 uid,
                                 msg.payment_request,
                                 msg.currency,
-                                msg.rate,
                                 None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1429,7 +1425,6 @@ impl BankEngine {
                                 uid,
                                 msg.payment_request,
                                 msg.currency,
-                                msg.rate,
                                 None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1452,7 +1447,6 @@ impl BankEngine {
                                 uid,
                                 msg.payment_request,
                                 msg.currency,
-                                msg.rate,
                                 None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1472,7 +1466,6 @@ impl BankEngine {
                                 uid,
                                 msg.payment_request,
                                 msg.currency,
-                                msg.rate,
                                 None,
                             );
                             let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1483,7 +1476,7 @@ impl BankEngine {
                     // Amount in sats that we're paying.
                     let amount_in_sats = Decimal::new(invoice_amount_sats as i64, 0);
                     // Amount in btc that we're paying.
-                    let amount_in_btc = amount_in_sats / Decimal::new(SATS_IN_BITCOIN as i64, 0);
+                    let amount_in_btc = Money::from_sats(amount_in_sats);
 
                     msg.amount = Some(amount_in_btc);
 

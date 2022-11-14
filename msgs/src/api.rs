@@ -101,9 +101,9 @@ pub struct PaymentRequest {
     pub currency: Currency,
     pub receipient: Option<String>,
     pub destination: Option<String>,
-    pub amount: Option<Decimal>,
-    pub rate: Option<Decimal>,
-    pub fees: Option<Decimal>,
+    pub amount: Option<Money>,
+    pub rate: Option<Rate>,
+    pub fees: Option<Money>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,9 +132,9 @@ pub struct PaymentResponse {
     pub success: bool,
     pub currency: Currency,
     pub payment_request: Option<String>,
-    pub amount: Decimal,
-    pub fees: Decimal,
-    pub rate: Decimal,
+    pub amount: Option<Money>,
+    pub fees: Option<Money>,
+    pub rate: Option<Rate>,
     pub error: Option<PaymentResponseError>,
     pub preimage: Option<String>,
 }
@@ -146,20 +146,19 @@ impl PaymentResponse {
         uid: UserId,
         payment_request: Option<String>,
         currency: Currency,
-        rate: Option<Decimal>,
         preimage: Option<String>,
     ) -> Self {
         Self {
             error: Some(error),
-            amount: Decimal::ZERO,
+            amount: None,
             payment_hash: Uuid::new_v4().to_string(),
             req_id,
             uid,
             success: false,
             payment_request,
             currency,
-            fees: Decimal::ZERO,
-            rate: rate.unwrap_or(Decimal::ZERO),
+            fees: None,
+            rate: None,
             preimage: preimage,
         }
     }

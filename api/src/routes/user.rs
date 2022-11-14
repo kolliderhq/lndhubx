@@ -108,13 +108,15 @@ pub async fn pay_invoice(
         None => Currency::BTC,
     };
 
+    let money = Money::new(currency, pay_invoice_data.amount);
+
     let payment_request = PaymentRequest {
         currency,
         req_id,
         uid,
         payment_request: pay_invoice_data.payment_request.clone(),
         rate: None,
-        amount: pay_invoice_data.amount,
+        amount: Some(money),
         receipient: pay_invoice_data.recipient.clone(),
         destination: None,
         fees: None,
@@ -592,6 +594,7 @@ pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeyS
     let a = Decimal::new(data.amount as i64, 0);
 
     let currency = Currency::BTC;
+    let money = Money::new(currency, Some(a));
 
     let payment_request = PaymentRequest {
         currency,
@@ -599,7 +602,7 @@ pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeyS
         uid,
         payment_request: None,
         rate: None,
-        amount: Some(a),
+        amount: Some(money),
         receipient: None,
         destination: Some(data.destination.clone()),
         fees: None,
