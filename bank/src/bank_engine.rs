@@ -507,7 +507,7 @@ impl BankEngine {
         let outbound_amount_str = outbound_amount.to_string();
         let inbound_amount_str = inbound_amount.to_string();
         let rate_str = rate.to_string();
-        let fee_str = rate.to_string();
+        let fee_str = fees.to_string();
 
         let outbound_amount_bigdec = match BigDecimal::from_str(&outbound_amount_str) {
             Ok(d) => d,
@@ -1029,7 +1029,7 @@ impl BankEngine {
                         }
                     };
 
-                    let amount = msg.amount;
+                    let amount = msg.amount.clone();
                     let currency = msg.currency;
 
                     let mut target_account = Account::new(msg.currency, AccountType::Internal, AccountClass::Cash);
@@ -1067,7 +1067,7 @@ impl BankEngine {
                         .get(&currency)
                         .unwrap_or_else(|| panic!("Failed to get deposit limits for {}", currency));
                     // Check whether deposit limit is exceeded.
-                    if target_account.balance + amount > *deposit_limit {
+                    if target_account.balance + amount.value > *deposit_limit {
                         let invoice_response = InvoiceResponse {
                             amount,
                             req_id: msg.req_id,
@@ -1094,11 +1094,11 @@ impl BankEngine {
                         return;
                     }
 
-                    let amount_in_sats = (amount * Decimal::new(SATS_IN_BITCOIN as i64, 0))
+                    let amount_in_sats = amount.try_sats().unwrap()
                         .to_u64()
                         .unwrap_or_else(|| {
                             panic!(
-                                "Failed to convert  decimal amount in BTC: {} to u64 amount in SATs",
+                                "Failed to convert  decimal amount in BTC: {:?} to u64 amount in SATs",
                                 amount
                             )
                         });
@@ -1155,7 +1155,7 @@ impl BankEngine {
                     }
                 }
                 Api::InvoiceResponse(ref msg) => {
-                    let rate = match msg.rate {
+                    let rate = match &msg.rate {
                         Some(r) => r,
                         None => {
                             let mut m = msg.clone();
@@ -1165,8 +1165,9 @@ impl BankEngine {
                             return;
                         }
                     };
-                    let amount_in_btc = msg.amount / rate;
-                    let amount_in_sats = (amount_in_btc * Decimal::new(SATS_IN_BITCOIN as i64, 0))
+                    let amount_in_btc = msg.amount.div(rate.value);
+                    let money = Money::new(Currency::BTC, Some(amount_in_btc));
+                    let amount_in_sats = money.try_sats().unwrap()
                         .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
                         .to_u64()
                         .unwrap_or_else(|| panic!());
@@ -1176,7 +1177,7 @@ impl BankEngine {
                         None => {
                             slog::error!(self.logger, "No database provided.");
                             let invoice_response = InvoiceResponse {
-                                amount: msg.amount,
+                                amount: msg.amount.clone(),
                                 req_id: msg.req_id,
                                 uid: msg.uid,
                                 rate: None,
@@ -1200,7 +1201,7 @@ impl BankEngine {
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
                             let invoice_response = InvoiceResponse {
-                                amount: msg.amount,
+                                amount: msg.amount.clone(),
                                 req_id: msg.req_id,
                                 uid: msg.uid,
                                 rate: None,
@@ -1232,7 +1233,7 @@ impl BankEngine {
                             target_account = acc.clone();
                         } else {
                             let invoice_response = InvoiceResponse {
-                                amount: msg.amount,
+                                amount: msg.amount.clone(),
                                 req_id: msg.req_id,
                                 uid: msg.uid,
                                 rate: None,
@@ -1262,9 +1263,9 @@ impl BankEngine {
                         .unwrap_or_else(|| panic!("Failed to get deposit limit for {}", currency));
 
                     // Check whether deposit limit is exceeded.
-                    if target_account.balance + msg.amount > *deposit_limit {
+                    if target_account.balance + msg.amount.value > *deposit_limit {
                         let invoice_response = InvoiceResponse {
-                            amount: amount_in_btc,
+                            amount: money,
                             req_id: msg.req_id,
                             uid: msg.uid,
                             rate: None,
@@ -1291,7 +1292,7 @@ impl BankEngine {
                         if let Err(_err) = invoice.insert(&c) {
                             slog::error!(self.logger, "Error inserting invoice.");
                             let invoice_response = InvoiceResponse {
-                                amount: msg.amount,
+                                amount: msg.amount.clone(),
                                 req_id: msg.req_id,
                                 uid: msg.uid,
                                 rate: None,
@@ -1310,18 +1311,18 @@ impl BankEngine {
                         }
 
                         let invoice_response = InvoiceResponse {
-                            amount: msg.amount,
+                            amount: msg.amount.clone(),
                             req_id: msg.req_id,
                             uid: msg.uid,
                             meta: msg.meta.clone(),
                             metadata: msg.metadata.clone(),
-                            rate: msg.rate,
+                            rate: msg.rate.clone(),
                             payment_request: Some(invoice.payment_request),
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
                             error: None,
-                            fees: msg.fees,
+                            fees: msg.fees.clone(),
                         };
 
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
@@ -1773,8 +1774,6 @@ impl BankEngine {
                     }
 
                     let mut swap_response = msg.clone();
-
-                    dbg!(&self.available_currencies);
 
                     // Checking whether we can convert into the target curreny.
                     if !self.available_currencies.contains(&msg.to) {

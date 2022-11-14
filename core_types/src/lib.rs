@@ -265,6 +265,80 @@ impl Default for LndNodeInfo {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Money {
+    pub value: Decimal,
+    pub currency: Currency,
+}
+
+impl Money {
+
+    pub fn new(currency: Currency, value: Option<Decimal>) -> Self {
+        Self {
+            currency,
+            value: value.unwrap_or(dec!(0)),
+        }
+    }
+
+    pub fn set(&mut self, value: Decimal) {
+        self.value = value;
+    }
+
+    pub fn mult(&self, value: Decimal) -> Decimal {
+        return self.value * value;
+    }
+
+    pub fn div(&self, value: Decimal) -> Decimal {
+        return self.value / value;
+    }
+
+    pub fn try_sats(&self) -> Result<Decimal, String> {
+        if self.currency == Currency::BTC {
+           Ok(self.value * SATS_IN_BITCOIN)
+        } else {
+            Err("Is not Bitcoin.".to_string())
+        }
+    }
+}
+
+impl FromStr for Money {
+    type Err = String;
+
+    fn from_str(currency: &str) -> Result<Money, Self::Err> {
+        let currency = currency.to_lowercase();
+        match &currency[..] {
+            "btc" => Ok(Money::new(Currency::BTC, None)),
+            "eur" => Ok(Money::new(Currency::EUR, None)),
+            "gbp" => Ok(Money::new(Currency::GBP, None)),
+            "usd" => Ok(Money::new(Currency::USD, None)),
+            _ => Err("unknown money".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rate {
+    pub value: Decimal,
+    pub quote: Currency,
+    pub base: Currency,
+}
+
+impl Rate {
+
+    pub fn new(base: Currency, quote: Currency, value: Decimal) -> Self {
+        Self {
+            quote,
+            base,
+            value,
+        }
+    }
+
+    pub fn set(&mut self, value: Decimal) {
+        self.value = value;
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     #[test]

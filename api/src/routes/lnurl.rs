@@ -1,6 +1,6 @@
 use actix_web::{get, web::Path, web::Query, HttpResponse};
 
-use core_types::Currency;
+use core_types::{Currency, Money};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -216,6 +216,8 @@ pub async fn pay_address(
 
   let amount = Decimal::new(query.amount as i64, 0) / dec!(100000000000);
 
+  let money = Money::new(Currency::BTC, Some(amount));
+
   let user = match User::get_by_username(&conn, username.clone()) {
     Ok(u) => u,
     Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
@@ -244,7 +246,7 @@ pub async fn pay_address(
     uid,
     currency: Currency::BTC,
     account_id: None,
-    amount: amount,
+    amount: money,
     target_account_currency: None,
   };
 

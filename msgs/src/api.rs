@@ -69,7 +69,7 @@ pub enum AvailableCurrenciesResponseError {
 pub struct InvoiceRequest {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub amount: Decimal,
+    pub amount: Money,
     pub meta: String,
     pub metadata: Option<String>,
     pub currency: Currency,
@@ -84,13 +84,13 @@ pub struct InvoiceResponse {
     pub payment_request: Option<String>,
     pub meta: String,
     pub metadata: Option<String>,
-    pub amount: Decimal,
-    pub rate: Option<Decimal>,
+    pub amount: Money,
+    pub rate: Option<Rate>,
     pub currency: Currency,
     pub target_account_currency: Option<Currency>,
     pub account_id: Option<Uuid>,
     pub error: Option<InvoiceResponseError>,
-    pub fees: Option<Decimal>,
+    pub fees: Option<Money>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

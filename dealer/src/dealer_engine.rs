@@ -499,7 +499,7 @@ impl DealerEngine {
                 Api::InvoiceRequest(invoice_request) => {
                     let conversion_info = ConversionInfo::new(Currency::BTC, invoice_request.currency);
                     // We assume user specifies the value not the amount.
-                    let (rate, fees) = self.get_rate(None, Some(invoice_request.amount), conversion_info);
+                    let (rate, fees) = self.get_rate(None, Some(invoice_request.amount.value), conversion_info);
                     let mut invoice_response = InvoiceResponse {
                         rate: None,
                         amount: invoice_request.amount,
@@ -517,8 +517,14 @@ impl DealerEngine {
                     if rate.is_none() {
                         invoice_response.error = Some(InvoiceResponseError::RateNotAvailable);
                     } else {
-                        invoice_response.rate = rate;
-                        invoice_response.fees = fees;
+                        let rate = Rate {
+                            value: rate.unwrap(),
+                            base: Currency::BTC,
+                            quote: invoice_request.currency
+                        };
+                        let fees = Money::new(invoice_request.currency, Some(fees.unwrap()));
+                        invoice_response.rate = Some(rate);
+                        invoice_response.fees = Some(fees);
                     }
                     let msg = Message::Api(Api::InvoiceResponse(invoice_response));
                     listener(msg);

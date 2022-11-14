@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse,
 };
 
-use core_types::Currency;
+use core_types::{Currency, Money};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -187,14 +187,16 @@ pub async fn add_invoice(
         None => Currency::BTC,
     };
 
+    let amount = Money::new(currency, Some(query.amount));
+
     let invoice_request = InvoiceRequest {
         req_id,
         meta,
+        amount,
         metadata: query.metadata.clone(),
         uid,
         currency,
         account_id: query.account_id,
-        amount: query.amount,
         target_account_currency: query.target_account_currency,
     };
 
