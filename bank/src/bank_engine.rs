@@ -655,7 +655,7 @@ impl BankEngine {
             user_account.get_default_account(payment_request.currency)
         };
 
-        if outbound_account.balance < amount {
+        if outbound_account.balance < amount.value {
             payment_response.error = Some(PaymentResponseError::InsufficientFunds);
             let msg = Message::Api(Api::PaymentResponse(payment_response));
             listener(msg, ServiceIdentity::Api);
@@ -670,7 +670,7 @@ impl BankEngine {
                 outbound_uid,
                 &mut inbound_account,
                 inbound_uid,
-                amount,
+                amount.value,
                 rate,
                 fees,
             )
@@ -1487,7 +1487,11 @@ impl BankEngine {
                     }
 
                     if msg.currency == Currency::BTC {
-                        msg.rate = Some(dec!(1));
+                        msg.rate = Rate {
+                            base: Currency::BTC,
+                            quote: Currency::BTC,
+                            value: dec!(1),
+                        };
                     }
 
                     let rate = msg
