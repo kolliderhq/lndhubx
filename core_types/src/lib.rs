@@ -305,6 +305,26 @@ impl Money {
             value: value / SATS_IN_BITCOIN
         }
     }
+
+    pub fn exchange(&self, rate: &Rate) -> Result<Money, String> {
+        let mut r = rate.value;
+        if self.currency != rate.base {
+            r = dec!(1) / r;
+        }
+        let exchanged_money = Money {
+            currency: rate.quote,
+            value: self.value * r
+        };
+        Ok(exchanged_money)
+    }
+
+    pub fn from_btc(value: Decimal) -> Self {
+        Self {
+            currency: Currency::BTC,
+            value,
+        }
+    }
+
 }
 
 impl FromStr for Money {
@@ -341,6 +361,24 @@ impl Rate {
 
     pub fn set(&mut self, value: Decimal) {
         self.value = value;
+    }
+
+    pub fn get_inv(&self) -> Rate {
+        return Rate {
+            base: self.quote,
+            quote: self.base,
+            value: Decimal::ONE / self.value
+        }
+    }
+}
+
+impl Default for Rate {
+    fn default() -> Self {
+        Self {
+            value: Decimal::MIN,
+            quote: Currency::BTC,
+            base: Currency:: BTC,
+        }
     }
 }
 

@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 pub struct PaymentResult {
     pub uid: UserId,
     pub currency: Currency,
-    pub rate: Decimal,
+    pub rate: Rate,
     pub is_success: bool,
-    pub amount: Decimal,
+    pub amount: Money,
     pub payment_response: PaymentResponse,
     pub error: Option<String>,
 }

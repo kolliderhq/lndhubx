@@ -63,7 +63,7 @@ pub struct DealerHealth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FiatDepositRequest {
     pub req_id: RequestId,
-    pub amount: Decimal,
+    pub amount: Money,
     pub currency: Currency,
     pub uid: UserId,
 }
@@ -76,12 +76,12 @@ pub enum FiatDepositResponseError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FiatDepositResponse {
     pub req_id: RequestId,
-    pub amount: Decimal,
-    pub rate: Option<Decimal>,
+    pub amount: Money,
+    pub rate: Option<Rate>,
     pub currency: Currency,
     pub uid: UserId,
     pub error: Option<FiatDepositResponseError>,
-    pub fees: Option<Decimal>,
+    pub fees: Option<Money>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

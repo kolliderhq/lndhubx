@@ -45,10 +45,12 @@ pub async fn create_lnurl_withdrawal(
     return Err(ApiError::Request(RequestError::InvalidDataSupplied));
   }
 
+  let money = Money::new(query.currency, Some(query.amount));
+
   let request = CreateLnurlWithdrawalRequest {
     uid,
     req_id,
-    amount: query.amount,
+    amount: money,
     currency: query.currency,
     rate: None,
     fees: None,

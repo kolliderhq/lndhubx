@@ -168,7 +168,7 @@ impl PaymentResponse {
 pub struct SwapRequest {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub amount: Decimal,
+    pub amount: Money,
     pub from: Currency,
     pub to: Currency,
     pub quote_id: Option<u128>,
@@ -179,12 +179,12 @@ pub struct SwapResponse {
     pub req_id: RequestId,
     pub uid: UserId,
     pub success: bool,
-    pub amount: Decimal,
+    pub amount: Money,
     pub from: Currency,
     pub to: Currency,
-    pub rate: Option<Decimal>,
+    pub rate: Option<Rate>,
     pub error: Option<SwapResponseError>,
-    pub fees: Option<Decimal>,
+    pub fees: Option<Money>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,7 +208,7 @@ pub enum BalancesResponseError {}
 pub struct QuoteRequest {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub amount: Decimal,
+    pub amount: Money,
     pub from: Currency,
     pub to: Currency,
 }
@@ -217,15 +217,15 @@ pub struct QuoteRequest {
 pub struct QuoteResponse {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub amount: Decimal,
+    pub amount: Money,
     pub from: Currency,
     pub to: Currency,
     // epoch in ms
     pub valid_until: u64,
-    pub rate: Option<Decimal>,
+    pub rate: Option<Rate>,
     pub quote_id: Option<u128>,
     pub error: Option<QuoteResponseError>,
-    pub fees: Option<Decimal>,
+    pub fees: Option<Money>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,10 +264,10 @@ pub enum GetNodeInfoResponseError {}
 pub struct CreateLnurlWithdrawalRequest {
     pub req_id: RequestId,
     pub uid: UserId,
-    pub amount: Decimal,
+    pub amount: Money,
     pub currency: Currency,
-    pub rate: Option<Decimal>,
-    pub fees: Option<Decimal>,
+    pub rate: Option<Rate>,
+    pub fees: Option<Money>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

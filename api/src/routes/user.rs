@@ -108,7 +108,11 @@ pub async fn pay_invoice(
         None => Currency::BTC,
     };
 
-    let money = Money::new(currency, pay_invoice_data.amount);
+    let money = if let Some(a) =  pay_invoice_data.amount {
+        Some(Money::new(currency, Some(a)))
+    } else {
+        None
+    };
 
     let payment_request = PaymentRequest {
         currency,
@@ -116,7 +120,7 @@ pub async fn pay_invoice(
         uid,
         payment_request: pay_invoice_data.payment_request.clone(),
         rate: None,
-        amount: Some(money),
+        amount: money,
         receipient: pay_invoice_data.recipient.clone(),
         destination: None,
         fees: None,
@@ -245,12 +249,14 @@ pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapDat
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
+    let money = Money::new(data.from_currency, Some(data.amount));
+
     let swap_request = SwapRequest {
         req_id,
         uid,
         from: data.from_currency,
         to: data.to_currency,
-        amount: data.amount,
+        amount: money,
         quote_id: data.quote_id,
     };
 
@@ -314,12 +320,14 @@ pub async fn quote(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
+    let money = Money::new(query.from_currency, Some(query.amount));
+
     let quote_request = QuoteRequest {
         req_id,
         uid,
         from: query.from_currency,
         to: query.to_currency,
-        amount: query.amount,
+        amount: money,
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
