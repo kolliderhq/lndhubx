@@ -145,7 +145,8 @@ impl LndConnector {
 
     pub async fn pay_invoice(
         &mut self,
-        payment_request: String,
+        payment_request: Option<String>,
+        send_request: Option<tonic_openssl_lnd::lnrpc::SendRequest>,
         amount_in_sats: Decimal,
         max_fee_as_pp: Option<Decimal>,
         max_fee_in_sats: Option<Decimal>,
@@ -165,11 +166,16 @@ impl LndConnector {
 
         let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
-        let send_payment = tonic_openssl_lnd::lnrpc::SendRequest {
-            payment_request,
-            fee_limit: Some(fee_limit),
-            allow_self_payment: true,
-            ..Default::default()
+        let send_payment = if send_request.is_none() {
+            tonic_openssl_lnd::lnrpc::SendRequest {
+                payment_request: payment_request.unwrap(),
+                fee_limit: Some(fee_limit),
+                allow_self_payment: true,
+                ..Default::default()
+            }
+        } else {
+            // Keysend
+            send_request.unwrap()
         };
 
         if let Ok(resp) = self.ln_client.send_payment_sync(send_payment).await {

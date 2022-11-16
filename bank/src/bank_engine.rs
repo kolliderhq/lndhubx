@@ -22,6 +22,7 @@ use xerror::bank_engine::*;
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 
+use rand_core::{RngCore, OsRng};
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use serde::{Deserialize, Serialize};
 
@@ -1445,6 +1446,196 @@ impl BankEngine {
                         }
                     };
 
+                    // Keysend if payment_request is None
+                    if msg.clone().payment_request.is_none() {
+                        // Return early if destination is none
+                        if msg.clone().destination.is_none() {
+                            let payment_response = PaymentResponse::error(
+                                PaymentResponseError::TransactionFailed,
+                                msg.req_id,
+                                uid,
+                                msg.payment_request,
+                                msg.currency,
+                                None,
+                            );
+                            let msg = Message::Api(Api::PaymentResponse(payment_response));
+                            listener(msg, ServiceIdentity::Api);
+                            return
+                        }
+                        // Return early if amount = 0
+                        if let Some(amt) = msg.clone().amount {
+                            if amt.value == dec!(0) {
+                                let payment_response = PaymentResponse::error(
+                                    PaymentResponseError::ZeroAmountInvoice,
+                                    msg.req_id,
+                                    uid,
+                                    msg.payment_request,
+                                    msg.currency,
+                                    None,
+                                );
+                                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
+                            let amount_in_sats = amt.value;
+                            let amount_in_btc = Money::from_sats(amt.value);
+                            let fees = Money::from_sats(dec!(0));
+                            // Preparing a generic response.
+                            let mut payment_response = PaymentResponse {
+                                amount: Some(amount_in_btc.clone()),
+                                payment_hash: Uuid::new_v4().to_string(),
+                                req_id: msg.req_id,
+                                uid,
+                                success: false,
+                                payment_request: None,
+                                currency: msg.currency,
+                                fees: Some(fees),
+                                rate: None,
+                                error: None,
+                                preimage: None,
+                            };
+                            
+                            // Worst case amount user will have to pay for this transaction in Bitcoin.
+                            let estimated_fee = (amount_in_btc.value * self.ln_network_fee_margin)
+                                .round_dp_with_strategy(SATS_DECIMALS, RoundingStrategy::AwayFromZero);
+                            let estimated_fee = Money::from_btc(estimated_fee);
+
+                            let outbound_amount_in_btc_plus_max_fees = Money::from_btc(amount_in_btc.value + estimated_fee.value);
+
+                            // We need to debit amount a user is trying to send before sending the payment so he cannot
+                            // double spend.
+                            let mut external_account = self.ledger.external_account.clone();
+
+                            let rate = Rate {
+                                base: Currency::BTC,
+                                quote: Currency::BTC,
+                                value: dec!(1)
+                            };
+
+                            if self
+                                .make_tx(
+                                    &mut outbound_account,
+                                    uid,
+                                    &mut external_account,
+                                    BANK_UID,
+                                    outbound_amount_in_btc_plus_max_fees.clone(),
+                                    rate.clone(),
+                                    estimated_fee.clone(),
+                                )
+                                .is_err()
+                            {
+                                payment_response.error = Some(PaymentResponseError::TransactionFailed);
+                                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                                listener(msg, ServiceIdentity::Api);
+                                return;
+                            }
+
+                            self.ledger.external_account = external_account.clone();
+
+                            self.insert_into_ledger(&uid, outbound_account.account_id, outbound_account.clone());
+
+                            self.update_account(&outbound_account, msg.uid);
+                            self.update_account(&external_account, BANK_UID);
+
+                            payment_response.success = false;
+                            payment_response.fees = Some(estimated_fee.clone());
+
+                            let payment_task_sender = self.payment_thread_sender.clone();
+
+                            let settings = self.lnd_connector_settings.clone();
+                            let req_id = msg.req_id;
+                            let aib = amount_in_btc;
+                            let currency = msg.currency;
+
+                            // Create keysend payment request
+                            let dest_string = msg.clone().destination.unwrap();
+                            let dest = hex::decode(dest_string).expect("Decoding keysend dest failed");
+                            let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
+                            let mut custom_records = HashMap::new();
+                            // let mut rng = rand::rngs::OsRng::new().expect("Error opening rng");
+                            // let preimage_bytes = rng.next_u32();
+                            let mut key = [0u8; 32];
+                            OsRng.fill_bytes(&mut key);
+                            let sha256_hash_string = sha256::digest(&key);
+                            let sha256_hash = hex::decode(sha256_hash_string).expect("Decoding keysend preimage failed");
+                            custom_records.insert(5482373484, sha256_hash);
+                            let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(estimated_fee_in_sats.to_i64().unwrap());
+                            let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
+                            let payment_req = tonic_openssl_lnd::lnrpc::SendRequest {
+                                dest: dest,
+                                amt: amount_in_sats.to_i64().unwrap(),
+                                fee_limit: Some(fee_limit),
+                                dest_custom_records: custom_records,
+                                ..Default::default()
+                            };
+
+                            let payment_task = tokio::task::spawn(async move {
+                                let mut lnd_connector = LndConnector::new(settings).await;
+                                match lnd_connector
+                                    .pay_invoice(None, Some(payment_req.clone()), amount_in_sats, None, Some(estimated_fee_in_sats))
+                                    .await
+                                {
+                                    Ok(result) => {
+                                        let payment_response = PaymentResponse {
+                                            uid,
+                                            req_id,
+                                            currency,
+                                            payment_hash: result.payment_hash,
+                                            success: true,
+                                            payment_request: None,
+                                            amount: Some(aib),
+                                            fees: Some(Money::from_sats(Decimal::new(result.fee as i64, 0))),
+                                            rate: Some(rate.clone()),
+                                            error: None,
+                                            preimage: result.preimage,
+                                        };
+                                        let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
+                                            uid,
+                                            currency,
+                                            rate: rate.clone(),
+                                            is_success: true,
+                                            amount: outbound_amount_in_btc_plus_max_fees,
+                                            payment_response,
+                                            error: None,
+                                        }));
+                                        if let Err(err) = payment_task_sender.send(msg) {
+                                            panic!("Failed to send a payment task: {:?}", err);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        let payment_response = PaymentResponse {
+                                            uid,
+                                            req_id,
+                                            currency,
+                                            payment_hash: String::from(""),
+                                            success: false,
+                                            payment_request: None,
+                                            amount: Some(aib),
+                                            fees: Some(Money::from_sats(dec!(0))),
+                                            rate: Some(rate.clone()),
+                                            error: Some(PaymentResponseError::InsufficientFundsForFees),
+                                            preimage: None,
+                                        };
+                                        let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
+                                            uid,
+                                            currency,
+                                            rate: rate.clone(),
+                                            is_success: false,
+                                            amount: outbound_amount_in_btc_plus_max_fees,
+                                            payment_response,
+                                            error: Some(e.to_string()),
+                                        }));
+                                        if let Err(err) = payment_task_sender.send(msg) {
+                                            panic!("Failed to send a payment task: {:?}", err);
+                                        }
+                                    }
+                                }
+                            });
+                            self.payment_threads.push(payment_task);
+                            return;
+                        }
+                    } 
+
                     let payment_request = msg
                         .clone()
                         .payment_request
@@ -1679,7 +1870,7 @@ impl BankEngine {
                         let payment_task = tokio::task::spawn(async move {
                             let mut lnd_connector = LndConnector::new(settings).await;
                             match lnd_connector
-                                .pay_invoice(payment_req.clone(), amount_in_sats, None, Some(estimated_fee_in_sats))
+                                .pay_invoice(Some(payment_req.clone()), None, amount_in_sats, None, Some(estimated_fee_in_sats))
                                 .await
                             {
                                 Ok(result) => {
@@ -2283,7 +2474,8 @@ impl BankEngine {
         match self
             .lnd_connector
             .pay_invoice(
-                pay_invoice.payment_request.clone(),
+                Some(pay_invoice.payment_request.clone()),
+                None,
                 amount_in_sats,
                 Some(self.ln_network_max_fee),
                 None,
