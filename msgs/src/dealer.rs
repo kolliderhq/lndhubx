@@ -23,7 +23,7 @@ pub struct BankStateResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BankState {
     pub total_exposures: HashMap<Currency, Decimal>,
-    pub external_account: Account,
+    pub liabilities: HashMap<AccountId, Account>,
     pub insurance_fund_account: Account,
 }
 

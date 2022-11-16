@@ -87,7 +87,7 @@ impl Account {
 
     // uid would be enough to fetch the account, but we use both pieces to information
     // to make sure that username and uid are bound together
-    fn get_internal_user_btc_accounts(
+    fn get_accounts(
         conn: &diesel::PgConnection,
         uid: i32,
         username: &str,
@@ -109,17 +109,16 @@ impl Account {
             .filter(users::is_internal.eq(true))
             .filter(users::username.eq(username))
             .filter(accounts::account_type.eq(account_type))
-            .filter(accounts::currency.eq("BTC"))
             .filter(accounts::account_class.eq(account_class))
             .load::<Self>(conn)
     }
 
     pub fn get_dealer_btc_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
-        Self::get_internal_user_btc_accounts(conn, 52172712, "dealer", "Internal", "Cash")
+        Self::get_accounts(conn, 52172712, "dealer", "Internal", "Cash")
     }
 
-    pub fn get_bank_btc_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
-        Self::get_internal_user_btc_accounts(conn, 23193913, "bank", "External", "Cash")
+    pub fn get_bank_liabilities(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
+        Self::get_accounts(conn, 23193913, "bank", "External", "Cash")
     }
 }
 

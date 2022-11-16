@@ -45,26 +45,26 @@ impl UserAccount {
 
 #[derive(Debug)]
 pub struct Ledger {
-    /// All user accounts holding all value assigned to user.
+    /// These are the assets.
     pub user_accounts: HashMap<UserId, UserAccount>,
     /// The insurance fund is own by the bank and makes sure that liabilities can be met at any time.
     /// An insurance fund exists for each currency.
     pub insurance_fund_account: Account,
     /// Holds all fees collected by the Bank.
-    pub fee_account: HashMap<Currency, Account>,
-    /// The external account is the counterparty for every deposit from an unknown external user.
-    pub external_account: Account,
+    pub fee_account: UserAccount,
+    // These are the liabilities.
+    pub liabilities: UserAccount,
     /// The external account is the counterparty for every deposit from an unknown external user.
     pub external_fee_account: Account,
 }
 
 impl Ledger {
-    pub fn new() -> Self {
+    pub fn new(owner: UserId) -> Self {
         Self {
             user_accounts: HashMap::new(),
             insurance_fund_account: Account::new(Currency::BTC, AccountType::Internal, AccountClass::Cash),
-            fee_account: HashMap::new(),
-            external_account: Account::new(Currency::BTC, AccountType::External, AccountClass::Cash),
+            fee_account: UserAccount::new(owner),
+            liabilities: UserAccount::new(owner),
             external_fee_account: Account::new(Currency::BTC, AccountType::External, AccountClass::Cash),
         }
     }

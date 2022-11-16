@@ -11,7 +11,7 @@ pub struct FtxSpotPrice {
     symbol: String,
     #[serde(alias = "lastPrice")]
     price: Option<Decimal>,
-    #[serde(alias = "priceChange")]
+    #[serde(alias = "priceChangePercent")]
     change_24h: Option<Decimal>,
 }
 

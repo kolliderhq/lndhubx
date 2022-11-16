@@ -64,7 +64,7 @@ pub struct BankEngineSettings {
 
 impl Default for Ledger {
     fn default() -> Self {
-        Self::new()
+        Self::new(0)
     }
 }
 
@@ -134,7 +134,7 @@ impl BankEngine {
         Self {
             lnd_node_info: LndNodeInfo::default(),
             bank_uid: BANK_UID,
-            ledger: Ledger::new(),
+            ledger: Ledger::new(BANK_UID),
             fee_structure: FeeStructure::new(),
             conn_pool,
             lnd_connector,
@@ -207,32 +207,13 @@ impl BankEngine {
         true
     }
 
-    fn fetch_internal_user_account<F: FnMut(&diesel::PgConnection) -> Result<Vec<accounts::Account>, DieselError>>(
+    fn fetch_accounts<F: FnMut(&diesel::PgConnection) -> Result<Vec<accounts::Account>, DieselError>>(
         &mut self,
         conn: &diesel::PgConnection,
         fetcher: &mut F,
-    ) -> Account {
-        let account = match fetcher(conn) {
-            Ok(mut internal_accounts) => {
-                let internal_accounts_count = internal_accounts.len();
-                if internal_accounts_count != 1 {
-                    slog::error!(
-                        self.logger,
-                        "Exactly one Internal user's BTC account should exist - found {}",
-                        internal_accounts_count
-                    );
-                    panic!(
-                        "Exactly one Internal user's BTC account should exist - found {}",
-                        internal_accounts_count
-                    );
-                }
-                match internal_accounts.pop() {
-                    Some(account) => account,
-                    None => {
-                        panic!("Exactly one account expected due to previous check. Unexpected failure");
-                    }
-                }
-            }
+    ) -> Vec<Account> {
+        let accounts = match fetcher(conn) {
+            Ok(mut a) => a,
             Err(err) => {
                 slog::error!(
                     self.logger,
@@ -242,61 +223,68 @@ impl BankEngine {
                 panic!("Could not initialise internal user account, reason {:?}", err);
             }
         };
+        let mut parsed_accounts = Vec::new();
+        accounts.iter().for_each(|a| {
+            let currency = match Currency::from_str(&a.currency) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!("Failed to convert {} to a valid currency, error: {:?}", a.currency, err);
+                }
+            };
+            let balance = match Decimal::from_str(&a.balance.to_string()) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!("Failed to convert {} to a valid balance, error: {:?}", a.balance, err);
+                }
+            };
+            let account_type = match AccountType::from_str(&a.account_type) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid account type, error: {:?}",
+                        a.account_type, err
+                    );
+                }
+            };
 
-        let currency = match Currency::from_str(&account.currency) {
-            Ok(converted) => converted,
-            Err(err) => {
-                panic!(
-                    "Failed to convert {} to a valid currency, error: {:?}",
-                    account.currency, err
-                );
-            }
-        };
-        let balance = match Decimal::from_str(&account.balance.to_string()) {
-            Ok(converted) => converted,
-            Err(err) => {
-                panic!(
-                    "Failed to convert {} to a valid balance, error: {:?}",
-                    account.balance, err
-                );
-            }
-        };
-        let account_type = match AccountType::from_str(&account.account_type) {
-            Ok(converted) => converted,
-            Err(err) => {
-                panic!(
-                    "Failed to convert {} to a valid account type, error: {:?}",
-                    account.account_type, err
-                );
-            }
-        };
+            let account_class = match AccountClass::from_str(&a.account_class) {
+                Ok(converted) => converted,
+                Err(err) => {
+                    panic!(
+                        "Failed to convert {} to a valid account class , error: {:?}",
+                        a.account_class, err
+                    );
+                }
+            };
 
-        let account_class = match AccountClass::from_str(&account.account_class) {
-            Ok(converted) => converted,
-            Err(err) => {
-                panic!(
-                    "Failed to convert {} to a valid account class , error: {:?}",
-                    account.account_class, err
-                );
-            }
-        };
-
-        let account_id = account.account_id;
-        Account {
-            account_id,
-            balance,
-            currency,
-            account_type,
-            account_class,
-        }
+            let account_id = a.account_id;
+            let new_account = Account {
+                account_id,
+                balance,
+                currency,
+                account_type,
+                account_class,
+            };
+            parsed_accounts.push(new_account);
+        });
+        parsed_accounts
     }
 
-    fn fetch_external_account(&mut self, conn: &diesel::PgConnection) -> Account {
-        self.fetch_internal_user_account(conn, &mut accounts::Account::get_bank_btc_accounts)
+    fn fetch_liabilities(&mut self, conn: &diesel::PgConnection) -> HashMap<AccountId, Account> {
+        let liability_accounts = self.fetch_accounts(conn, &mut accounts::Account::get_bank_liabilities);
+        let mut external_accounts = HashMap::new();
+        liability_accounts.iter().for_each(|account| {
+            external_accounts.insert(account.account_id, account.clone());
+        });
+        external_accounts
     }
 
     fn fetch_insurance_account(&mut self, conn: &diesel::PgConnection) -> Account {
-        self.fetch_internal_user_account(conn, &mut accounts::Account::get_dealer_btc_accounts)
+        let insurance_accounts = self.fetch_accounts(conn, &mut accounts::Account::get_dealer_btc_accounts);
+        if insurance_accounts.len() > 1 {
+            panic!("There should only be one dealer account");
+        }
+        insurance_accounts.clone().pop().unwrap()
     }
 
     fn is_insurance_fund_depleted(&self) -> bool {
@@ -323,8 +311,8 @@ impl BankEngine {
         let insurance_account = self.fetch_insurance_account(&c);
         self.ledger.insurance_fund_account = insurance_account;
 
-        let external_account = self.fetch_external_account(&c);
-        self.ledger.external_account = external_account;
+        let bank_liabilties = self.fetch_liabilities(&c);
+        self.ledger.liabilities.accounts = bank_liabilties;
 
         let accounts = match accounts::Account::get_non_internal_users_accounts(&c) {
             Ok(accs) => accs,
@@ -401,7 +389,7 @@ impl BankEngine {
         BankState {
             total_exposures,
             insurance_fund_account: self.ledger.insurance_fund_account.clone(),
-            external_account: self.ledger.external_account.clone(),
+            liabilities: self.ledger.liabilities.accounts.clone(),
         }
     }
 
@@ -475,12 +463,14 @@ impl BankEngine {
         inbound_account: &mut Account,
         inbound_uid: u64,
         amount: Money,
-        rate: Rate,
-        fees: Money,
-    ) -> Result<(), BankError> {
-
+    ) -> Result<String, BankError> {
         if amount.value <= dec!(0) {
             return Err(BankError::FailedTransaction);
+        }
+
+        if outbound_account.currency != inbound_account.currency {
+            slog::error!(self.logger, "Cannot make cross currency transaction!");
+            return Err(BankError::FailedTransaction)
         }
 
         let conn = match &self.conn_pool {
@@ -499,9 +489,16 @@ impl BankEngine {
             }
         };
 
+        let rate = Rate {
+            base: outbound_account.currency,
+            quote: inbound_account.currency,
+            value: Decimal::ONE,
+        };
+
+        let fees = Money::new(inbound_account.currency, None);
+
         let outbound_amount = amount.value;
-        let exchanged_amount = amount.exchange(&rate).unwrap();
-        let inbound_amount = exchanged_amount.value;
+        let inbound_amount = outbound_amount;
 
         outbound_account.balance -= outbound_amount;
         inbound_account.balance += inbound_amount;
@@ -554,7 +551,7 @@ impl BankEngine {
         let txid = format!("{}-{}", t, self.tx_seq);
 
         let tx = models::transactions::Transaction {
-            txid,
+            txid: txid.clone(),
             outbound_uid: outbound_uid as i32,
             inbound_uid: inbound_uid as i32,
             created_at: t as i64,
@@ -566,14 +563,14 @@ impl BankEngine {
             inbound_currency: inbound_account.currency.to_string(),
             exchange_rate: rate_bigdec,
             tx_type,
-            fees: fee_bigdec
+            fees: fee_bigdec,
         };
 
         if tx.insert(&c).is_err() {
             return Err(BankError::FailedTransaction);
         }
 
-        Ok(())
+        Ok(txid)
     }
 
     pub fn make_internal_tx<F: FnMut(Message, ServiceIdentity)>(
@@ -603,8 +600,7 @@ impl BankEngine {
             .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
             .clone();
         let outbound_uid = payment_request.uid;
-        let amount = payment_request
-            .amount.unwrap();
+        let amount = payment_request.amount.unwrap();
         let rate = dec!(1);
 
         let rate = Rate {
@@ -612,7 +608,7 @@ impl BankEngine {
             quote: payment_request.currency,
             value: rate,
         };
-        
+
         let fees = Money::new(payment_request.currency, Some(dec!(0)));
 
         let mut payment_response = PaymentResponse {
@@ -677,8 +673,6 @@ impl BankEngine {
                 &mut inbound_account,
                 inbound_uid,
                 amount,
-                rate,
-                fees,
             )
             .is_err()
         {
@@ -715,10 +709,10 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Dealer);
                 }
                 Dealer::PayInvoice(pay_invoice) => {
-                    self.process_pay_invoice(pay_invoice, false).await;
+                    self.process_dealer_invoice(pay_invoice, false).await;
                 }
                 Dealer::PayInsuranceInvoice(pay_invoice) => {
-                    self.process_pay_invoice(pay_invoice, true).await;
+                    self.process_dealer_invoice(pay_invoice, true).await;
                 }
                 Dealer::CreateInvoiceRequest(req) => {
                     slog::info!(self.logger, "Dealer requested payment: {:?}", req);
@@ -729,10 +723,15 @@ impl BankEngine {
                     self.process_create_invoice_request(req, DEALER_UID, listener).await;
                 }
                 Dealer::FiatDepositResponse(msg) => {
+                    // Fiat deposits happen in BTC and then get converted into a Fiat currency.
                     slog::info!(self.logger, "Received fiat deposit response: {:?}", msg);
+
+                    //TODO: Fiat deposit failed we should revert to just a BTC deposit as backup.
                     if msg.error.is_some() {
                         return;
                     }
+
+                    // TODO: BTC deposit backup here.
                     let rate = match msg.rate {
                         Some(r) => r,
                         None => return,
@@ -750,7 +749,11 @@ impl BankEngine {
                         (account, user_account.owner)
                     };
 
-                    let mut external_account = self.ledger.external_account.clone();
+                    let mut liability_account = self
+                        .ledger
+                        .liabilities
+                        .get_default_account(msg.currency.clone());
+
                     let value = msg.amount;
 
                     let fees = if let Some(f) = msg.fees {
@@ -759,16 +762,13 @@ impl BankEngine {
                         Money::new(msg.currency, Some(dec!(0)))
                     };
 
-                    // Making the transaction and inserting it into the DB.
                     if self
                         .make_tx(
-                            &mut external_account,
+                            &mut liability_account,
                             BANK_UID,
                             &mut inbound_account,
                             inbound_uid,
                             value,
-                            rate,
-                            fees,
                         )
                         .is_err()
                     {
@@ -778,13 +778,15 @@ impl BankEngine {
                     self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
 
                     // Updating cache of external account.
-                    self.ledger.external_account = external_account.clone();
+                    self.ledger
+                        .liabilities.accounts
+                        .insert(liability_account.account_id, liability_account.clone());
 
                     // Updating db of internal account.
                     self.update_account(&inbound_account, inbound_uid);
 
                     // Updating db of internal account.
-                    self.update_account(&external_account, BANK_UID);
+                    self.update_account(&liability_account, BANK_UID);
 
                     let bank_state = self.get_bank_state();
                     let msg = Message::Dealer(Dealer::BankState(bank_state));
@@ -792,6 +794,7 @@ impl BankEngine {
                 }
                 _ => {}
             },
+
             Message::Deposit(msg) => {
                 slog::warn!(self.logger, "Received deposit: {:?}", msg);
                 // Deposit can only be triggered if someone external has payed an invoice generated by someone internal.
@@ -812,7 +815,7 @@ impl BankEngine {
                 };
 
                 // Check whether we know about this invoice.
-                if let Ok(invoice) = Invoice::get_by_invoice_hash(&c, msg.payment_request) {
+                if let Ok(invoice) = Invoice::get_by_payment_request(&c, msg.payment_request) {
                     // Value of the depoist.
                     let value = Money::from_sats(Decimal::new(invoice.value as i64, 0));
 
@@ -829,7 +832,7 @@ impl BankEngine {
                     let rate = Rate {
                         quote: currency,
                         base: currency,
-                        value: dec!(1)
+                        value: dec!(1),
                     };
 
                     // If user wants to deposit into a fiat account.
@@ -882,7 +885,11 @@ impl BankEngine {
                         (account, user_account.owner)
                     };
 
-                    let mut external_account = self.ledger.external_account.clone();
+                    // At this point only BTC deposits are possible.
+                    let mut liability_account = self
+                        .ledger
+                        .liabilities
+                        .get_default_account(Currency::BTC);
 
                     // When user receives a payment, the transaction does not have a fee.
                     let fees = Money::new(currency, None);
@@ -890,13 +897,11 @@ impl BankEngine {
                     // Making the transaction and inserting it into the DB.
                     if self
                         .make_tx(
-                            &mut external_account,
+                            &mut liability_account,
                             BANK_UID,
                             &mut inbound_account,
                             inbound_uid,
                             value,
-                            rate,
-                            fees,
                         )
                         .is_err()
                     {
@@ -910,13 +915,15 @@ impl BankEngine {
                         self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
                     }
                     // Updating cache of external account.
-                    self.ledger.external_account = external_account.clone();
+                    self.ledger
+                        .liabilities.accounts
+                        .insert(liability_account.account_id, liability_account.clone());
 
                     // Updating db of internal account.
                     self.update_account(&inbound_account, inbound_uid);
 
                     // Updating db of internal account.
-                    self.update_account(&external_account, BANK_UID);
+                    self.update_account(&liability_account, BANK_UID);
                 }
             }
             Message::Api(msg) => match msg {
@@ -1105,20 +1112,27 @@ impl BankEngine {
                         return;
                     }
 
-                    let amount_in_sats = amount.try_sats().unwrap()
-                        .to_u64()
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Failed to convert  decimal amount in BTC: {:?} to u64 amount in SATs",
-                                amount
-                            )
-                        });
+                    let amount_in_sats = amount.try_sats().unwrap().to_u64().unwrap_or_else(|| {
+                        panic!(
+                            "Failed to convert  decimal amount in BTC: {:?} to u64 amount in SATs",
+                            amount
+                        )
+                    });
+
+                    dbg!("Creating invoice");
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id, msg.metadata.clone())
+                        .create_invoice(
+                            amount_in_sats,
+                            msg.meta.clone(),
+                            msg.uid,
+                            target_account.account_id,
+                            msg.metadata.clone(),
+                        )
                         .await
                     {
+                        dbg!(&invoice);
                         invoice.currency = Some(msg.currency.to_string());
                         if let Some(target_account_currency) = msg.target_account_currency {
                             invoice.target_account_currency = Some(target_account_currency.to_string());
@@ -1179,7 +1193,9 @@ impl BankEngine {
                     };
                     let amount_in_btc = msg.amount.div(rate.value);
                     let money = Money::from_btc(amount_in_btc);
-                    let amount_in_sats = money.try_sats().unwrap()
+                    let amount_in_sats = money
+                        .try_sats()
+                        .unwrap()
                         .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero)
                         .to_u64()
                         .unwrap_or_else(|| panic!());
@@ -1297,7 +1313,13 @@ impl BankEngine {
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
-                        .create_invoice(amount_in_sats, msg.meta.clone(), msg.uid, target_account.account_id, msg.metadata.clone())
+                        .create_invoice(
+                            amount_in_sats,
+                            msg.meta.clone(),
+                            msg.uid,
+                            target_account.account_id,
+                            msg.metadata.clone(),
+                        )
                         .await
                     {
                         invoice.currency = Some(msg.currency.to_string());
@@ -1490,11 +1512,9 @@ impl BankEngine {
                     // Amount in btc that we're paying.
                     let amount_in_btc = Money::from_sats(amount_in_sats);
 
-                    dbg!(&amount_in_btc);
-
                     msg.amount = Some(amount_in_btc.clone());
-                    dbg!(&msg);
 
+                    // If payed from a fiat account we have to get a quote first.
                     if msg.currency != Currency::BTC && msg.rate.is_none() {
                         let msg = Message::Api(Api::PaymentRequest(msg));
                         listener(msg, ServiceIdentity::Dealer);
@@ -1510,7 +1530,7 @@ impl BankEngine {
                     }
 
                     let invoice = if let Ok(invoice) =
-                        models::invoices::Invoice::get_by_invoice_hash(&psql_connection, payment_request.clone())
+                        models::invoices::Invoice::get_by_payment_request(&psql_connection, payment_request.clone())
                     {
                         invoice
                     } else {
@@ -1539,6 +1559,8 @@ impl BankEngine {
                         invoice
                     };
 
+                    dbg!(&invoice);
+
                     let amount = amount_in_btc.clone();
 
                     let fees = if let Some(f) = msg.fees.clone() {
@@ -1553,7 +1575,7 @@ impl BankEngine {
                         Rate {
                             base: Currency::BTC,
                             quote: Currency::BTC,
-                            value: dec!(1)
+                            value: dec!(1),
                         }
                     };
 
@@ -1619,10 +1641,12 @@ impl BankEngine {
 
                     let estimated_fee = Money::from_btc(estimated_fee);
 
-                    let outbound_amount_in_btc_plus_max_fees = Money::from_btc(amount_in_btc.value + estimated_fee.value);
+                    let outbound_amount_in_btc_plus_max_fees =
+                        Money::from_btc(amount_in_btc.value + estimated_fee.value);
 
                     // Worst case amount user will have to pay for this transaction in outbound Currency.
-                    let outbound_amount_in_outbound_currency_plus_max_fee = outbound_amount_in_btc_plus_max_fees.exchange(&rate).unwrap();
+                    let outbound_amount_in_outbound_currency_plus_max_fee =
+                        outbound_amount_in_btc_plus_max_fees.exchange(&rate).unwrap();
 
                     // Checking whether user has enough funds on their outbound currency account.
                     if outbound_balance < outbound_amount_in_outbound_currency_plus_max_fee.value {
@@ -1632,20 +1656,20 @@ impl BankEngine {
                         return;
                     }
 
+                    // If invoice is not owned by any user (its leaving the platform).
                     if invoice.owner.is_none() {
                         // We need to debit amount a user is trying to send before sending the payment so he cannot
                         // double spend.
-                        let mut external_account = self.ledger.external_account.clone();
+                        // We always going to be sending funds to an external BTC acount.
+                        let mut liabilities_account = self.ledger.liabilities.get_default_account(msg.currency);
 
                         if self
                             .make_tx(
                                 &mut outbound_account,
                                 uid,
-                                &mut external_account,
+                                &mut liabilities_account,
                                 BANK_UID,
                                 outbound_amount_in_outbound_currency_plus_max_fee,
-                                rate.clone(),
-                                estimated_fee.clone(),
                             )
                             .is_err()
                         {
@@ -1655,12 +1679,12 @@ impl BankEngine {
                             return;
                         }
 
-                        self.ledger.external_account = external_account.clone();
+                        self.ledger.liabilities.accounts.insert(liabilities_account.account_id, liabilities_account.clone());
 
                         self.insert_into_ledger(&uid, outbound_account.account_id, outbound_account.clone());
 
                         self.update_account(&outbound_account, msg.uid);
-                        self.update_account(&external_account, BANK_UID);
+                        self.update_account(&liabilities_account, BANK_UID);
 
                         payment_response.success = false;
                         payment_response.fees = Some(estimated_fee.clone());
@@ -1742,7 +1766,8 @@ impl BankEngine {
                         return;
                     }
 
-                    let owner_username = match models::users::User::get_by_id(&psql_connection, invoice.owner.unwrap()) {
+                    let owner_username = match models::users::User::get_by_id(&psql_connection, invoice.owner.unwrap())
+                    {
                         Ok(username) => username,
                         Err(_) => {
                             slog::error!(self.logger, "Couldn't get psql connection.");
@@ -1759,9 +1784,11 @@ impl BankEngine {
                             return;
                         }
                     };
+                    dbg!(&owner_username);
 
                     // If there is an owner we make an internal tx.
                     msg.receipient = Some(owner_username.username);
+                    dbg!(&msg);
                     self.make_internal_tx(msg, listener);
                 }
 
@@ -1821,7 +1848,7 @@ impl BankEngine {
                     let swap_amount = msg.amount.clone();
 
                     let rate = match msg.rate {
-                        Some( ref rate) => rate,
+                        Some(ref rate) => rate,
                         None => {
                             swap_response.success = false;
                             swap_response.error = Some(SwapResponseError::CurrencyNotAvailable);
@@ -1866,7 +1893,13 @@ impl BankEngine {
                     let fees = Money::new(msg.to, None);
 
                     if self
-                        .make_tx(&mut outbound_account, uid, &mut inbound_account, uid, swap_amount, rate.clone(), fees)
+                        .make_tx(
+                            &mut outbound_account,
+                            uid,
+                            &mut inbound_account,
+                            uid,
+                            swap_amount,
+                        )
                         .is_err()
                     {
                         slog::info!(self.logger, "Tx failed to go through.");
@@ -2125,7 +2158,10 @@ impl BankEngine {
 
                     let uid = res.uid;
 
-                    let mut external_account = self.ledger.external_account.clone();
+                    let mut liabilities_account = self
+                        .ledger
+                        .liabilities
+                        .get_default_account(res.currency);
 
                     let mut inbound_account = {
                         let user_account = match self.ledger.user_accounts.get_mut(&uid) {
@@ -2140,18 +2176,18 @@ impl BankEngine {
 
                     let mut payment_response = res.payment_response;
 
-                    let mut bank_fee_account = match self.ledger.fee_account.get(&res.currency) {
-                        Some(acc) => acc.clone(),
-                        None => Account::new(res.currency, AccountType::Internal, AccountClass::Fees)
-                    };
+                    let mut btc_bank_fee_account = self.ledger.fee_account.get_default_account(Currency::BTC);
 
                     if res.is_success {
                         // If successful and there are excess fees we send it to the bank fee account.
                         let fees_payed_in_btc = payment_response.fees.clone();
+                        let mut btc_liabilities_account = self.ledger.liabilities.get_default_account(Currency::BTC);
 
                         let payment_amount = payment_response.amount.clone().unwrap();
 
-                        let excess_fees_in_btc = res.amount.value - (payment_amount.value + fees_payed_in_btc.unwrap().value);
+                        let excess_fees_in_btc =
+                            res.amount.value - (payment_amount.value + fees_payed_in_btc.unwrap().value);
+
                         let excess_fees = Money::new(Currency::BTC, Some(excess_fees_in_btc));
 
                         assert!(excess_fees_in_btc >= dec!(0));
@@ -2167,24 +2203,22 @@ impl BankEngine {
                         if excess_fees_in_btc > dec!(0) {
                             if self
                                 .make_tx(
-                                    &mut external_account,
+                                    &mut btc_liabilities_account,
                                     BANK_UID,
-                                    &mut bank_fee_account,
+                                    &mut btc_bank_fee_account,
                                     BANK_UID,
                                     excess_fees,
-                                    rate,
-                                    fees,
                                 )
                                 .is_err()
                             {
                                 return;
                             }
 
-                            self.ledger.external_account = external_account.clone();
-                            self.ledger.fee_account.insert(res.currency, bank_fee_account.clone());
+                            self.ledger.liabilities.accounts.insert(liabilities_account.account_id, liabilities_account.clone());
+                            self.ledger.fee_account.accounts.insert(btc_bank_fee_account.account_id, btc_bank_fee_account.clone());
 
-                            self.update_account(&bank_fee_account, BANK_UID);
-                            self.update_account(&external_account, BANK_UID);
+                            self.update_account(&btc_bank_fee_account, BANK_UID);
+                            self.update_account(&liabilities_account, BANK_UID);
                         }
 
                         payment_response.success = true;
@@ -2210,29 +2244,28 @@ impl BankEngine {
                         }
                     } else {
                         let refund = res.amount;
-                        let fees = Money::new(res.currency, Some(dec!(0)));
+
+                        let refund = refund.exchange(&res.rate).unwrap();
 
                         if self
                             .make_tx(
-                                &mut external_account,
+                                &mut liabilities_account,
                                 BANK_UID,
                                 &mut inbound_account,
                                 uid,
                                 refund,
-                                inv_rate,
-                                fees,
                             )
                             .is_err()
                         {
                             return;
                         }
 
-                        self.ledger.external_account = external_account.clone();
+                        self.ledger.liabilities.accounts.insert(liabilities_account.account_id, liabilities_account.clone());
 
                         self.insert_into_ledger(&uid, inbound_account.account_id, inbound_account.clone());
 
                         self.update_account(&inbound_account, res.uid);
-                        self.update_account(&external_account, BANK_UID);
+                        self.update_account(&liabilities_account, BANK_UID);
                     }
 
                     let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -2254,7 +2287,7 @@ impl BankEngine {
         }
     }
 
-    async fn process_pay_invoice(&mut self, pay_invoice: PayInvoice, is_insurance_invoice: bool) {
+    async fn process_dealer_invoice(&mut self, pay_invoice: PayInvoice, is_insurance_invoice: bool) {
         let decoded = match pay_invoice
             .payment_request
             .clone()
@@ -2293,7 +2326,7 @@ impl BankEngine {
             Ok(result) => {
                 slog::debug!(self.logger, "{:?}", result);
                 if is_insurance_invoice {
-                    let mut external_account = self.ledger.external_account.clone();
+                    let mut liabilities_account = self.ledger.liabilities.get_default_account(Currency::BTC);
                     let mut insurance_fund_account = self.ledger.insurance_fund_account.clone();
                     let fees = Money::new(Currency::BTC, Some(dec!(0)));
                     let rate = Rate {
@@ -2306,20 +2339,19 @@ impl BankEngine {
                         .make_tx(
                             &mut insurance_fund_account,
                             DEALER_UID,
-                            &mut external_account,
+                            &mut liabilities_account,
                             BANK_UID,
                             amount,
-                            rate,
-                            fees,
                         )
                         .is_err()
                     {
                         return;
                     }
 
-                    self.update_account(&external_account, BANK_UID);
+                    self.update_account(&liabilities_account, BANK_UID);
                     self.update_account(&insurance_fund_account, DEALER_UID);
-                    self.ledger.external_account = external_account;
+
+                    self.ledger.liabilities.accounts.insert(liabilities_account.account_id, liabilities_account.clone());
                     self.ledger.insurance_fund_account = insurance_fund_account;
                 }
             }
@@ -2358,7 +2390,7 @@ impl BankEngine {
         };
 
         let account_id = match invoice_owner {
-            BANK_UID => self.ledger.external_account.account_id,
+            BANK_UID => self.ledger.liabilities.get_default_account(Currency::BTC).account_id,
             DEALER_UID => self.ledger.insurance_fund_account.account_id,
             _ => panic!("Unexpected invoice owner. It can be Bank or Dealer only"),
         };
@@ -2407,10 +2439,11 @@ impl BankEngine {
             inbound_uid == DEALER_UID && inbound_account_id == self.ledger.insurance_fund_account.account_id;
         let is_outbound_insurance_account =
             outbound_uid == DEALER_UID && make_tx.outbound_account_id == self.ledger.insurance_fund_account.account_id;
+
         let is_inbound_external_account =
-            inbound_uid == BANK_UID && inbound_account_id == self.ledger.external_account.account_id;
+            inbound_uid == BANK_UID && inbound_account_id == self.ledger.liabilities.get_default_account(Currency::BTC).account_id;
         let is_outbound_external_account =
-            outbound_uid == BANK_UID && outbound_account_id == self.ledger.external_account.account_id;
+            outbound_uid == BANK_UID && outbound_account_id == self.ledger.liabilities.get_default_account(Currency::BTC).account_id;
 
         if (is_inbound_insurance_account && !is_outbound_external_account)
             || (is_outbound_insurance_account && !is_inbound_external_account)
@@ -2419,7 +2452,7 @@ impl BankEngine {
         }
 
         let mut outbound_account = if is_outbound_external_account {
-            self.ledger.external_account.clone()
+            self.ledger.liabilities.get_default_account(Currency::BTC)
         } else if is_outbound_insurance_account {
             self.ledger.insurance_fund_account.clone()
         } else {
@@ -2434,7 +2467,7 @@ impl BankEngine {
         };
 
         let mut inbound_account = if is_inbound_external_account {
-            self.ledger.external_account.clone()
+            self.ledger.liabilities.get_default_account(Currency::BTC)
         } else if is_inbound_insurance_account {
             self.ledger.insurance_fund_account.clone()
         } else {
@@ -2451,7 +2484,7 @@ impl BankEngine {
         if outbound_account.currency != currency || outbound_account.currency != inbound_account.currency {
             return Err(BankError::FailedTransaction);
         }
-        
+
         let fees = Money::new(currency, Some(dec!(0)));
 
         let rate = Rate {
@@ -2468,15 +2501,13 @@ impl BankEngine {
             &mut inbound_account,
             inbound_uid,
             amount,
-            rate,
-            fees,
         )?;
 
         self.update_account(&outbound_account, outbound_uid);
         self.update_account(&inbound_account, inbound_uid);
 
         if is_outbound_external_account {
-            self.ledger.external_account = outbound_account;
+            self.ledger.liabilities.accounts.insert(outbound_account.account_id, outbound_account.clone());
         } else if is_outbound_insurance_account {
             self.ledger.insurance_fund_account = outbound_account;
         } else {
@@ -2484,7 +2515,7 @@ impl BankEngine {
         };
 
         if is_inbound_external_account {
-            self.ledger.external_account = inbound_account
+            self.ledger.liabilities.accounts.insert(inbound_account.account_id, inbound_account.clone());
         } else if is_inbound_insurance_account {
             self.ledger.insurance_fund_account = inbound_account
         } else {
