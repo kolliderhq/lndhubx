@@ -633,7 +633,7 @@ pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeyS
         .await
         .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
 
-    if let Ok(Some(Ok(Message::Api(Api::SwapResponse(payment_response))))) =
+    if let Ok(Some(Ok(Message::Api(Api::PaymentResponse(payment_response))))) =
         timeout(Duration::from_secs(5), response_rx.recv()).await
     {
         return Ok(HttpResponse::Ok().json(&payment_response));
