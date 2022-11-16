@@ -3,15 +3,16 @@ use reqwest;
 use actix_web::{get, HttpResponse};
 
 use serde::{Deserialize, Serialize};
+use rust_decimal::prelude::*;
 use xerror::api::*;
 
 #[derive(Deserialize, Debug, Serialize)]
 pub struct FtxSpotPrice {
-    #[serde(alias = "name")]
     symbol: String,
-    price: Option<f64>,
-    #[serde(alias = "change24h")]
-    change_24h: Option<f64>,
+    #[serde(alias = "lastPrice")]
+    price: Option<Decimal>,
+    #[serde(alias = "priceChange")]
+    change_24h: Option<Decimal>,
 }
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -22,8 +23,8 @@ pub struct FtxSpotResponse {
 
 #[get("/get_spot_prices")]
 pub async fn get_spot_prices() -> Result<HttpResponse, ApiError> {
-    let available_pairs = vec!["BTC/USD", "BTC/EUR", "EUR/USD"];
-    let res = reqwest::get("https://ftx.com/api/markets");
+    let available_pairs = vec!["BTCUSDT", "BTCEUR", "EURUSDT"];
+    let res = reqwest::get("https://api.binance.com/api/v3/ticker/24hr");
     let mut response = match res {
         Ok(r) => r,
         Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
@@ -34,19 +35,21 @@ pub async fn get_spot_prices() -> Result<HttpResponse, ApiError> {
         Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
     };
 
-    let spot_prices: FtxSpotResponse = match serde_json::from_str(&body) {
+    let spot_prices: Vec<FtxSpotPrice>= match serde_json::from_str(&body) {
         Ok(sp) => sp,
-        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+        Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
     };
 
-    let filtered_spot = FtxSpotResponse {
+    let mut filtered_spot = FtxSpotResponse {
         success: true,
         result: spot_prices
-            .result
             .into_iter()
             .filter(|s| available_pairs.iter().any(|ss| *ss == s.symbol))
             .collect::<Vec<FtxSpotPrice>>(),
     };
+    filtered_spot.result.iter_mut().for_each(|i| {
+        i.symbol = i.symbol[..6].to_string();
+    });
 
     Ok(HttpResponse::Ok().json(filtered_spot))
 }
