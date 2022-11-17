@@ -1,4 +1,4 @@
-use core_types::{Account, AccountId, AccountType, Currency, UserId, AccountClass};
+use core_types::{Account, AccountClass, AccountId, AccountType, Currency, UserId};
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -26,18 +26,31 @@ impl UserAccount {
 
     /// Since users can have multiple accounts of the same currency we need
     /// a getter that returns the first best account if the user does not specify one.
-    pub fn get_default_account(&mut self, currency: Currency) -> Account {
+    pub fn get_default_account(&mut self, currency: Currency, account_type: Option<AccountType>) -> Account {
         let accounts = self
             .accounts
             .clone()
             .into_iter()
-            .filter(|(_key, value)| value.currency == currency)
+            .filter(|(_key, value)| {
+                if let Some(at) = account_type {
+                    value.currency == currency && value.account_type == at
+                } else {
+                    value.currency == currency
+                }
+            })
             .collect::<Vec<(Uuid, Account)>>();
 
         if !accounts.is_empty() {
             return accounts[0].1.clone();
         }
-        let new_account = Account::new(currency, AccountType::Internal, AccountClass::Cash);
+
+        let account_type =  if let Some(at) = account_type {
+            at
+        } else {
+            AccountType::Internal
+        };
+
+        let new_account = Account::new(currency, account_type, AccountClass::Cash);
         self.accounts.insert(new_account.account_id, new_account.clone());
         new_account
     }

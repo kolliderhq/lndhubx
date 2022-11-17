@@ -27,13 +27,13 @@ pub struct Invoice {
 }
 
 impl Invoice {
-    pub fn get_by_invoice_hash(conn: &diesel::PgConnection, payment_request: String) -> Result<Self, DieselError> {
+    pub fn get_by_payment_request(conn: &diesel::PgConnection, payment_request: String) -> Result<Self, DieselError> {
         invoices::dsl::invoices
             .filter(invoices::payment_request.eq(payment_request))
             .first::<Self>(conn)
     }
 
-    pub fn get_by_payment_request(conn: &diesel::PgConnection, payment_hash: String) -> Result<Self, DieselError> {
+    pub fn get_by_payment_hash(conn: &diesel::PgConnection, payment_hash: String) -> Result<Self, DieselError> {
         invoices::dsl::invoices
             .filter(invoices::payment_hash.eq(payment_hash))
             .first::<Self>(conn)

@@ -11,6 +11,7 @@ pub mod invoices;
 pub mod pre_signups;
 mod schema;
 pub mod transactions;
+pub mod summary_transactions;
 pub mod users;
 
 cfg_if::cfg_if! {

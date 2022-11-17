@@ -11,13 +11,6 @@ table! {
 }
 
 table! {
-    clients (id) {
-        id -> Int4,
-        name -> Text,
-    }
-}
-
-table! {
     internal_user_mappings (username) {
         username -> Text,
         uid -> Int4,
@@ -55,6 +48,27 @@ table! {
 }
 
 table! {
+    summary_transactions (txid) {
+        txid -> Text,
+        fee_txid -> Nullable<Text>,
+        outbound_txid -> Nullable<Text>,
+        inbound_txid -> Nullable<Text>,
+        created_at -> Int8,
+        outbound_amount -> Numeric,
+        inbound_amount -> Numeric,
+        outbound_account_id -> Uuid,
+        inbound_account_id -> Uuid,
+        outbound_uid -> Int4,
+        inbound_uid -> Int4,
+        outbound_currency -> Text,
+        inbound_currency -> Text,
+        exchange_rate -> Numeric,
+        tx_type -> Text,
+        fees -> Numeric,
+    }
+}
+
+table! {
     transactions (txid) {
         txid -> Text,
         created_at -> Int8,
@@ -73,13 +87,6 @@ table! {
 }
 
 table! {
-    user_types (id) {
-        id -> Int4,
-        name -> Text,
-    }
-}
-
-table! {
     users (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -94,11 +101,10 @@ joinable!(internal_user_mappings -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
-    clients,
     internal_user_mappings,
     invoices,
     pre_signups,
+    summary_transactions,
     transactions,
-    user_types,
     users,
 );

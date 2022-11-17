@@ -567,7 +567,7 @@ pub async fn check_payment(
 
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
 
-    let invoice = match Invoice::get_by_payment_hash(&conn, payment_hash) {
+    let invoice = match Invoice::get_by_payment_request(&conn, payment_hash) {
         Ok(i) => i,
         Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
     };
