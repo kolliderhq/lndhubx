@@ -38,7 +38,7 @@ pub fn reconcile_ledger(ledger: &Ledger) -> Result<(), ReconcilationError> {
         return Err(error);
     }
 
-    ledger.liabilities.accounts.iter().for_each(|(_acc_id, acc)| {
+    ledger.bank_liabilities.accounts.iter().for_each(|(_acc_id, acc)| {
         let net_zero = acc.balance.abs() - user_accounts_by_currency.get(&acc.currency).unwrap().abs();
         if net_zero.abs() > dec!(0) {
             error.net_zero.push((acc.currency, net_zero));

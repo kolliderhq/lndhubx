@@ -117,6 +117,15 @@ impl Account {
         Self::get_accounts(conn, 52172712, "dealer", "Internal", "Cash")
     }
 
+    pub fn get_dealer_accounts(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
+        let internal_accounts = Self::get_accounts(conn, 52172712, "dealer", "Internal", "Cash");
+        let external_accounts = Self::get_accounts(conn, 52172712, "dealer", "External", "Cash");
+        let mut internal_accounts = internal_accounts.unwrap_or_else(|_| Vec::new());
+        let mut external_accounts = external_accounts.unwrap_or_else(|_| Vec::new());
+        internal_accounts.extend(external_accounts);
+        Ok(internal_accounts)
+    }
+
     pub fn get_bank_liabilities(conn: &diesel::PgConnection) -> Result<Vec<Self>, DieselError> {
         Self::get_accounts(conn, 23193913, "bank", "External", "Cash")
     }

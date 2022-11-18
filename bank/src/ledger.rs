@@ -66,18 +66,21 @@ pub struct Ledger {
     /// Holds all fees collected by the Bank.
     pub fee_account: UserAccount,
     // These are the liabilities.
-    pub liabilities: UserAccount,
+    pub bank_liabilities: UserAccount,
+    // The account of the dealer.
+    pub dealer_accounts: UserAccount,
     /// The external account is the counterparty for every deposit from an unknown external user.
     pub external_fee_account: Account,
 }
 
 impl Ledger {
-    pub fn new(owner: UserId) -> Self {
+    pub fn new(owner: UserId, dealer: UserId) -> Self {
         Self {
             user_accounts: HashMap::new(),
             insurance_fund_account: Account::new(Currency::BTC, AccountType::Internal, AccountClass::Cash),
             fee_account: UserAccount::new(owner),
-            liabilities: UserAccount::new(owner),
+            bank_liabilities: UserAccount::new(owner),
+            dealer_accounts: UserAccount::new(dealer),
             external_fee_account: Account::new(Currency::BTC, AccountType::External, AccountClass::Cash),
         }
     }
