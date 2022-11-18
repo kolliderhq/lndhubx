@@ -1552,8 +1552,6 @@ impl BankEngine {
                             let dest = hex::decode(dest_string).expect("Decoding keysend dest failed");
                             let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
                             let mut custom_records = HashMap::new();
-                            // let mut rng = rand::rngs::OsRng::new().expect("Error opening rng");
-                            // let preimage_bytes = rng.next_u32();
                             let mut key = [0u8; 32];
                             OsRng.fill_bytes(&mut key);
                             let sha256_hash_string = sha256::digest(&key);
