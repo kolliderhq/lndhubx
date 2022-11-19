@@ -36,7 +36,7 @@ impl Action {
                 Message::Dealer(Dealer::CreateInsuranceInvoiceRequest(CreateInvoiceRequest {
                     req_id: Uuid::new_v4(),
                     amount,
-                    memo: "Insurance fund top-up".to_string(),
+                    memo: "ExternalDeposit".to_string(),
                 }))
             }
             Self::GetBankState => {

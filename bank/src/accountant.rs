@@ -31,17 +31,23 @@ pub fn reconcile_ledger(ledger: &Ledger) -> Result<(), ReconcilationError> {
         });
     });
 
-    let mut tally = user_accounts_by_currency.entry(Currency::BTC).or_insert(dec!(0));
-    tally += ledger.insurance_fund_account.balance;
-
     if !error.accounts.is_empty() {
         return Err(error);
     }
 
     ledger.bank_liabilities.accounts.iter().for_each(|(_acc_id, acc)| {
-        let net_zero = acc.balance.abs() - user_accounts_by_currency.get(&acc.currency).unwrap().abs();
-        if net_zero.abs() > dec!(0) {
-            error.net_zero.push((acc.currency, net_zero));
+        let mut tally = user_accounts_by_currency.entry(acc.currency).or_insert(dec!(0));
+        tally += acc.balance
+    });
+
+    ledger.dealer_accounts.accounts.iter().for_each(|(_acc_id, acc)| {
+        let mut tally = user_accounts_by_currency.entry(acc.currency).or_insert(dec!(0));
+        tally += acc.balance
+    });
+
+    user_accounts_by_currency.iter().for_each(|(curr, balance)| {
+        if *balance != dec!(0) {
+            error.net_zero.push((*curr, *balance));
         }
     });
 

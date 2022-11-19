@@ -112,7 +112,7 @@ impl LndConnector {
 
         let invoice = tonic_openssl_lnd::lnrpc::Invoice {
             value: amount as i64,
-            memo,
+            memo: memo.clone(),
             expiry: 86400,
             description_hash,
             ..Default::default()
@@ -137,6 +137,7 @@ impl LndConnector {
                 fees: None,
                 currency: None,
                 target_account_currency: None,
+                reference: Some(memo),
             };
             return Ok(invoice);
         }

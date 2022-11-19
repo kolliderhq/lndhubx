@@ -36,6 +36,7 @@ table! {
         fees -> Nullable<Int8>,
         currency -> Nullable<Text>,
         target_account_currency -> Nullable<Text>,
+        reference -> Nullable<Text>,
     }
 }
 

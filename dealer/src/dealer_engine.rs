@@ -271,7 +271,11 @@ impl DealerEngine {
         }
 
         slog::info!(self.logger, "{:?}", bank_state);
-        for (currency, exposure) in bank_state.total_exposures.into_iter() {
+        for (account_id, account) in bank_state.fiat_exposures.into_iter() {
+
+            let currency = account.currency;
+            let exposure = account.balance;
+
             if currency == Currency::BTC {
                 continue;
             }
@@ -280,7 +284,7 @@ impl DealerEngine {
             let denom = Denom::from_currency(currency);
 
             let qty_contracts_required = match self.calc_num_contracts_for_value(exposure, symbol.clone(), denom) {
-                Ok(q) => dec!(-1) * q,
+                Ok(q) => q,
                 Err(_) => continue,
             };
 
@@ -500,7 +504,7 @@ impl DealerEngine {
                 Api::InvoiceRequest(invoice_request) => {
                     let conversion_info = ConversionInfo::new(Currency::BTC, invoice_request.currency);
                     // We assume user specifies the value not the amount.
-                    let (rate, fees) = self.get_rate(invoice_request.amount.clone(), conversion_info);
+                    let (rate, fees) = self.get_rate_inv(invoice_request.amount.clone(), conversion_info);
                     let mut invoice_response = InvoiceResponse {
                         rate: None,
                         amount: invoice_request.amount,
@@ -946,6 +950,7 @@ impl DealerEngine {
                 };
 
                 let value_in_fiat = amount.value * best_price;
+                dbg!(value_in_fiat);
 
                 if let Some(lookup_quantity) = value_in_fiat.to_u64() {
                     match quotes.range(lookup_quantity..u64::MAX).next() {
