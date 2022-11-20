@@ -34,6 +34,7 @@ pub struct SummaryTransaction {
     pub exchange_rate: BigDecimal,
     pub tx_type: String,
     pub fees: BigDecimal,
+    pub reference: Option<String>,
 }
 
 impl SummaryTransaction {

@@ -1,4 +1,6 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     accounts (account_id) {
         account_id -> Uuid,
         balance -> Numeric,
@@ -10,14 +12,14 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     internal_user_mappings (username) {
         username -> Text,
         uid -> Int4,
     }
 }
 
-table! {
+diesel::table! {
     invoices (payment_request) {
         payment_request -> Text,
         rhash -> Text,
@@ -40,7 +42,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     pre_signups (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -48,7 +50,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     summary_transactions (txid) {
         txid -> Text,
         fee_txid -> Nullable<Text>,
@@ -66,10 +68,11 @@ table! {
         exchange_rate -> Numeric,
         tx_type -> Text,
         fees -> Numeric,
+        reference -> Nullable<Text>,
     }
 }
 
-table! {
+diesel::table! {
     transactions (txid) {
         txid -> Text,
         created_at -> Int8,
@@ -87,7 +90,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     users (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -97,10 +100,10 @@ table! {
     }
 }
 
-joinable!(accounts -> users (uid));
-joinable!(internal_user_mappings -> users (uid));
+diesel::joinable!(accounts -> users (uid));
+diesel::joinable!(internal_user_mappings -> users (uid));
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     accounts,
     internal_user_mappings,
     invoices,

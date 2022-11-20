@@ -709,6 +709,7 @@ impl DealerEngine {
                 }
             }
             Message::Dealer(Dealer::BankState(bank_state)) => {
+                dbg!(&bank_state);
                 self.last_bank_state_timestamp = Some(Instant::now());
                 self.last_bank_state = Some(bank_state.clone());
                 self.check_risk_from_bank_state(bank_state, listener);

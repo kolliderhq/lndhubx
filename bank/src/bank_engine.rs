@@ -464,9 +464,9 @@ impl BankEngine {
     /// Double entry transaction logic.
     pub fn make_summary_tx(
         &self,
-        outbound_account: &Account,
+        outbound_account_id: AccountId,
         outbound_uid: u64,
-        inbound_account: &Account,
+        inbound_account_id: AccountId,
         inbound_uid: u64,
         amount: Money,
         rate: Option<Rate>,
@@ -474,13 +474,9 @@ impl BankEngine {
         outbound_txid: Option<String>,
         inbound_txid: Option<String>,
         fee_txid: Option<String>,
+        reference: Option<String>,
     ) -> Result<String, BankError> {
         if amount.value <= dec!(0) {
-            return Err(BankError::FailedTransaction);
-        }
-
-        if outbound_account.currency != inbound_account.currency {
-            slog::error!(self.logger, "Cannot make cross currency transaction!");
             return Err(BankError::FailedTransaction);
         }
 
@@ -555,6 +551,12 @@ impl BankEngine {
             String::from("Internal")
         };
 
+        let reference = if let None = reference {
+            Some(reference)
+        } else {
+            Some(String::from("Payment"));
+        }
+
         let t = utils::time::time_now();
         let txid = format!("{}", t);
 
@@ -575,6 +577,7 @@ impl BankEngine {
             exchange_rate: rate_bigdec,
             tx_type,
             fees: fee_bigdec,
+            reference,
         };
 
         if tx.insert(&c).is_err() {
@@ -1893,15 +1896,21 @@ impl BankEngine {
                             self.ledger
                                 .bank_liabilities
                                 .accounts
-                                .insert(bank_liability_account.account_id, bank_liability_account);
+                                .insert(bank_liability_account.account_id, bank_liability_account.clone());
                             self.ledger
                                 .dealer_accounts
                                 .accounts
-                                .insert(dealer_fiat_account.account_id, dealer_fiat_account);
+                                .insert(dealer_fiat_account.account_id, dealer_fiat_account.clone());
                             self.ledger
                                 .dealer_accounts
                                 .accounts
-                                .insert(dealer_btc_account.account_id, dealer_btc_account);
+                                .insert(dealer_btc_account.account_id, dealer_btc_account.clone());
+
+                            self.update_account(&outbound_account, msg.uid);
+                            self.update_account(&bank_liability_account, BANK_UID);
+
+                            self.update_account(&dealer_btc_account, DEALER_UID);
+                            self.update_account(&dealer_fiat_account, DEALER_UID);
                         } else {
                             let txid = if let Ok(txid) = self.make_tx(
                                 &mut outbound_account,
@@ -1978,6 +1987,7 @@ impl BankEngine {
                                     }
                                 }
                                 Err(e) => {
+                                    dbg!(&e);
                                     let payment_response = PaymentResponse {
                                         uid,
                                         req_id,
@@ -2597,6 +2607,10 @@ impl BankEngine {
                             self.update_account(&inbound_account, res.uid);
                             self.update_account(&btc_liabilities_account, BANK_UID);
                         } }
+
+                    let bank_state = self.get_bank_state();
+                    let msg = Message::Dealer(Dealer::BankState(bank_state));
+                    listener(msg, ServiceIdentity::Dealer);
 
                     let msg = Message::Api(Api::PaymentResponse(payment_response));
                     listener(msg, ServiceIdentity::Api);
