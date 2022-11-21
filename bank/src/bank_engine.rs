@@ -288,14 +288,6 @@ impl BankEngine {
         da
     }
 
-    fn is_insurance_fund_depleted(&mut self) -> bool {
-        self.ledger
-            .dealer_accounts
-            .get_default_account(Currency::BTC, None)
-            .balance
-            < Decimal::new(10, SATS_DECIMALS)
-    }
-
     pub fn init_accounts(&mut self) {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
@@ -846,7 +838,7 @@ impl BankEngine {
             Message::Dealer(msg) => match msg {
                 Dealer::Health(dealer_health) => {
                     self.available_currencies = dealer_health.available_currencies;
-                    if dealer_health.status == HealthStatus::Down || self.is_insurance_fund_depleted() {
+                    if dealer_health.status == HealthStatus::Down {
                         if dealer_health.status == HealthStatus::Down {
                             slog::warn!(self.logger, "Dealer is disconnected from the exchange!");
                         }
@@ -1160,27 +1152,6 @@ impl BankEngine {
                             target_account_currency: msg.target_account_currency,
                             account_id: None,
                             error: Some(InvoiceResponseError::RequestLimitExceeded),
-                            fees: None,
-                        };
-                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
-                    }
-
-                    if self.is_insurance_fund_depleted() {
-                        slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
-                        let invoice_response = InvoiceResponse {
-                            amount: msg.amount,
-                            req_id: msg.req_id,
-                            uid: msg.uid,
-                            rate: None,
-                            meta: msg.meta.clone(),
-                            metadata: msg.metadata.clone(),
-                            payment_request: None,
-                            currency: msg.currency,
-                            target_account_currency: msg.target_account_currency,
-                            account_id: None,
-                            error: Some(InvoiceResponseError::InvoicingSuspended),
                             fees: None,
                         };
                         let msg = Message::Api(Api::InvoiceResponse(invoice_response));
@@ -1618,13 +1589,6 @@ impl BankEngine {
                         };
                         user_account.get_default_account(msg.currency, None)
                     };
-
-                    if self.is_insurance_fund_depleted() {
-                        slog::warn!(
-                            self.logger,
-                            "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request."
-                        );
-                    }
 
                     if let Some(ref amount) = msg.amount {
                         if amount.value <= dec!(0) {
@@ -2114,10 +2078,6 @@ impl BankEngine {
                 }
 
                 Api::SwapRequest(msg) => {
-                    if self.is_insurance_fund_depleted() {
-                        slog::warn!(self.logger, "Insurance is depleted Deposit request Failed!");
-                        return;
-                    }
                     slog::warn!(self.logger, "Received swap request: {:?}", msg);
                     let msg = Message::Api(Api::SwapRequest(msg));
                     listener(msg, ServiceIdentity::Dealer);
@@ -2352,13 +2312,6 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::CreateLnurlWithdrawalRequest(msg) => {
-                    if self.is_insurance_fund_depleted() {
-                        slog::warn!(
-                            self.logger,
-                            "Insurance fund is depleted. Rejecting Lnurl Withdrawal Request."
-                        );
-                    }
-
                     slog::warn!(self.logger, "Received LNURL withdrawal request: {:?}", msg);
                     let uid = msg.uid;
 

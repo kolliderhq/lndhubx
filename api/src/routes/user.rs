@@ -29,6 +29,7 @@ use crate::WebSender;
 
 use models::invoices::*;
 use models::transactions::Transaction;
+use models::summary_transactions::SummaryTransaction;
 use models::users::{ShareableUser, User};
 
 const MINIMUM_PATTERN_LENGTH: usize = 3;
@@ -371,7 +372,7 @@ pub async fn get_txs(
     let uid = auth_data.uid as u64;
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
     if let Some(currency) = query.currency {
-        let transactions = match Transaction::get_historical_by_uid_and_currency(
+        let transactions = match SummaryTransaction::get_historical_by_uid_and_currency(
             &conn,
             uid as i32,
             currency.to_string(),
@@ -383,7 +384,7 @@ pub async fn get_txs(
         };
         return Ok(HttpResponse::Ok().json(&transactions));
     }
-    let transactions = match Transaction::get_historical_by_uid(&conn, uid as i32, query.from, query.to) {
+    let transactions = match SummaryTransaction::get_historical_by_uid(&conn, uid as i32, query.from, query.to) {
         Ok(i) => i,
         Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
     };
