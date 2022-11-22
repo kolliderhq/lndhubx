@@ -813,7 +813,7 @@ impl BankEngine {
                 };
 
                 // Check whether we know about this invoice.
-                if let Ok(invoice) = Invoice::get_by_invoice_hash(&c, msg.payment_request) {
+                if let Ok(invoice) = Invoice::get_by_payment_request(&c, msg.payment_request) {
                     // Value of the depoist.
                     let value = Money::from_sats(Decimal::new(invoice.value as i64, 0));
 
@@ -1480,6 +1480,35 @@ impl BankEngine {
                             let amount_in_sats = amt.value;
                             let amount_in_btc = Money::from_sats(amt.value);
                             let fees = Money::from_sats(dec!(0));
+                            let mut key = [0u8; 32];
+                            OsRng.fill_bytes(&mut key);
+                            let sha256_hash_string = sha256::digest(&key);
+
+                            let invoice = models::invoices::Invoice {
+                                payment_request: "".to_string(),
+                                rhash: sha256_hash_string.clone(),
+                                payment_hash: sha256_hash_string.clone(),
+                                created_at: utils::time::time_now() as i64,
+                                value: amount_in_sats.to_i64().unwrap(),
+                                value_msat: amount_in_sats.to_i64().unwrap() * 1000,
+                                expiry: 0,
+                                settled: false,
+                                add_index: -1,
+                                settled_date: 0,
+                                uid: uid as i32,
+                                account_id: Uuid::default().to_string(),
+                                owner: None,
+                                fees: None,
+                                incoming: false,
+                                currency: Some(msg.currency.to_string()),
+                                target_account_currency: None,
+                            };
+                            invoice
+                                .insert(&psql_connection)
+                                .expect("Failed to insert psql connection");
+
+                            dbg!(&invoice);
+
                             // Preparing a generic response.
                             let mut payment_response = PaymentResponse {
                                 amount: Some(amount_in_btc.clone()),
@@ -1551,17 +1580,16 @@ impl BankEngine {
                             let dest_string = msg.clone().destination.unwrap();
                             let dest = hex::decode(dest_string).expect("Decoding keysend dest failed");
                             let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
-                            let mut custom_records = HashMap::new();
-                            let mut key = [0u8; 32];
-                            OsRng.fill_bytes(&mut key);
-                            let sha256_hash_string = sha256::digest(&key);
+                            let mut custom_records: HashMap<u64, Vec<u8>> = HashMap::new();
                             let sha256_hash = hex::decode(sha256_hash_string).expect("Decoding keysend preimage failed");
-                            custom_records.insert(5482373484, sha256_hash);
+                            custom_records.insert(5482373484, key.clone().to_vec());
                             let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(estimated_fee_in_sats.to_i64().unwrap());
                             let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
                             let payment_req = tonic_openssl_lnd::lnrpc::SendRequest {
                                 dest: dest,
                                 amt: amount_in_sats.to_i64().unwrap(),
+                                payment_hash: sha256_hash.clone(),
+                                dest_features: vec![tonic_openssl_lnd::lnrpc::FeatureBit::TlvOnionReq as i32],
                                 fee_limit: Some(fee_limit),
                                 dest_custom_records: custom_records,
                                 ..Default::default()
@@ -1699,7 +1727,7 @@ impl BankEngine {
                     }
 
                     let invoice = if let Ok(invoice) =
-                        models::invoices::Invoice::get_by_invoice_hash(&psql_connection, payment_request.clone())
+                        models::invoices::Invoice::get_by_payment_request(&psql_connection, payment_request.clone())
                     {
                         invoice
                     } else {
@@ -2378,17 +2406,21 @@ impl BankEngine {
 
                         payment_response.success = true;
 
-                        let pr = payment_response.clone().payment_request.unwrap_or_else(|| {
+                        let ph = if payment_response.clone().payment_hash.is_empty() {
                             panic!(
-                                "Payment request has not been specified in the payment response: {:?}",
+                                "Payment hash has not been specified in the payment response: {:?}",
                                 payment_response
-                            )
-                        });
+                            );
+                        } else {
+                            payment_response.clone().payment_hash
+                        };
+                        slog::info!(self.logger, "Payment hash found");
 
                         let mut invoice =
-                            if let Ok(invoice) = models::invoices::Invoice::get_by_invoice_hash(&psql_connection, pr) {
+                            if let Ok(invoice) = models::invoices::Invoice::get_by_payment_hash(&psql_connection, ph) {
                                 invoice
                             } else {
+                                slog::error!(self.logger, "Could not find invoice by payment_hash!");
                                 return;
                             };
 
