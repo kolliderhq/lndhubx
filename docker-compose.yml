@@ -19,7 +19,6 @@ services:
     build:
       context: .
       dockerfile: api.Dockerfile
-    image: kolliderhq/lndhubx-api:v1.0.0
     environment:
       SECRET_KEY: "redacted"
     ports:
@@ -32,7 +31,6 @@ services:
     build:
       context: .
       dockerfile: bank.Dockerfile
-    image: kolliderhq/lndhubx-bank:v1.0.0
     volumes:
       - ${PWD}/config:/config
     environment:
@@ -45,4 +43,3 @@ services:
     build:
       context: .
       dockerfile: dealer.Dockerfile
-    image: kolliderhq/lndhubx-dealer:v1.0.0
