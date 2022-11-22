@@ -1,35 +1,34 @@
 version: "3.9"
 services:
   db:
-    networks:
-      lndhubx:
-        ipv4_address: 10.11.0.2
+    network_mode: "host"
     image: postgres:14.2
     restart: always
     environment:
+      POSTGRES_USER: konstantin
       POSTGRES_PASSWORD: changeme
     healthcheck:
       test: pg_isready -U postgres
+    ports:
+    - "5432:5432"
   api:
+    network_mode: "host"
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      lndhubx:
-        ipv4_address: 10.11.0.3
     build:
       context: .
       dockerfile: api.Dockerfile
     image: kolliderhq/lndhubx-api:v1.0.0
+    environment:
+      SECRET_KEY: "redacted"
     ports:
     - "8080:8080"
   bank:
+    network_mode: "host"
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      lndhubx:
-        ipv4_address: 10.11.0.4
     build:
       context: .
       dockerfile: bank.Dockerfile
@@ -39,19 +38,11 @@ services:
     environment:
       RUST_BACKTRACE: full
   dealer:
+    network_mode: "host"
     depends_on:
       db:
         condition: service_healthy
-    networks:
-      lndhubx:
-        ipv4_address: 10.11.0.5
     build:
       context: .
       dockerfile: dealer.Dockerfile
     image: kolliderhq/lndhubx-dealer:v1.0.0
-networks:
-  lndhubx:
-    name: lndhubx
-    ipam:
-      config:
-        - subnet: 10.11.0.0/16
