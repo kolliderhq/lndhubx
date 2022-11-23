@@ -2435,7 +2435,7 @@ impl BankEngine {
                     let settings = self.lnd_connector_settings.clone();
                     let mut lnd_connector = LndConnector::new(settings).await;
 
-                    if let Ok(res) = lnd_connector.probe(msg.payment_request, dec!(0.0005)).await {
+                    if let Ok(res) = lnd_connector.probe(msg.payment_request, self.ln_network_fee_margin).await {
                         if !res.is_empty() {
                             let best_route = res[0].clone();
                             let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
@@ -2452,6 +2452,13 @@ impl BankEngine {
                             }));
                             listener(msg, ServiceIdentity::Api);
                         }
+                    } else {
+                        let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
+                            req_id: msg.req_id,
+                            total_fee: Decimal::ZERO,
+                            error: Some(QueryRouteError::NoRouteFound),
+                        }));
+                        listener(msg, ServiceIdentity::Api);
                     }
                 }
 
