@@ -164,9 +164,6 @@ impl LndConnector {
             None => max_fee,
         };
 
-        dbg!("---------------- FINAL FEE LIMIT ---------------");
-        dbg!(&max_fee);
-
         let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
         let send_payment = tonic_openssl_lnd::lnrpc::SendRequest {

@@ -1813,7 +1813,7 @@ impl BankEngine {
                     {
                         if !res.is_empty() {
                             let best_route = res[0].clone();
-                            Decimal::new(best_route.total_fees, 0) / Decimal::new(SATS_IN_BITCOIN as i64, 0)
+                            (Decimal::new(best_route.total_fees, 0) + dec!(1)) / Decimal::new(SATS_IN_BITCOIN as i64, 0)
                         } else {
                             max_fee_in_btc
                         }
@@ -1980,9 +1980,6 @@ impl BankEngine {
 
                         let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
                         let rate_2 = rate.clone();
-
-                        dbg!("--------- FEE ESTIMATION ------------");
-                        dbg!(&estimated_fee_in_sats);
 
                         let payment_task = tokio::task::spawn(async move {
                             let mut lnd_connector = LndConnector::new(settings).await;
