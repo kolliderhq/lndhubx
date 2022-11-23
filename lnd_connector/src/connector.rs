@@ -164,6 +164,9 @@ impl LndConnector {
             None => max_fee,
         };
 
+        dbg!("---------------- FINAL FEE LIMIT ---------------");
+        dbg!(&max_fee);
+
         let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
         let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
         let send_payment = tonic_openssl_lnd::lnrpc::SendRequest {
@@ -251,8 +254,6 @@ impl LndConnector {
             let max_fee = std::cmp::max(max_fee, MINIMUM_FEE);
             let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
             let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
-            dbg!("---------------- FINAL FEE LIMIT ---------------");
-            dbg!(&fee_limit);
             let query_routes = tonic_openssl_lnd::lnrpc::QueryRoutesRequest {
                 pub_key: r.destination,
                 amt: r.num_satoshis,
