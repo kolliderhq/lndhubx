@@ -133,9 +133,11 @@ pub struct PaymentResponse {
     pub currency: Currency,
     pub payment_request: Option<String>,
     pub amount: Option<Money>,
+    pub destination: Option<String>,
     pub fees: Option<Money>,
     pub rate: Option<Rate>,
     pub error: Option<PaymentResponseError>,
+    pub preimage: Option<String>,
     pub payment_preimage: Option<String>,
 }
 
@@ -147,6 +149,8 @@ impl PaymentResponse {
         payment_request: Option<String>,
         currency: Currency,
         preimage: Option<String>,
+        payment_preimage: Option<String>,
+        destination: Option<String>,
     ) -> Self {
         Self {
             error: Some(error),
@@ -159,7 +163,9 @@ impl PaymentResponse {
             currency,
             fees: None,
             rate: None,
+            preimage: preimage,
             payment_preimage: preimage,
+            destination: destination,
         }
     }
 }

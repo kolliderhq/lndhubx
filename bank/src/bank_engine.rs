@@ -618,6 +618,7 @@ impl BankEngine {
 
         let mut payment_response = PaymentResponse {
             amount: Some(amount.clone()),
+            destination: None,
             payment_hash: Uuid::new_v4().to_string(),
             req_id: payment_request.req_id,
             uid: outbound_uid,
@@ -627,6 +628,7 @@ impl BankEngine {
             fees: Some(fees.clone()),
             error: None,
             rate: Some(rate.clone()),
+            preimage: None,
             payment_preimage: None,
         };
 
@@ -1512,6 +1514,7 @@ impl BankEngine {
                             // Preparing a generic response.
                             let mut payment_response = PaymentResponse {
                                 amount: Some(amount_in_btc.clone()),
+                                destination: msg.clone().destination,
                                 payment_hash: Uuid::new_v4().to_string(),
                                 req_id: msg.req_id,
                                 uid,
@@ -1521,6 +1524,7 @@ impl BankEngine {
                                 fees: Some(fees),
                                 rate: None,
                                 error: None,
+                                preimage: None,
                                 payment_preimage: None,
                             };
                             
@@ -1610,9 +1614,11 @@ impl BankEngine {
                                             success: true,
                                             payment_request: None,
                                             amount: Some(aib),
+                                            destination: msg.clone().destination,
                                             fees: Some(Money::from_sats(Decimal::new(result.fee as i64, 0))),
                                             rate: Some(rate.clone()),
                                             error: None,
+                                            preimage: result.preimage,
                                             payment_preimage: result.preimage,
                                         };
                                         let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
@@ -1637,9 +1643,11 @@ impl BankEngine {
                                             success: false,
                                             payment_request: None,
                                             amount: Some(aib),
+                                            destination: None,
                                             fees: Some(Money::from_sats(dec!(0))),
                                             rate: Some(rate.clone()),
                                             error: Some(PaymentResponseError::InsufficientFundsForFees),
+                                            preimage: None,
                                             payment_preimage: None,
                                         };
                                         let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
@@ -1777,6 +1785,7 @@ impl BankEngine {
                     // Preparing a generic response.
                     let mut payment_response = PaymentResponse {
                         amount: Some(amount),
+                        destination: None,
                         payment_hash: Uuid::new_v4().to_string(),
                         req_id: msg.req_id,
                         uid,
@@ -1786,6 +1795,7 @@ impl BankEngine {
                         fees: Some(fees),
                         rate: Some(rate.clone()),
                         error: None,
+                        preimage: None,
                         payment_preimage: None,
                     };
 
@@ -1908,9 +1918,11 @@ impl BankEngine {
                                         success: true,
                                         payment_request: Some(payment_req.clone()),
                                         amount: Some(aib),
+                                        destination: None,
                                         fees: Some(Money::from_sats(Decimal::new(result.fee as i64, 0))),
                                         rate: Some(rate_2.clone()),
                                         error: None,
+                                        preimage: result.preimage,
                                         payment_preimage: result.preimage,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
@@ -1935,9 +1947,11 @@ impl BankEngine {
                                         success: false,
                                         payment_request: Some(payment_req.clone()),
                                         amount: Some(aib),
+                                        destination: None,
                                         fees: Some(Money::from_sats(dec!(0))),
                                         rate: Some(rate_2.clone()),
                                         error: Some(PaymentResponseError::InsufficientFundsForFees),
+                                        preimage: None,
                                         payment_preimage: None,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
