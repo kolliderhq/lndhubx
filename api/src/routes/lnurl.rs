@@ -185,7 +185,7 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
     Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
   };
 
-  let callback = format!("https://lndhubx.com/api/pay/{:}", username);
+  let callback = format!("https://kollider.me/api/pay/{:}", username);
   let max_sendable = 1000000000;
   let min_sendable = 1000;
   let metadata = json!([["text/plain", RANDOM_META_DATA]]);

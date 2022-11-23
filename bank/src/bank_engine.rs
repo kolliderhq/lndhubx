@@ -2370,7 +2370,7 @@ impl BankEngine {
                         fees: msg.fees,
                     };
 
-                    let lnurl_path = String::from("https://lndhubx.com/api/lnurl_withdrawal/request");
+                    let lnurl_path = String::from("https://kollider.me/api/lnurl_withdrawal/request");
                     let q = msg.req_id;
                     let lnurl = if let Ok(encoded) = utils::lnurl::encode(lnurl_path, Some(q.to_string())) {
                         encoded
@@ -2388,7 +2388,7 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::GetLnurlWithdrawalRequest(msg) => {
-                    let callback = String::from("https://lndhubx.com/api/lnurl_withdrawal/pay");
+                    let callback = String::from("https://kollider.me/api/lnurl_withdrawal/pay");
                     let mut response = GetLnurlWithdrawalResponse {
                         callback,
                         req_id: msg.req_id,
