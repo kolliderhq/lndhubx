@@ -1831,8 +1831,6 @@ impl BankEngine {
                         outbound_amount_in_btc_plus_max_fees.exchange(&rate).unwrap();
 
                     // Checking whether user has enough funds on their outbound currency account.
-                    dbg!(&outbound_balance);
-                    dbg!(&outbound_amount_in_outbound_currency_plus_max_fee);
                     if outbound_balance < outbound_amount_in_outbound_currency_plus_max_fee.value {
                         payment_response.error = Some(PaymentResponseError::InsufficientFundsForFees);
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1982,6 +1980,9 @@ impl BankEngine {
 
                         let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
                         let rate_2 = rate.clone();
+
+                        dbg!("--------- FEE ESTIMATION ------------");
+                        dbg!(&estimated_fee_in_sats);
 
                         let payment_task = tokio::task::spawn(async move {
                             let mut lnd_connector = LndConnector::new(settings).await;
@@ -2435,6 +2436,42 @@ impl BankEngine {
                     let settings = self.lnd_connector_settings.clone();
                     let mut lnd_connector = LndConnector::new(settings).await;
 
+                    let decoded = match msg.payment_request.parse::<lightning_invoice::Invoice>() {
+                        Ok(d) => d,
+                        Err(_) => {
+                            let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
+                                req_id: msg.req_id,
+                                total_fee: dec!(0),
+                                error: Some(QueryRouteError::NoRouteFound),
+                            }));
+                            listener(msg, ServiceIdentity::Api);
+                            return
+                        }
+                    };
+
+                    // If the user supplied a zero-amount invoice, return an error
+                    let (invoice_amount_millisats, invoice_amount_sats) =
+                        if let Some(millisats) = decoded.amount_milli_satoshis() {
+                            (millisats, millisats / 1000)
+                        } else {
+                            let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
+                                req_id: msg.req_id,
+                                total_fee: dec!(0),
+                                error: Some(QueryRouteError::NoRouteFound),
+                            }));
+                            listener(msg, ServiceIdentity::Api);
+                            return
+                        };
+
+                    let amount_in_sats = Decimal::new(invoice_amount_sats as i64, 0);
+
+                    let amount_in_btc = Money::from_sats(amount_in_sats);
+
+                    let max_fee_in_btc = (amount_in_btc.value * self.ln_network_fee_margin)
+                        .round_dp_with_strategy(SATS_DECIMALS, RoundingStrategy::AwayFromZero);
+
+                    let max_fee_in_btc = Money::from_btc(max_fee_in_btc);
+
                     if let Ok(res) = lnd_connector.probe(msg.payment_request, self.ln_network_fee_margin).await {
                         if !res.is_empty() {
                             let best_route = res[0].clone();
@@ -2455,8 +2492,8 @@ impl BankEngine {
                     } else {
                         let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
                             req_id: msg.req_id,
-                            total_fee: Decimal::ZERO,
-                            error: Some(QueryRouteError::NoRouteFound),
+                            total_fee: max_fee_in_btc.try_sats().unwrap(),
+                            error: None,
                         }));
                         listener(msg, ServiceIdentity::Api);
                     }
