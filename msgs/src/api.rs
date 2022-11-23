@@ -164,7 +164,7 @@ impl PaymentResponse {
             fees: None,
             rate: None,
             preimage: preimage,
-            payment_preimage: preimage,
+            payment_preimage: payment_preimage,
             destination: destination,
         }
     }
