@@ -136,7 +136,7 @@ pub struct PaymentResponse {
     pub fees: Option<Money>,
     pub rate: Option<Rate>,
     pub error: Option<PaymentResponseError>,
-    pub preimage: Option<String>,
+    pub payment_preimage: Option<String>,
 }
 
 impl PaymentResponse {
@@ -159,7 +159,7 @@ impl PaymentResponse {
             currency,
             fees: None,
             rate: None,
-            preimage: preimage,
+            payment_preimage: preimage,
         }
     }
 }

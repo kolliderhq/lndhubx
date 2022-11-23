@@ -627,7 +627,7 @@ impl BankEngine {
             fees: Some(fees.clone()),
             error: None,
             rate: Some(rate.clone()),
-            preimage: None,
+            payment_preimage: None,
         };
 
         let inbound_user = match User::get_by_username(&c, username) {
@@ -1521,7 +1521,7 @@ impl BankEngine {
                                 fees: Some(fees),
                                 rate: None,
                                 error: None,
-                                preimage: None,
+                                payment_preimage: None,
                             };
                             
                             // Worst case amount user will have to pay for this transaction in Bitcoin.
@@ -1613,7 +1613,7 @@ impl BankEngine {
                                             fees: Some(Money::from_sats(Decimal::new(result.fee as i64, 0))),
                                             rate: Some(rate.clone()),
                                             error: None,
-                                            preimage: result.preimage,
+                                            payment_preimage: result.preimage,
                                         };
                                         let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                             uid,
@@ -1640,7 +1640,7 @@ impl BankEngine {
                                             fees: Some(Money::from_sats(dec!(0))),
                                             rate: Some(rate.clone()),
                                             error: Some(PaymentResponseError::InsufficientFundsForFees),
-                                            preimage: None,
+                                            payment_preimage: None,
                                         };
                                         let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                             uid,
@@ -1786,7 +1786,7 @@ impl BankEngine {
                         fees: Some(fees),
                         rate: Some(rate.clone()),
                         error: None,
-                        preimage: None,
+                        payment_preimage: None,
                     };
 
                     if let Some(owner) = invoice.owner {
@@ -1911,7 +1911,7 @@ impl BankEngine {
                                         fees: Some(Money::from_sats(Decimal::new(result.fee as i64, 0))),
                                         rate: Some(rate_2.clone()),
                                         error: None,
-                                        preimage: result.preimage,
+                                        payment_preimage: result.preimage,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                         uid,
@@ -1938,7 +1938,7 @@ impl BankEngine {
                                         fees: Some(Money::from_sats(dec!(0))),
                                         rate: Some(rate_2.clone()),
                                         error: Some(PaymentResponseError::InsufficientFundsForFees),
-                                        preimage: None,
+                                        payment_preimage: None,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                         uid,
