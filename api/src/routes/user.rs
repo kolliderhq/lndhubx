@@ -506,7 +506,6 @@ pub struct SearchUserParams {
 pub async fn search_user(
     pool: WebDbPool,
     params: Query<SearchUserParams>,
-    _auth_data: AuthData,
 ) -> Result<HttpResponse, ApiError> {
     if params.text.len() < MINIMUM_PATTERN_LENGTH {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
