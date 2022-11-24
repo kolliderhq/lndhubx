@@ -32,7 +32,7 @@ use models::transactions::Transaction;
 use models::summary_transactions::SummaryTransaction;
 use models::users::{ShareableUser, User};
 
-const MINIMUM_PATTERN_LENGTH: usize = 3;
+const MINIMUM_PATTERN_LENGTH: usize = 1;
 
 #[get("/balance")]
 pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
