@@ -306,11 +306,9 @@ impl BankEngine {
         };
 
         let bank_liabilties = self.fetch_bank_liabilities(&c);
-        dbg!(&bank_liabilties);
         self.ledger.bank_liabilities.accounts = bank_liabilties;
 
         let dealer_accounts = self.fetch_dealer_accounts(&c);
-        dbg!(&dealer_accounts);
         self.ledger.dealer_accounts.accounts = dealer_accounts;
 
         let accounts = match accounts::Account::get_non_internal_users_accounts(&c) {
@@ -724,16 +722,20 @@ impl BankEngine {
             .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
             .clone();
         let outbound_uid = payment_request.uid;
-        let amount = payment_request.amount.unwrap();
-        let rate = dec!(1);
 
-        let rate = Rate {
-            base: payment_request.currency,
-            quote: payment_request.currency,
-            value: rate,
+        let rate = if let Some(r) = payment_request.rate {
+            r
+        } else {
+            let rate = Rate {
+                base: payment_request.currency,
+                quote: payment_request.currency,
+                value: dec!(1),
+            };
+            rate
         };
 
         let fees = Money::new(payment_request.currency, Some(dec!(0)));
+        let amount = payment_request.amount.clone().unwrap();
 
         let mut payment_response = PaymentResponse {
             amount: Some(amount.clone()),
@@ -747,6 +749,16 @@ impl BankEngine {
             error: None,
             rate: Some(rate.clone()),
             preimage: None,
+        };
+
+        let outbound_amount = match payment_request.amount {
+            Some(a) => a.exchange(&rate).unwrap(),
+            None => {
+                payment_response.error = Some(PaymentResponseError::InvalidAmount);
+                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                listener(msg, ServiceIdentity::Api);
+                return;
+            }
         };
 
         let inbound_user = match User::get_by_username(&c, username) {
@@ -783,7 +795,7 @@ impl BankEngine {
             user_account.get_default_account(payment_request.currency, None)
         };
 
-        if outbound_account.balance < amount.value {
+        if outbound_account.balance < outbound_amount.value {
             payment_response.error = Some(PaymentResponseError::InsufficientFunds);
             let msg = Message::Api(Api::PaymentResponse(payment_response));
             listener(msg, ServiceIdentity::Api);
@@ -795,7 +807,7 @@ impl BankEngine {
             outbound_uid,
             &mut inbound_account,
             inbound_uid,
-            amount.clone(),
+            outbound_amount.clone(),
         ) {
             txid
         } else {
@@ -808,7 +820,7 @@ impl BankEngine {
                 outbound_uid,
                 &inbound_account,
                 inbound_uid,
-                amount,
+                outbound_amount,
                 None,
                 None,
                 Some(txid.clone()),
@@ -1014,8 +1026,6 @@ impl BankEngine {
 
                 // Check whether we know about this invoice.
                 if let Ok(invoice) = Invoice::get_by_payment_request(&c, msg.payment_request.clone()) {
-                    dbg!("getting deposit");
-                    dbg!(&invoice);
                     let is_dealer_invoice = invoice.uid as UserId == DEALER_UID;
 
                     dbg!(&is_dealer_invoice);
@@ -1307,8 +1317,6 @@ impl BankEngine {
                         )
                     });
 
-                    dbg!("Creating invoice");
-
                     if let Ok(mut invoice) = self
                         .lnd_connector
                         .create_invoice(
@@ -1320,7 +1328,6 @@ impl BankEngine {
                         )
                         .await
                     {
-                        dbg!(&invoice);
                         invoice.currency = Some(msg.currency.to_string());
                         if let Some(target_account_currency) = msg.target_account_currency {
                             invoice.target_account_currency = Some(target_account_currency.to_string());
@@ -1741,8 +1748,6 @@ impl BankEngine {
                         invoice
                     };
 
-                    dbg!(&invoice);
-
                     let amount = amount_in_btc.clone();
 
                     let fees = if let Some(f) = msg.fees.clone() {
@@ -1822,6 +1827,7 @@ impl BankEngine {
                     };
 
                     let estimated_fee = Money::from_btc(estimated_fee);
+                    let estimated_fee_in_outbound_currency = estimated_fee.exchange(&rate).unwrap();
 
                     let outbound_amount_in_btc_plus_max_fees =
                         Money::from_btc(amount_in_btc.value + estimated_fee.value);
@@ -1916,7 +1922,7 @@ impl BankEngine {
                                     BANK_UID,
                                     outbound_amount_in_outbound_currency_plus_max_fee.clone(),
                                     Some(rate.clone()),
-                                    None,
+                                    Some(estimated_fee_in_outbound_currency),
                                     Some(outbound_txid),
                                     Some(inbound_txid),
                                     None,
@@ -1952,19 +1958,25 @@ impl BankEngine {
                             self.update_account(&outbound_account, msg.uid);
                             self.update_account(&bank_liability_account, BANK_UID);
 
-                            self.make_summary_tx(
-                                &outbound_account,
-                                uid,
-                                &bank_liability_account,
-                                BANK_UID,
-                                outbound_amount_in_btc_plus_max_fees.clone(),
-                                None,
-                                None,
-                                Some(txid.clone()),
-                                Some(txid),
-                                None,
-                                Some(String::from("ExternalPayment")),
-                            );
+                            if self
+                                .make_summary_tx(
+                                    &outbound_account,
+                                    uid,
+                                    &bank_liability_account,
+                                    BANK_UID,
+                                    outbound_amount_in_btc_plus_max_fees.clone(),
+                                    None,
+                                    None,
+                                    Some(txid.clone()),
+                                    Some(txid),
+                                    None,
+                                    Some(String::from("ExternalPayment")),
+                                )
+                                .is_err()
+                            {
+                                slog::error!(self.logger, "Failed to make summary transaction.");
+                                return;
+                            };
                         }
 
                         payment_response.success = false;
@@ -2067,11 +2079,8 @@ impl BankEngine {
                             return;
                         }
                     };
-                    dbg!(&owner_username);
-
                     // If there is an owner we make an internal tx.
                     msg.receipient = Some(owner_username.username);
-                    dbg!(&msg);
                     self.make_internal_tx(msg, listener);
                 }
 
@@ -2442,7 +2451,7 @@ impl BankEngine {
                                 error: Some(QueryRouteError::NoRouteFound),
                             }));
                             listener(msg, ServiceIdentity::Api);
-                            return
+                            return;
                         }
                     };
 
@@ -2457,7 +2466,7 @@ impl BankEngine {
                                 error: Some(QueryRouteError::NoRouteFound),
                             }));
                             listener(msg, ServiceIdentity::Api);
-                            return
+                            return;
                         };
 
                     let amount_in_sats = Decimal::new(invoice_amount_sats as i64, 0);
@@ -2469,7 +2478,10 @@ impl BankEngine {
 
                     let max_fee_in_btc = Money::from_btc(max_fee_in_btc);
 
-                    if let Ok(res) = lnd_connector.probe(msg.payment_request, self.ln_network_fee_margin).await {
+                    if let Ok(res) = lnd_connector
+                        .probe(msg.payment_request, self.ln_network_fee_margin)
+                        .await
+                    {
                         if !res.is_empty() {
                             let best_route = res[0].clone();
                             let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
@@ -2569,6 +2581,7 @@ impl BankEngine {
                                 )
                                 .is_err()
                             {
+                                slog::error!(self.logger, "Error making transaction!");
                                 return;
                             }
 
@@ -2599,6 +2612,7 @@ impl BankEngine {
                         {
                             invoice
                         } else {
+                            slog::error!(self.logger, "Couldn't get invoice!");
                             return;
                         };
 
@@ -2754,7 +2768,7 @@ impl BankEngine {
     }
 
     async fn handle_dealer_deposit(&mut self, deposit: Deposit) {
-        dbg!("Dealer Deposit Received!");
+        slog::info!(self.logger, "Dealer deposit resceived!");
         // Dealer can transfer from an outside unknown wallet or between the external
         // kollider wallet and lndhubx.
         let conn = match &self.conn_pool {
@@ -2775,7 +2789,6 @@ impl BankEngine {
 
         // Check whether we know about this invoice.
         if let Ok(invoice) = Invoice::get_by_payment_request(&c, deposit.payment_request) {
-            dbg!(&invoice);
             if let None = invoice.reference {
                 return;
             }
@@ -2785,7 +2798,6 @@ impl BankEngine {
                 "ExternalDeposit" => false,
                 _ => return,
             };
-            dbg!(is_internal);
 
             let (mut inbound_dealer_account, mut outbound_account, outbound_uid) = if is_internal {
                 let inbound = self
@@ -2843,7 +2855,6 @@ impl BankEngine {
                     .insert(outbound_account.account_id, outbound_account.clone());
                 self.update_account(&outbound_account, BANK_UID);
             }
-            dbg!("DONE");
         }
     }
 

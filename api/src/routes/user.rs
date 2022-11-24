@@ -149,7 +149,7 @@ pub async fn pay_invoice(
         .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
 
     if let Ok(Some(Ok(Message::Api(Api::PaymentResponse(response))))) =
-        timeout(Duration::from_secs(5), response_rx.recv()).await
+        timeout(Duration::from_secs(10), response_rx.recv()).await
     {
         return Ok(HttpResponse::Ok().json(&response));
     }
