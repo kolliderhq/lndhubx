@@ -722,16 +722,20 @@ impl BankEngine {
             .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
             .clone();
         let outbound_uid = payment_request.uid;
-        let amount = payment_request.amount.unwrap();
-        let rate = dec!(1);
 
-        let rate = Rate {
-            base: payment_request.currency,
-            quote: payment_request.currency,
-            value: rate,
+        let rate = if let Some(r) = payment_request.rate {
+            r
+        } else {
+            let rate = Rate {
+                base: payment_request.currency,
+                quote: payment_request.currency,
+                value: dec!(1),
+            };
+            rate
         };
 
         let fees = Money::new(payment_request.currency, Some(dec!(0)));
+        let amount = payment_request.amount.clone().unwrap();
 
         let mut payment_response = PaymentResponse {
             amount: Some(amount.clone()),
@@ -745,6 +749,16 @@ impl BankEngine {
             error: None,
             rate: Some(rate.clone()),
             preimage: None,
+        };
+
+        let outbound_amount = match payment_request.amount {
+            Some(a) => a.exchange(&rate).unwrap(),
+            None => {
+                payment_response.error = Some(PaymentResponseError::InvalidAmount);
+                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                listener(msg, ServiceIdentity::Api);
+                return;
+            }
         };
 
         let inbound_user = match User::get_by_username(&c, username) {
@@ -781,7 +795,7 @@ impl BankEngine {
             user_account.get_default_account(payment_request.currency, None)
         };
 
-        if outbound_account.balance < amount.value {
+        if outbound_account.balance < outbound_amount.value {
             payment_response.error = Some(PaymentResponseError::InsufficientFunds);
             let msg = Message::Api(Api::PaymentResponse(payment_response));
             listener(msg, ServiceIdentity::Api);
@@ -793,7 +807,7 @@ impl BankEngine {
             outbound_uid,
             &mut inbound_account,
             inbound_uid,
-            amount.clone(),
+            outbound_amount.clone(),
         ) {
             txid
         } else {
@@ -806,7 +820,7 @@ impl BankEngine {
                 outbound_uid,
                 &inbound_account,
                 inbound_uid,
-                amount,
+                outbound_amount,
                 None,
                 None,
                 Some(txid.clone()),
@@ -1944,21 +1958,24 @@ impl BankEngine {
                             self.update_account(&outbound_account, msg.uid);
                             self.update_account(&bank_liability_account, BANK_UID);
 
-                            if self.make_summary_tx(
-                                &outbound_account,
-                                uid,
-                                &bank_liability_account,
-                                BANK_UID,
-                                outbound_amount_in_btc_plus_max_fees.clone(),
-                                None,
-                                None,
-                                Some(txid.clone()),
-                                Some(txid),
-                                None,
-                                Some(String::from("ExternalPayment")),
-                            ).is_err() {
+                            if self
+                                .make_summary_tx(
+                                    &outbound_account,
+                                    uid,
+                                    &bank_liability_account,
+                                    BANK_UID,
+                                    outbound_amount_in_btc_plus_max_fees.clone(),
+                                    None,
+                                    None,
+                                    Some(txid.clone()),
+                                    Some(txid),
+                                    None,
+                                    Some(String::from("ExternalPayment")),
+                                )
+                                .is_err()
+                            {
                                 slog::error!(self.logger, "Failed to make summary transaction.");
-                                return
+                                return;
                             };
                         }
 
@@ -2434,7 +2451,7 @@ impl BankEngine {
                                 error: Some(QueryRouteError::NoRouteFound),
                             }));
                             listener(msg, ServiceIdentity::Api);
-                            return
+                            return;
                         }
                     };
 
@@ -2449,7 +2466,7 @@ impl BankEngine {
                                 error: Some(QueryRouteError::NoRouteFound),
                             }));
                             listener(msg, ServiceIdentity::Api);
-                            return
+                            return;
                         };
 
                     let amount_in_sats = Decimal::new(invoice_amount_sats as i64, 0);
@@ -2461,7 +2478,10 @@ impl BankEngine {
 
                     let max_fee_in_btc = Money::from_btc(max_fee_in_btc);
 
-                    if let Ok(res) = lnd_connector.probe(msg.payment_request, self.ln_network_fee_margin).await {
+                    if let Ok(res) = lnd_connector
+                        .probe(msg.payment_request, self.ln_network_fee_margin)
+                        .await
+                    {
                         if !res.is_empty() {
                             let best_route = res[0].clone();
                             let msg = Message::Api(Api::QueryRouteResponse(QueryRouteResponse {
