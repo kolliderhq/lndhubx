@@ -122,7 +122,7 @@ impl LndConnector {
             let invoice = Invoice {
                 uid: uid as i32,
                 payment_request: add_invoice.payment_request,
-                payment_hash: hex::encode(add_invoice.payment_addr),
+                payment_hash: hex::encode(add_invoice.r_hash),
                 rhash: hex::encode(add_invoice.r_hash),
                 created_at: time_now() as i64,
                 value: amount as i64,
