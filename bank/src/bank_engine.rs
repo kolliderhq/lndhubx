@@ -2425,7 +2425,7 @@ impl BankEngine {
                         tag: String::from("withdrawalRequest"),
                         error: None,
                     };
-                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.remove(&msg.req_id) {
+                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get(&msg.req_id) {
                         if let Some(a) = &payment_request.amount {
                             let a = match &payment_request.rate {
                                 Some(r) => a.exchange(&r).unwrap(),
@@ -2445,7 +2445,7 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::PayLnurlWithdrawalRequest(msg) => {
-                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get_mut(&msg.req_id) {
+                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.remove(&msg.req_id) {
                         payment_request.payment_request = Some(msg.payment_request);
                         let msg = Message::Api(Api::PaymentRequest(payment_request.clone()));
                         listener(msg, ServiceIdentity::Loopback);
