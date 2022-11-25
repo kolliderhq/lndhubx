@@ -1662,7 +1662,7 @@ impl BankEngine {
                         Some(pr) => pr,
                         None => {
                             if !msg.destination.is_none() {
-                                self.process_key_send_payment(msg, listener);
+                                // self.process_key_send_payment(msg, listener);
                             }
                             return;
                         }
@@ -1749,9 +1749,10 @@ impl BankEngine {
                             target_account_currency: None,
                             reference: None,
                         };
-                        invoice
-                            .insert(&psql_connection)
-                            .expect("Failed to insert psql connection");
+                        if let Err(err) = invoice.insert(&psql_connection) {
+                            slog::error!(self.logger, "Error inserting Invoice {:?}", err);
+                            return
+                        }
                         invoice
                     };
 
