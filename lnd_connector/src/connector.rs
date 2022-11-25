@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 use utils::time::*;
 
 use core_types::*;
-use uuid::Uuid;
 use sha256::digest;
 use unescape::unescape;
+use uuid::Uuid;
+
+use std::collections::HashMap;
 
 const MINIMUM_FEE: i64 = 10;
 
@@ -97,15 +99,14 @@ impl LndConnector {
         account_id: Uuid,
         metadata: Option<String>,
     ) -> Result<Invoice, LndConnectorError> {
-
         let hash = match metadata {
             Some(m) => {
                 if let Some(une) = unescape(&m) {
                     digest(une)
                 } else {
-                    return Err(LndConnectorError::FailedToCreateInvoice)
+                    return Err(LndConnectorError::FailedToCreateInvoice);
                 }
-            },
+            }
             None => String::from(""),
         };
         let description_hash = hex::decode(hash).expect("Decoding failed");
@@ -123,7 +124,6 @@ impl LndConnector {
                 uid: uid as i32,
                 payment_request: add_invoice.payment_request,
                 payment_hash: hex::encode(add_invoice.r_hash.clone()),
-                rhash: hex::encode(add_invoice.r_hash),
                 created_at: time_now() as i64,
                 value: amount as i64,
                 value_msat: amount as i64 * 1000,
@@ -146,7 +146,8 @@ impl LndConnector {
 
     pub async fn pay_invoice(
         &mut self,
-        payment_request: String,
+        payment_request: Option<String>,
+        key_send: Option<(String, [u8; 32])>,
         amount_in_sats: Decimal,
         max_fee_as_pp: Option<Decimal>,
         max_fee_in_sats: Option<Decimal>,
@@ -164,16 +165,48 @@ impl LndConnector {
             None => max_fee,
         };
 
-        let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
-        let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
-        let send_payment = tonic_openssl_lnd::lnrpc::SendRequest {
-            payment_request,
-            fee_limit: Some(fee_limit),
-            allow_self_payment: true,
-            ..Default::default()
+        let key_send_request = if let Some((dest, key)) = key_send {
+            // If we do key send we have to supply payment hash.
+            let sha256_hash_string =  sha256::digest(&key);
+            let dest = hex::decode(dest).expect("Decoding keysend dest failed");
+            let mut custom_records: HashMap<u64, Vec<u8>> = HashMap::new();
+            let sha256_hash = hex::decode(sha256_hash_string).expect("Decoding keysend preimage failed");
+            custom_records.insert(5482373484, key.clone().to_vec());
+            let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee.to_i64().unwrap());
+            let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
+            let key_send_request = tonic_openssl_lnd::lnrpc::SendRequest {
+                dest: dest,
+                amt: amount_in_sats.to_i64().unwrap(),
+                payment_hash: sha256_hash.clone(),
+                dest_features: vec![tonic_openssl_lnd::lnrpc::FeatureBit::TlvOnionReq as i32],
+                fee_limit: Some(fee_limit),
+                dest_custom_records: custom_records,
+                ..Default::default()
+            };
+            Some(key_send_request)
+        } else {
+            None
         };
 
-        if let Ok(resp) = self.ln_client.send_payment_sync(send_payment).await {
+        let send_request = if let Some(pr) = payment_request {
+            let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
+            let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
+            let send_request = tonic_openssl_lnd::lnrpc::SendRequest {
+                payment_request: pr,
+                fee_limit: Some(fee_limit),
+                allow_self_payment: true,
+                ..Default::default()
+            };
+            Some(send_request)
+        } else {
+            key_send_request
+        };
+
+        if send_request.is_none() {
+            return Err(LndConnectorError::FailedToSendPayment)
+        }
+
+        if let Ok(resp) = self.ln_client.send_payment_sync(send_request.unwrap()).await {
             let r = resp.into_inner();
             if !r.payment_error.is_empty() {
                 dbg!(format!("Payment error: {:?}", r.payment_error));

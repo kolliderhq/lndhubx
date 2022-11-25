@@ -531,7 +531,7 @@ impl DealerEngine {
                 Api::PaymentRequest(mut msg) => {
                     let conversion_info = ConversionInfo::new(msg.currency.clone(), Currency::BTC);
                     // We assume user specifies the value not the amount.
-                    match msg.amount.clone() {
+                    match msg.invoice_amount.clone() {
                         Some(amount) => {
                             let (rate, fees) = self.get_rate_inv(amount, conversion_info);
                             if rate.is_none() {

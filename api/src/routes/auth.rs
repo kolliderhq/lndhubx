@@ -67,7 +67,7 @@ pub async fn auth(pool: WebDbPool, login_data: Json<LoginData>) -> Result<HttpRe
         Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
     };
 
-    if !verify(&user.username, &user.password, &login_data.password) {
+    if !verify(&user.username.to_lowercase(), &user.password, &login_data.password) {
         return Err(ApiError::Auth(AuthError::IncorrectPassword));
     }
 
