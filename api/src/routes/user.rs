@@ -32,7 +32,7 @@ use models::transactions::Transaction;
 use models::summary_transactions::SummaryTransaction;
 use models::users::{ShareableUser, User};
 
-const MINIMUM_PATTERN_LENGTH: usize = 3;
+const MINIMUM_PATTERN_LENGTH: usize = 1;
 
 #[get("/balance")]
 pub async fn balance(web_sender: WebSender, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
@@ -507,7 +507,6 @@ pub struct SearchUserParams {
 pub async fn search_user(
     pool: WebDbPool,
     params: Query<SearchUserParams>,
-    _auth_data: AuthData,
 ) -> Result<HttpResponse, ApiError> {
     if params.text.len() < MINIMUM_PATTERN_LENGTH {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
