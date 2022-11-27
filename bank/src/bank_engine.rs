@@ -21,6 +21,7 @@ use xerror::bank_engine::*;
 
 use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
+use rand_core::{OsRng, RngCore};
 
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use serde::{Deserialize, Serialize};
@@ -748,11 +749,13 @@ impl BankEngine {
             fees: Some(fees.clone()),
             error: None,
             rate: Some(rate.clone()),
-            preimage: None,
+            payment_preimage: None,
+            destination: None,
+            description: None,
         };
 
         let outbound_amount = match payment_request.amount {
-            Some(a) => a.exchange(&rate).unwrap(),
+            Some(a) => a,
             None => {
                 payment_response.error = Some(PaymentResponseError::InvalidAmount);
                 let msg = Message::Api(Api::PaymentResponse(payment_response));
@@ -1655,10 +1658,15 @@ impl BankEngine {
                         }
                     };
 
-                    let payment_request = msg
-                        .clone()
-                        .payment_request
-                        .unwrap_or_else(|| panic!("Payment request not specified in the message: {:?}", msg));
+                    let payment_request = match msg.clone().payment_request {
+                        Some(pr) => pr,
+                        None => {
+                            if !msg.destination.is_none() {
+                                // self.process_key_send_payment(msg, listener);
+                            }
+                            return;
+                        }
+                    };
 
                     let decoded = match payment_request.parse::<lightning_invoice::Invoice>() {
                         Ok(d) => d,
@@ -1700,7 +1708,7 @@ impl BankEngine {
                     // Amount in btc that we're paying.
                     let amount_in_btc = Money::from_sats(amount_in_sats);
 
-                    msg.amount = Some(amount_in_btc.clone());
+                    msg.invoice_amount = Some(amount_in_btc.clone());
 
                     // If payed from a fiat account we have to get a quote first.
                     if msg.currency != Currency::BTC && msg.rate.is_none() {
@@ -1724,7 +1732,6 @@ impl BankEngine {
                     } else {
                         let invoice = models::invoices::Invoice {
                             payment_request: payment_request.clone(),
-                            rhash: decoded.payment_hash().to_string(),
                             payment_hash: decoded.payment_hash().to_string(),
                             created_at: utils::time::time_now() as i64,
                             value: invoice_amount_sats as i64,
@@ -1742,9 +1749,10 @@ impl BankEngine {
                             target_account_currency: None,
                             reference: None,
                         };
-                        invoice
-                            .insert(&psql_connection)
-                            .expect("Failed to insert psql connection");
+                        if let Err(err) = invoice.insert(&psql_connection) {
+                            slog::error!(self.logger, "Error inserting Invoice {:?}", err);
+                            return
+                        }
                         invoice
                     };
 
@@ -1778,7 +1786,9 @@ impl BankEngine {
                         fees: Some(fees),
                         rate: Some(rate.clone()),
                         error: None,
-                        preimage: None,
+                        payment_preimage: None,
+                        description: None,
+                        destination: None,
                     };
 
                     if let Some(owner) = invoice.owner {
@@ -1996,7 +2006,13 @@ impl BankEngine {
                         let payment_task = tokio::task::spawn(async move {
                             let mut lnd_connector = LndConnector::new(settings).await;
                             match lnd_connector
-                                .pay_invoice(payment_req.clone(), amount_in_sats, None, Some(estimated_fee_in_sats))
+                                .pay_invoice(
+                                    Some(payment_req.clone()),
+                                    None,
+                                    amount_in_sats,
+                                    None,
+                                    Some(estimated_fee_in_sats),
+                                )
                                 .await
                             {
                                 Ok(result) => {
@@ -2012,7 +2028,9 @@ impl BankEngine {
                                         fees: Some(Money::from_sats(Decimal::new(result.fee as i64, 0))),
                                         rate: Some(rate_2.clone()),
                                         error: None,
-                                        preimage: result.preimage,
+                                        payment_preimage: result.preimage,
+                                        destination: None,
+                                        description: None,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                         uid,
@@ -2040,7 +2058,9 @@ impl BankEngine {
                                         fees: Some(Money::from_sats(dec!(0))),
                                         rate: Some(rate_2.clone()),
                                         error: Some(PaymentResponseError::InsufficientFundsForFees),
-                                        preimage: None,
+                                        payment_preimage: None,
+                                        destination: None,
+                                        description: None,
                                     };
                                     let msg = Message::Bank(Bank::PaymentResult(PaymentResult {
                                         uid,
@@ -2369,6 +2389,7 @@ impl BankEngine {
                         uid: msg.uid,
                         req_id: msg.req_id,
                         amount: Some(amount),
+                        invoice_amount: None,
                         currency: msg.currency,
                         rate: msg.rate,
                         payment_request: Some(String::from("")),
@@ -2405,7 +2426,7 @@ impl BankEngine {
                         tag: String::from("withdrawalRequest"),
                         error: None,
                     };
-                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.remove(&msg.req_id) {
+                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get(&msg.req_id) {
                         if let Some(a) = &payment_request.amount {
                             let a = match &payment_request.rate {
                                 Some(r) => a.exchange(&r).unwrap(),
@@ -2425,7 +2446,7 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::PayLnurlWithdrawalRequest(msg) => {
-                    if let Some((_, payment_request)) = self.lnurl_withdrawal_requests.get_mut(&msg.req_id) {
+                    if let Some((_, mut payment_request)) = self.lnurl_withdrawal_requests.remove(&msg.req_id) {
                         payment_request.payment_request = Some(msg.payment_request);
                         let msg = Message::Api(Api::PaymentRequest(payment_request.clone()));
                         listener(msg, ServiceIdentity::Loopback);
@@ -2884,7 +2905,8 @@ impl BankEngine {
         match self
             .lnd_connector
             .pay_invoice(
-                pay_invoice.payment_request.clone(),
+                Some(pay_invoice.payment_request.clone()),
+                None,
                 amount_in_sats,
                 Some(self.ln_network_max_fee),
                 None,
@@ -3033,6 +3055,73 @@ impl BankEngine {
             let msg = Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response));
             listener(msg, ServiceIdentity::Dealer)
         }
+    }
+
+    async fn process_key_send_payment<F: FnMut(Message, ServiceIdentity)>(
+        &mut self,
+        payment_request: PaymentRequest,
+        listener: &mut F,
+    ) {
+        let conn = match &self.conn_pool {
+            Some(conn) => conn,
+            None => {
+                slog::error!(self.logger, "No database provided.");
+                return;
+            }
+        };
+
+        let c = match conn.get() {
+            Ok(psql_connection) => psql_connection,
+            Err(_) => {
+                slog::error!(self.logger, "Couldn't get psql connection.");
+                return;
+            }
+        };
+
+        let dest_string = payment_request.clone().destination.unwrap();
+        let mut payment_hash_key = [0u8; 32];
+        OsRng.fill_bytes(&mut payment_hash_key);
+
+        let payment_hash = sha256::digest(&payment_hash_key);
+        let uid = payment_request.uid;
+
+        let amount = if let Some(a) = payment_request.amount {
+            a
+        } else {
+            return
+        };
+
+        // Currently only supporting BTC keysend payments.
+        if payment_request.currency != Currency::BTC {
+            return
+        }
+
+        let invoice_amount_sats = amount.try_sats().unwrap();
+        let invoice_amount_millisats = invoice_amount_sats * dec!(1000);
+
+        let invoice = models::invoices::Invoice {
+            payment_request: "".to_string(),
+            payment_hash: payment_hash,
+            created_at: utils::time::time_now() as i64,
+            value: invoice_amount_sats.to_i64().unwrap(),
+            value_msat: invoice_amount_millisats.to_i64().unwrap(),
+            expiry: utils::time::time_now() as i64 + 360000,
+            settled: false,
+            add_index: -1,
+            settled_date: 0,
+            uid: uid as i32,
+            account_id: Uuid::default().to_string(),
+            owner: None,
+            fees: None,
+            incoming: false,
+            currency: Some(payment_request.currency.to_string()),
+            target_account_currency: None,
+            reference: None,
+        };
+        invoice
+            .insert(&c)
+            .expect("Failed to insert psql connection");
+        // let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
     }
 
     async fn process_make_tx(&mut self, make_tx: MakeTx) -> Result<(), BankError> {

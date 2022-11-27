@@ -5,11 +5,10 @@ use diesel::result::Error as DieselError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Queryable, Insertable, Identifiable, Debug, Serialize, AsChangeset, Deserialize)]
-#[primary_key(payment_request)]
+#[primary_key(payment_hash)]
 pub struct Invoice {
-    pub payment_request: String,
-    pub rhash: String,
     pub payment_hash: String,
+    pub payment_request: String,
     pub created_at: i64,
     pub value: i64,
     pub value_msat: i64,
@@ -62,7 +61,6 @@ impl Invoice {
 #[table_name = "invoices"]
 pub struct InsertableInvoice {
     pub payment_request: String,
-    pub rhash: String,
     pub payment_hash: String,
     pub created_at: i64,
     pub value: i64,

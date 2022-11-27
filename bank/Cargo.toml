@@ -25,6 +25,8 @@ diesel = { version = "1.4.2", features = ["postgres","uuidv07", "r2d2", "chrono"
 
 influxdb2 = "0.1.1"
 futures = "0.3.21"
+rand_core = "0.6.4"
+sha256 = "1.1.1"
 
 serde = { version = "1.0.110", features = ["derive"] }
 
