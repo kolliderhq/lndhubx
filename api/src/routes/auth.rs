@@ -11,7 +11,7 @@ use models::users::*;
 use crate::jwt::*;
 use crate::WebDbPool;
 
-// use serde_json::*;
+const ALLOWED_USERNAMES: [&str; 2] = ["jerry", "albert"];
 
 #[derive(Deserialize)]
 pub struct RegisterData {
@@ -29,6 +29,11 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
         Some(un) => un.clone().to_lowercase(),
         None => Uuid::new_v4().to_string().to_lowercase(),
     };
+
+    let is_allowed = ALLOWED_USERNAMES.contains(&&username[..]);
+    if !is_allowed {
+        return Err(ApiError::Auth(AuthError::UserExists))
+    }
 
     let hashed_password = hash(&username, &register_data.password);
 
