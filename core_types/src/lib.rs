@@ -308,11 +308,14 @@ impl Money {
 
     pub fn exchange(&self, rate: &Rate) -> Result<Money, String> {
         let mut r = rate.value;
+        let mut c = rate.quote;
+        // We have to flip the rate if currencies not align.
         if self.currency != rate.base {
             r = dec!(1) / r;
+            c = rate.base;
         }
         let exchanged_money = Money {
-            currency: rate.quote,
+            currency: c,
             value: self.value * r
         };
         Ok(exchanged_money)

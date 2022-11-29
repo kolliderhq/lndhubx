@@ -471,6 +471,8 @@ impl BankEngine {
             return Err(BankError::FailedTransaction);
         }
 
+        assert!(amount.currency == outbound_account.currency);
+
         let conn = match &self.conn_pool {
             Some(conn) => conn,
             None => {
@@ -1030,8 +1032,6 @@ impl BankEngine {
                 // Check whether we know about this invoice.
                 if let Ok(invoice) = Invoice::get_by_payment_request(&c, msg.payment_request.clone()) {
                     let is_dealer_invoice = invoice.uid as UserId == DEALER_UID;
-
-                    dbg!(&is_dealer_invoice);
 
                     if is_dealer_invoice {
                         self.handle_dealer_deposit(msg).await;
@@ -1836,12 +1836,12 @@ impl BankEngine {
                         max_fee_in_btc
                     };
 
-                    let estimated_fee = Money::from_btc(estimated_fee);
-                    let estimated_fee_in_outbound_currency = estimated_fee.exchange(&rate).unwrap();
+                    let estimated_fee_in_btc = Money::from_btc(estimated_fee);
+                    let estimated_fee_in_outbound_currency = estimated_fee_in_btc.exchange(&rate).unwrap();
 
                     let outbound_amount_in_btc_plus_max_fees =
-                        Money::from_btc(amount_in_btc.value + estimated_fee.value);
-
+                        Money::from_btc(amount_in_btc.value + estimated_fee_in_btc.value);
+                    
                     // Worst case amount user will have to pay for this transaction in outbound Currency.
                     let outbound_amount_in_outbound_currency_plus_max_fee =
                         outbound_amount_in_btc_plus_max_fees.exchange(&rate).unwrap();
@@ -1932,7 +1932,7 @@ impl BankEngine {
                                     BANK_UID,
                                     outbound_amount_in_outbound_currency_plus_max_fee.clone(),
                                     Some(rate.clone()),
-                                    Some(estimated_fee_in_outbound_currency),
+                                    Some(estimated_fee_in_btc.clone()),
                                     Some(outbound_txid),
                                     Some(inbound_txid),
                                     None,
@@ -1990,7 +1990,7 @@ impl BankEngine {
                         }
 
                         payment_response.success = false;
-                        payment_response.fees = Some(estimated_fee.clone());
+                        payment_response.fees = Some(estimated_fee_in_btc.clone());
 
                         let payment_task_sender = self.payment_thread_sender.clone();
 
@@ -2000,7 +2000,7 @@ impl BankEngine {
                         let aib = amount_in_btc;
                         let currency = msg.currency;
 
-                        let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
+                        let estimated_fee_in_sats = estimated_fee_in_btc.try_sats().unwrap();
                         let rate_2 = rate.clone();
 
                         let payment_task = tokio::task::spawn(async move {
@@ -2290,6 +2290,12 @@ impl BankEngine {
                         .user_accounts
                         .entry(msg.uid)
                         .or_insert_with(|| UserAccount::new(msg.uid));
+
+                        // we do this to make sure we initialise an account for each available currency.
+                    self.available_currencies.iter().for_each(|curr| {
+                        let _ = user_account.get_default_account(*curr, Some(AccountType::Internal));
+                    });
+                    
                     let balances = Balances {
                         req_id: msg.req_id,
                         uid: msg.uid,
