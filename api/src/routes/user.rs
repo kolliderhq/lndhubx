@@ -123,7 +123,7 @@ pub async fn pay_invoice(
         rate: None,
         amount: money,
         invoice_amount: None,
-        receipient: pay_invoice_data.recipient.clone(),
+        recipient: pay_invoice_data.recipient.clone(),
         destination: None,
         fees: None,
     };
@@ -613,7 +613,7 @@ pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeyS
         rate: None,
         amount: Some(money),
         invoice_amount: None,
-        receipient: None,
+        recipient: None,
         destination: Some(data.destination.clone()),
         fees: None,
     };

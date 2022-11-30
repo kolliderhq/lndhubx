@@ -13,6 +13,7 @@ mod schema;
 pub mod transactions;
 pub mod summary_transactions;
 pub mod users;
+pub mod ln_addresses;
 
 cfg_if::cfg_if! {
     if #[cfg(debug_assertions)] {

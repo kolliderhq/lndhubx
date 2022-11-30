@@ -1,1 +1,0 @@
-ALTER TABLE summary_transactions ADD COLUMN IF NOT EXISTS reference TEXT;

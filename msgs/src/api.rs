@@ -99,7 +99,7 @@ pub struct PaymentRequest {
     pub uid: UserId,
     pub payment_request: Option<String>,
     pub currency: Currency,
-    pub receipient: Option<String>,
+    pub recipient: Option<String>,
     pub destination: Option<String>,
     pub amount: Option<Money>,
     pub invoice_amount: Option<Money>,

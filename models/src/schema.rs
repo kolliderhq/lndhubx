@@ -40,6 +40,15 @@ table! {
 }
 
 table! {
+    ln_addresses (id) {
+        id -> Int4,
+        created_at -> Nullable<Timestamp>,
+        username -> Text,
+        domain -> Text,
+    }
+}
+
+table! {
     pre_signups (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -66,6 +75,8 @@ table! {
         tx_type -> Text,
         fees -> Numeric,
         reference -> Nullable<Text>,
+        outbound_username -> Nullable<Text>,
+        inbound_username -> Nullable<Text>,
     }
 }
 
@@ -104,6 +115,7 @@ allow_tables_to_appear_in_same_query!(
     accounts,
     internal_user_mappings,
     invoices,
+    ln_addresses,
     pre_signups,
     summary_transactions,
     transactions,

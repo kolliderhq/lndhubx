@@ -1,1 +1,0 @@
-ALTER TABLE summary_transactions DROP COLUMN IF EXISTS reference;

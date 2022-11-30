@@ -35,6 +35,8 @@ pub struct SummaryTransaction {
     pub tx_type: String,
     pub fees: BigDecimal,
     pub reference: Option<String>,
+    pub outbound_username: Option<String>,
+    pub inbound_username: Option<String>,
 }
 
 impl SummaryTransaction {

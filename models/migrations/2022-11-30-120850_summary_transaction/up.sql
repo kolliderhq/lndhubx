@@ -1,4 +1,5 @@
 -- Your SQL goes here
+-- Your SQL goes here
 CREATE TABLE summary_transactions (
 txid TEXT NOT NULL PRIMARY KEY,
 fee_txid TEXT,
@@ -15,5 +16,8 @@ outbound_currency TEXT NOT NULL,
 inbound_currency TEXT NOT NULL,
 exchange_rate decimal NOT NULL DEFAULT 0,
 tx_type TEXT NOT NULL,
-fees decimal NOT NULL DEFAULT 0
+fees decimal NOT NULL DEFAULT 0,
+reference TEXT,
+outbound_username TEXT,
+inbound_username TEXt
 );

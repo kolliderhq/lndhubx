@@ -214,7 +214,7 @@ impl BankEngine {
         fetcher: &mut F,
     ) -> Vec<Account> {
         let accounts = match fetcher(conn) {
-            Ok(mut a) => a,
+            Ok(a) => a,
             Err(err) => {
                 slog::error!(
                     self.logger,
@@ -466,6 +466,8 @@ impl BankEngine {
         inbound_txid: Option<String>,
         fee_txid: Option<String>,
         reference: Option<String>,
+        outbound_username: Option<String>,
+        inbound_username: Option<String>,
     ) -> Result<String, BankError> {
         if amount.value <= dec!(0) {
             return Err(BankError::FailedTransaction);
@@ -494,6 +496,16 @@ impl BankEngine {
             quote: inbound_account.currency,
             value: dec!(1),
         });
+
+        let outbound_username = match outbound_username {
+            Some(ou) => ou,
+            None => String::from("Unknown")
+        };
+
+        let inbound_username = match inbound_username {
+            Some(iu) => iu,
+            None => String::from("Unknown")
+        };
 
         let fees = fees.unwrap_or_else(|| Money::new(inbound_account.currency, None));
 
@@ -571,6 +583,8 @@ impl BankEngine {
             tx_type,
             fees: fee_bigdec,
             reference,
+            outbound_username: Some(outbound_username),
+            inbound_username: Some(inbound_username),
         };
 
         if tx.insert(&c).is_err() {
@@ -719,11 +733,12 @@ impl BankEngine {
             }
         };
 
-        let username = payment_request
-            .receipient
+        let inbound_username = payment_request
+            .recipient
             .as_ref()
             .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
             .clone();
+
         let outbound_uid = payment_request.uid;
 
         let rate = if let Some(r) = payment_request.rate {
@@ -766,7 +781,7 @@ impl BankEngine {
             }
         };
 
-        let inbound_user = match User::get_by_username(&c, username) {
+        let inbound_user = match User::get_by_username(&c, inbound_username.clone()) {
             Ok(u) => u,
             Err(_) => {
                 payment_response.error = Some(PaymentResponseError::UserDoesNotExist);
@@ -775,6 +790,17 @@ impl BankEngine {
                 return;
             }
         };
+
+        let outbound_user = match User::get_by_id(&c, outbound_uid as i32) {
+            Ok(u) => u,
+            Err(_) => {
+                payment_response.error = Some(PaymentResponseError::UserDoesNotExist);
+                let msg = Message::Api(Api::PaymentResponse(payment_response));
+                listener(msg, ServiceIdentity::Api);
+                return;
+            }
+        };
+
 
         let inbound_uid = inbound_user.uid as u64;
         if inbound_uid == outbound_uid {
@@ -832,6 +858,8 @@ impl BankEngine {
                 Some(txid),
                 None,
                 Some(String::from("InternalTransfer")),
+                Some(format!("{}@kollider.me", outbound_user.username)),
+                Some(format!("{}@kollider.me", inbound_username)),
             )
             .is_err()
         {
@@ -1001,6 +1029,8 @@ impl BankEngine {
                             Some(inbound_txid),
                             None,
                             Some(String::from("ExternalDeposit")),
+                            None,
+                            None,
                         )
                         .is_err()
                     {
@@ -1141,6 +1171,8 @@ impl BankEngine {
                             Some(txid),
                             None,
                             Some(String::from("ExternalDeposit")),
+                            None,
+                            None,
                         )
                         .is_err()
                     {
@@ -1616,12 +1648,6 @@ impl BankEngine {
                         }
                     }
 
-                    // If user specified a username then we attempt to make an internal transaction.
-                    if msg.receipient.is_some() {
-                        self.make_internal_tx(msg, listener);
-                        return;
-                    }
-
                     let conn = match &self.conn_pool {
                         Some(conn) => conn,
                         None => {
@@ -1657,6 +1683,57 @@ impl BankEngine {
                             return;
                         }
                     };
+
+                    let outbound_username = match User::get_by_id(&psql_connection, uid as i32) {
+                            Ok(u) => u.username,
+                            Err(_) => {
+                                slog::error!(self.logger, "Error whilst trying to get outbound username");
+                                return
+                            },
+                    };
+
+                    let mut inbound_username = String::from("Unknown");
+
+                    // If user specified a username then we attempt to make an internal transaction.
+                    if msg.recipient.is_some() {
+                        let recipient = msg.recipient.clone().unwrap();
+                        let address: Vec<&str> = recipient.split("@").collect();
+
+                        let username = if address.len() >= 1 {
+                            address[0].to_string()
+                        } else {
+                            return;
+                        };
+
+                        let is_internal = match User::get_by_username(&psql_connection, username.clone()) {
+                            Ok(_) => true,
+                            Err(_) => false,
+                        };
+
+                        if is_internal {
+                            msg.recipient = Some(username);
+                            self.make_internal_tx(msg, listener);
+                            return;
+                        }
+
+                        let domain = if address.len() == 2 {
+                            address[1].to_string()
+                        } else {
+                            return;
+                        };
+
+                        // Making sure this address has generated a payment request.
+                        if msg.payment_request.is_some() {
+                            inbound_username = recipient.clone();
+                            let ln_address = models::ln_addresses::InsertableLnAddress {
+                                username: recipient,
+                                domain,
+                            };
+                            if ln_address.insert(&psql_connection).is_err() {
+                                slog::warn!(self.logger, "Wasn't able to insert external ln address");
+                            };
+                        }
+                    }
 
                     let payment_request = match msg.clone().payment_request {
                         Some(pr) => pr,
@@ -1751,7 +1828,7 @@ impl BankEngine {
                         };
                         if let Err(err) = invoice.insert(&psql_connection) {
                             slog::error!(self.logger, "Error inserting Invoice {:?}", err);
-                            return
+                            return;
                         }
                         invoice
                     };
@@ -1841,7 +1918,6 @@ impl BankEngine {
 
                     let outbound_amount_in_btc_plus_max_fees =
                         Money::from_btc(amount_in_btc.value + estimated_fee_in_btc.value);
-                    
                     // Worst case amount user will have to pay for this transaction in outbound Currency.
                     let outbound_amount_in_outbound_currency_plus_max_fee =
                         outbound_amount_in_btc_plus_max_fees.exchange(&rate).unwrap();
@@ -1937,6 +2013,8 @@ impl BankEngine {
                                     Some(inbound_txid),
                                     None,
                                     Some(String::from("ExternalPayment")),
+                                    Some(format!("{}@kollider.xyz", outbound_username)),
+                                    Some(inbound_username)
                                 )
                                 .is_err()
                             {
@@ -1976,11 +2054,13 @@ impl BankEngine {
                                     BANK_UID,
                                     outbound_amount_in_btc_plus_max_fees.clone(),
                                     None,
-                                    None,
+                                    Some(estimated_fee_in_btc.clone()),
                                     Some(txid.clone()),
                                     Some(txid),
                                     None,
                                     Some(String::from("ExternalPayment")),
+                                    Some(format!("{}@kollider.xyz", outbound_username)),
+                                    Some(inbound_username)
                                 )
                                 .is_err()
                             {
@@ -2100,7 +2180,7 @@ impl BankEngine {
                         }
                     };
                     // If there is an owner we make an internal tx.
-                    msg.receipient = Some(owner_username.username);
+                    msg.recipient = Some(owner_username.username);
                     self.make_internal_tx(msg, listener);
                 }
 
@@ -2277,6 +2357,8 @@ impl BankEngine {
                             Some(inbound_txid),
                             None,
                             Some(String::from("Swap")),
+                            None,
+                            None,
                         )
                         .is_err()
                     {
@@ -2291,11 +2373,10 @@ impl BankEngine {
                         .entry(msg.uid)
                         .or_insert_with(|| UserAccount::new(msg.uid));
 
-                        // we do this to make sure we initialise an account for each available currency.
+                    // we do this to make sure we initialise an account for each available currency.
                     self.available_currencies.iter().for_each(|curr| {
                         let _ = user_account.get_default_account(*curr, Some(AccountType::Internal));
                     });
-                    
                     let balances = Balances {
                         req_id: msg.req_id,
                         uid: msg.uid,
@@ -2400,7 +2481,7 @@ impl BankEngine {
                         rate: msg.rate,
                         payment_request: Some(String::from("")),
                         destination: None,
-                        receipient: None,
+                        recipient: None,
                         fees: msg.fees,
                     };
 
@@ -2722,6 +2803,8 @@ impl BankEngine {
                                     Some(inbound_txid),
                                     None,
                                     Some(String::from("PaymentRefund")),
+                                    None,
+                                    None,
                                 )
                                 .is_err()
                             {
@@ -2763,6 +2846,8 @@ impl BankEngine {
                                     Some(txid),
                                     None,
                                     Some(String::from("PaymentRefund")),
+                                    None,
+                                    None,
                                 )
                                 .is_err()
                             {
@@ -3094,12 +3179,12 @@ impl BankEngine {
         let amount = if let Some(a) = payment_request.amount {
             a
         } else {
-            return
+            return;
         };
 
         // Currently only supporting BTC keysend payments.
         if payment_request.currency != Currency::BTC {
-            return
+            return;
         }
 
         let invoice_amount_sats = amount.try_sats().unwrap();
@@ -3124,9 +3209,7 @@ impl BankEngine {
             target_account_currency: None,
             reference: None,
         };
-        invoice
-            .insert(&c)
-            .expect("Failed to insert psql connection");
+        invoice.insert(&c).expect("Failed to insert psql connection");
         // let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();
     }
 
