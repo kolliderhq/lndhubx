@@ -28,6 +28,7 @@ use crate::WebDbPool;
 use crate::WebSender;
 
 use models::invoices::*;
+use models::ln_addresses::*;
 use models::transactions::Transaction;
 use models::summary_transactions::SummaryTransaction;
 use models::users::{ShareableUser, User};
@@ -503,8 +504,8 @@ pub struct SearchUserParams {
     text: String,
 }
 
-#[get("/search_user")]
-pub async fn search_user(
+#[get("/search_ln_addresses")]
+pub async fn search_ln_addresses(
     pool: WebDbPool,
     params: Query<SearchUserParams>,
 ) -> Result<HttpResponse, ApiError> {
@@ -512,19 +513,20 @@ pub async fn search_user(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    let escaped = params.text.replace('%', "\\%").replace('_', "\\_");
+    let escaped = params.text.replace('%', "\\%").replace('_', "\\_").replace('@', "\\@");
     let data = {
         let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
-        User::search_by_username_fragment(&conn, &escaped).map_err(|_| ApiError::Db(DbError::UserDoesNotExist))
+        LnAddress::search_by_username_fragment(&conn, &escaped).map_err(|_| ApiError::Db(DbError::UserDoesNotExist))
     }?;
 
     let response_data = data
         .into_iter()
-        .map(|user| ShareableUser {
-            uid: user.uid,
-            username: user.username,
+        .map(|address| ShareableLnAddress {
+            id: address.id,
+            username: address.username,
+            domain: address.domain,
         })
-        .collect::<Vec<ShareableUser>>();
+        .collect::<Vec<ShareableLnAddress>>();
 
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
@@ -542,7 +544,7 @@ pub async fn check_username_available(
     username_data: Json<CheckUsernameData>,
 ) -> Result<HttpResponse, ApiError> {
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
-    match User::get_by_username(&conn, username_data.username.clone()) {
+    match User::get_by_username(&conn, username_data.username.to_lowercase().clone()) {
         Ok(_) => Ok(HttpResponse::Ok().json(json!({ "available": false}))),
         _ => Ok(HttpResponse::Ok().json(json!({ "available": true}))),
     }

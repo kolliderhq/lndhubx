@@ -7,6 +7,7 @@ use uuid::Uuid;
 use xerror::api::*;
 
 use models::users::*;
+use models::ln_addresses::*;
 
 use crate::jwt::*;
 use crate::WebDbPool;
@@ -31,7 +32,7 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
     let hashed_password = hash(&username, &register_data.password);
 
     let user = InsertableUser {
-        username,
+        username: username.clone(),
         password: hashed_password,
         is_internal: false,
     };
@@ -43,6 +44,16 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
             }
             _ => return Err(ApiError::Db(DbError::Unknown)),
         }
+    }
+
+    // TODO: Make this configurable.
+    let ln_address = InsertableLnAddress {
+        username: format!("{}@kollider.me", username),
+        domain: String::from("kollider.me"),
+    };
+
+    if ln_address.insert(&conn).is_err() {
+        dbg!("Error inserting Ln Address");
     }
 
     Ok(HttpResponse::Ok().json(json!({"username": user.username})))

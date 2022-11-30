@@ -24,6 +24,14 @@ impl LnAddress {
             .filter(ln_addresses::username.eq(username))
             .first::<Self>(conn)
     }
+
+    pub fn search_by_username_fragment(conn: &diesel::PgConnection, fragment: &str) -> Result<Vec<Self>, DieselError> {
+        let pattern = format!("%{}%", fragment);
+        ln_addresses::dsl::ln_addresses
+            .filter(ln_addresses::username.ilike(pattern))
+            .load::<Self>(conn)
+    }
+
 }
 
 #[derive(Insertable, Debug, Deserialize)]
@@ -40,4 +48,12 @@ impl InsertableLnAddress {
             .returning(ln_addresses::id)
             .get_result(conn)
     }
+}
+
+/// Structure to use to share user data outside the application
+#[derive(Debug, Serialize)]
+pub struct ShareableLnAddress {
+    pub id: i32,
+    pub username: String,
+    pub domain: String
 }
