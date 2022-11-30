@@ -5,6 +5,7 @@ use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use serde::{Deserialize, Serialize};
+use std::env;
 
 use tokio::sync::mpsc;
 
@@ -31,6 +32,7 @@ pub type WebDbPool = web::Data<DbPool>;
 pub type WebSender = web::Data<mpsc::Sender<Envelope>>;
 
 pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
+    let endpoint = env::var("ENDPOINT").unwrap_or("127.0.0.1:8080".to_string());
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
         .expect("Failed to create pool.");
@@ -90,7 +92,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::lnurl::pay_address)
             .service(routes::external::get_spot_prices)
     })
-    .bind("127.0.0.1:8080")?
+    .bind(endpoint)?
     .run()
     .await
 }
