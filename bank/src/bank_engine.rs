@@ -499,12 +499,12 @@ impl BankEngine {
 
         let outbound_username = match outbound_username {
             Some(ou) => ou,
-            None => String::from("Unknown")
+            None => String::from("Unknown"),
         };
 
         let inbound_username = match inbound_username {
             Some(iu) => iu,
-            None => String::from("Unknown")
+            None => String::from("Unknown"),
         };
 
         let fees = fees.unwrap_or_else(|| Money::new(inbound_account.currency, None));
@@ -800,7 +800,6 @@ impl BankEngine {
                 return;
             }
         };
-
 
         let inbound_uid = inbound_user.uid as u64;
         if inbound_uid == outbound_uid {
@@ -1685,11 +1684,11 @@ impl BankEngine {
                     };
 
                     let outbound_username = match User::get_by_id(&psql_connection, uid as i32) {
-                            Ok(u) => u.username,
-                            Err(_) => {
-                                slog::error!(self.logger, "Error whilst trying to get outbound username");
-                                return
-                            },
+                        Ok(u) => u.username,
+                        Err(_) => {
+                            slog::error!(self.logger, "Error whilst trying to get outbound username");
+                            return;
+                        }
                     };
 
                     let mut inbound_username = String::from("Unknown");
@@ -1699,39 +1698,33 @@ impl BankEngine {
                         let recipient = msg.recipient.clone().unwrap();
                         let address: Vec<&str> = recipient.split("@").collect();
 
-                        let username = if address.len() >= 1 {
-                            address[0].to_string()
-                        } else {
-                            return;
-                        };
-
-                        let is_internal = match User::get_by_username(&psql_connection, username.clone()) {
-                            Ok(_) => true,
-                            Err(_) => false,
-                        };
-
-                        if is_internal {
-                            msg.recipient = Some(username);
-                            self.make_internal_tx(msg, listener);
-                            return;
-                        }
-
-                        let domain = if address.len() == 2 {
-                            address[1].to_string()
-                        } else {
-                            return;
-                        };
-
-                        // Making sure this address has generated a payment request.
-                        if msg.payment_request.is_some() {
-                            inbound_username = recipient.clone();
-                            let ln_address = models::ln_addresses::InsertableLnAddress {
-                                username: recipient,
-                                domain,
+                        if address.len() >= 1 {
+                            let username = address[0].to_string();
+                            let is_internal = match User::get_by_username(&psql_connection, username.clone()) {
+                                Ok(_) => true,
+                                Err(_) => false,
                             };
-                            if ln_address.insert(&psql_connection).is_err() {
-                                slog::warn!(self.logger, "Wasn't able to insert external ln address");
-                            };
+
+                            if is_internal {
+                                msg.recipient = Some(username);
+                                self.make_internal_tx(msg, listener);
+                                return;
+                            }
+
+                            if address.len() == 2 {
+                                let domain = address[1].to_string();
+                                // Making sure this address has generated a payment request.
+                                if msg.payment_request.is_some() {
+                                    inbound_username = recipient.clone();
+                                    let ln_address = models::ln_addresses::InsertableLnAddress {
+                                        username: recipient,
+                                        domain,
+                                    };
+                                    if ln_address.insert(&psql_connection).is_err() {
+                                        slog::warn!(self.logger, "Wasn't able to insert external ln address");
+                                    };
+                                }
+                            }
                         }
                     }
 
@@ -2014,7 +2007,7 @@ impl BankEngine {
                                     None,
                                     Some(String::from("ExternalPayment")),
                                     Some(format!("{}@kollider.xyz", outbound_username)),
-                                    Some(inbound_username)
+                                    Some(inbound_username),
                                 )
                                 .is_err()
                             {
@@ -2060,7 +2053,7 @@ impl BankEngine {
                                     None,
                                     Some(String::from("ExternalPayment")),
                                     Some(format!("{}@kollider.xyz", outbound_username)),
-                                    Some(inbound_username)
+                                    Some(inbound_username),
                                 )
                                 .is_err()
                             {
