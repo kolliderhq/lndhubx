@@ -68,11 +68,16 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
 
     let mut synth_dealer = DealerEngine::new(settings.clone(), ws_client);
 
-    let influx_client = Client::new(
-        settings.influx_host.clone(),
-        settings.influx_org.clone(),
-        settings.influx_token.clone(),
-    );
+    let influx_client = match settings.clone().influx_host {
+        Some(host) => {
+            Some(Client::new(
+                host,
+            settings.influx_org.clone(),
+            settings.influx_token.clone(),
+            ))
+        },
+        None => None
+    };
 
     let mut listener = |msg: Message| {
         utils::xzmq::send_as_bincode(&bank_sender, &msg);
@@ -113,7 +118,9 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
                 synth_dealer.check_risk(&mut listener);
                 last_risk_check = Instant::now();
             }
-            insert_dealer_state(&synth_dealer, &influx_client, &settings.influx_bucket.clone()).await;
+            if influx_client.is_some() {
+                insert_dealer_state(&synth_dealer, &influx_client.as_ref().unwrap(), &settings.influx_bucket.clone()).await;
+            }
         }
 
         if last_health_check.elapsed().as_secs() > 5 {

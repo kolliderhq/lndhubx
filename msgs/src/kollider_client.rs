@@ -207,7 +207,7 @@ pub struct TradableSymbol {
     pub contract_size: Decimal,
     pub max_leverage: Decimal,
     pub base_margin: Decimal,
-    pub maintenance_margin: Decimal,
+    pub liquidation_fee: Decimal,
     pub is_inverse_priced: bool,
     pub price_dp: u32,
     pub underlying_symbol: Symbol,
