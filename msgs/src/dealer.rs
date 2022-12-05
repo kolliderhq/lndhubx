@@ -65,6 +65,7 @@ pub struct FiatDepositRequest {
     pub req_id: RequestId,
     pub amount: Money,
     pub currency: Currency,
+    pub payment_request: String,
     pub uid: UserId,
 }
 
@@ -78,6 +79,7 @@ pub struct FiatDepositResponse {
     pub req_id: RequestId,
     pub amount: Money,
     pub rate: Option<Rate>,
+    pub payment_request: String,
     pub currency: Currency,
     pub uid: UserId,
     pub error: Option<FiatDepositResponseError>,
