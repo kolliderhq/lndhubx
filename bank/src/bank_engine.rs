@@ -1696,22 +1696,18 @@ impl BankEngine {
                         let address: Vec<&str> = recipient.split("@").collect();
 
                         if address.len() >= 1 {
+
                             let username = address[0].to_string();
+
                             let is_internal = match User::get_by_username(&psql_connection, username.clone()) {
                                 Ok(_) => true,
                                 Err(_) => false,
                             };
 
-                            if is_internal {
-                                msg.recipient = Some(username);
-                                self.make_internal_tx(msg, listener);
-                                return;
-                            }
-
                             if address.len() == 2 {
                                 let domain = address[1].to_string();
                                 // Making sure this address has generated a payment request.
-                                if msg.payment_request.is_some() {
+                                if msg.payment_request.is_some() && domain != String::from("kollider.me") {
                                     inbound_username = recipient.clone();
                                     let ln_address = models::ln_addresses::InsertableLnAddress {
                                         username: recipient,
@@ -1720,8 +1716,21 @@ impl BankEngine {
                                     if ln_address.insert(&psql_connection).is_err() {
                                         slog::warn!(self.logger, "Wasn't able to insert external ln address");
                                     };
+                                } else if domain == String::from("kollider.me") {
+                                    if is_internal {
+                                        msg.recipient = Some(username);
+                                        self.make_internal_tx(msg, listener);
+                                        return;
+                                    }
+                                }
+                            } else {
+                                if is_internal {
+                                    msg.recipient = Some(username);
+                                    self.make_internal_tx(msg, listener);
+                                    return;
                                 }
                             }
+
                         }
                     }
 
