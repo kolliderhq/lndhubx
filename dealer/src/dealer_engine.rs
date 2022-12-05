@@ -47,7 +47,7 @@ pub struct DealerEngineSettings {
     pub kollider_ws_url: String,
     pub logging_settings: LoggingSettings,
     // pub hedge_settings: HashMap<Currency, HedgeSettings>,
-    pub influx_host: String,
+    pub influx_host: Option<String>,
     pub influx_org: String,
     pub influx_bucket: String,
     pub influx_token: String,
