@@ -1197,6 +1197,7 @@ impl BankEngine {
                             metadata: msg.metadata.clone(),
                             rate: None,
                             payment_request: None,
+                            payment_hash: None,
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
                             account_id: None,
@@ -1224,6 +1225,7 @@ impl BankEngine {
                             metadata: msg.metadata.clone(),
                             rate: None,
                             payment_request: None,
+                            payment_hash: None,
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
                             account_id: None,
@@ -1248,6 +1250,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: None,
@@ -1272,6 +1275,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: None,
@@ -1301,6 +1305,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: Some(target_account.account_id),
@@ -1319,31 +1324,6 @@ impl BankEngine {
 
                     if target_account.currency != msg.currency {
                         msg.target_account_currency = Some(target_account.currency);
-                    }
-
-                    let deposit_limit = self
-                        .deposit_limits
-                        .get(&currency)
-                        .unwrap_or_else(|| panic!("Failed to get deposit limits for {}", currency));
-                    // Check whether deposit limit is exceeded.
-                    if target_account.balance + amount.value > *deposit_limit {
-                        let invoice_response = InvoiceResponse {
-                            amount,
-                            req_id: msg.req_id,
-                            uid: msg.uid,
-                            rate: None,
-                            meta: msg.meta.clone(),
-                            metadata: msg.metadata.clone(),
-                            payment_request: None,
-                            currency: msg.currency,
-                            target_account_currency: msg.target_account_currency,
-                            account_id: Some(target_account.account_id),
-                            error: Some(InvoiceResponseError::DepositLimitExceeded),
-                            fees: None,
-                        };
-                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
                     }
 
                     // If user wants to deposit another currency we have to go through the dealer.
@@ -1387,6 +1367,7 @@ impl BankEngine {
                                 rate: None,
                                 meta: msg.meta.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 metadata: msg.metadata.clone(),
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
@@ -1406,7 +1387,8 @@ impl BankEngine {
                             meta: msg.meta,
                             metadata: msg.metadata.clone(),
                             rate: None,
-                            payment_request: Some(invoice.payment_request),
+                            payment_request: Some(invoice.payment_request.clone()),
+                            payment_hash: Some(invoice.payment_hash),
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
@@ -1450,6 +1432,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: None,
@@ -1474,6 +1457,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: None,
@@ -1506,6 +1490,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: Some(target_account.account_id),
@@ -1538,6 +1523,7 @@ impl BankEngine {
                             meta: msg.meta.clone(),
                             metadata: msg.metadata.clone(),
                             payment_request: None,
+                            payment_hash: None,
                             currency,
                             target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),
@@ -1571,6 +1557,7 @@ impl BankEngine {
                                 meta: msg.meta.clone(),
                                 metadata: msg.metadata.clone(),
                                 payment_request: None,
+                                payment_hash: None,
                                 currency: msg.currency,
                                 target_account_currency: msg.target_account_currency,
                                 account_id: Some(target_account.account_id),
@@ -1589,7 +1576,8 @@ impl BankEngine {
                             meta: msg.meta.clone(),
                             metadata: msg.metadata.clone(),
                             rate: msg.rate.clone(),
-                            payment_request: Some(invoice.payment_request),
+                            payment_request: Some(invoice.payment_request.clone()),
+                            payment_hash: Some(invoice.payment_hash),
                             currency: msg.currency,
                             target_account_currency: msg.target_account_currency,
                             account_id: Some(target_account.account_id),

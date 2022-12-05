@@ -81,6 +81,7 @@ pub struct InvoiceRequest {
 pub struct InvoiceResponse {
     pub req_id: RequestId,
     pub uid: UserId,
+    pub payment_hash: Option<String>,
     pub payment_request: Option<String>,
     pub meta: String,
     pub metadata: Option<String>,

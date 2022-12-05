@@ -515,6 +515,7 @@ impl DealerEngine {
                         currency: invoice_request.currency,
                         target_account_currency: invoice_request.target_account_currency,
                         payment_request: None,
+                        payment_hash: None,
                         account_id: None,
                         error: None,
                         fees: None,
