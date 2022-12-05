@@ -735,6 +735,7 @@ impl DealerEngine {
                     uid: msg.uid,
                     amount: msg.amount,
                     currency: msg.currency,
+                    payment_request: msg.payment_request,
                     rate: None,
                     error: None,
                     fees: None,
