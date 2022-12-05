@@ -1180,7 +1180,7 @@ impl BankEngine {
                 }
             }
             Message::Api(msg) => match msg {
-                Api::InvoiceRequest(msg) => {
+                Api::InvoiceRequest(mut msg) => {
                     slog::warn!(self.logger, "Received invoice request: {:?}", msg);
 
                     if !self.check_deposit_request_rate_limit(msg.uid) {
@@ -1310,6 +1310,10 @@ impl BankEngine {
                         // If user does not specify an account_id we select or create one for him.
                         let account = user_account.get_default_account(msg.currency, None);
                         target_account = account;
+                    }
+
+                    if target_account.currency != msg.currency {
+                        msg.target_account_currency = Some(target_account.currency);
                     }
 
                     let deposit_limit = self
