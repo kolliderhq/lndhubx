@@ -1059,7 +1059,7 @@ impl BankEngine {
                 };
 
                 // Check whether we know about this invoice.
-                if let Ok(invoice) = Invoice::get_by_payment_request(&c, msg.payment_request.clone()) {
+                if let Ok(mut invoice) = Invoice::get_by_payment_request(&c, msg.payment_request.clone()) {
                     let is_dealer_invoice = invoice.uid as UserId == DEALER_UID;
 
                     if is_dealer_invoice {
@@ -1070,22 +1070,22 @@ impl BankEngine {
                     // Value of the depoist.
                     let value = Money::from_sats(Decimal::new(invoice.value as i64, 0));
 
-                    let currency = match invoice.currency {
-                        Some(c) => match Currency::from_str(&c) {
+                    let currency = match &invoice.currency {
+                        Some(curr) => match Currency::from_str(curr) {
                             Ok(converted) => converted,
                             Err(err) => {
-                                panic!("Failed to convert {} into a valid currency, reason: {:?}", c, err);
+                                panic!("Failed to convert {} into a valid currency, reason: {:?}", curr, err);
                             }
                         },
                         None => Currency::BTC,
                     };
 
                     // If user wants to deposit into a fiat account.
-                    let target_account_currency = match invoice.target_account_currency {
-                        Some(c) => match Currency::from_str(&c) {
+                    let target_account_currency = match &invoice.target_account_currency {
+                        Some(curr) => match Currency::from_str(curr) {
                             Ok(converted) => converted,
                             Err(err) => {
-                                panic!("Failed to convert {} into a valid currency, reason: {:?}", c, err);
+                                panic!("Failed to convert {} into a valid currency, reason: {:?}", curr, err);
                             }
                         },
                         None => Currency::BTC,
@@ -1176,6 +1176,11 @@ impl BankEngine {
                         .is_err()
                     {
                         return;
+                    }
+                    invoice.settled = true;
+                    invoice.settled_date = utils::time::time_now() as i64;
+                    if invoice.update(&c).is_err() {
+                        slog::error!(self.logger, "Unable to update invoice");
                     }
                 }
             }
@@ -2669,7 +2674,7 @@ impl BankEngine {
                         let payment_amount = payment_response.amount.clone().unwrap();
 
                         let excess_fees_in_btc =
-                            res.amount.value - (payment_amount.value + fees_payed_in_btc.unwrap().value);
+                            res.amount.value - (payment_amount.value + fees_payed_in_btc.clone().unwrap().value);
 
                         let excess_fees = Money::new(Currency::BTC, Some(excess_fees_in_btc));
 
@@ -2722,6 +2727,8 @@ impl BankEngine {
                         };
 
                         invoice.settled = true;
+                        invoice.settled_date = utils::time::time_now() as i64;
+                        invoice.fees = Some(fees_payed_in_btc.unwrap().try_sats().unwrap().to_i64().unwrap());
 
                         if invoice.update(&psql_connection).is_err() {
                             slog::error!(self.logger, "Error updating updating invoices!");
