@@ -51,7 +51,7 @@ impl Invoice {
     }
 
     pub fn update(&self, conn: &diesel::PgConnection) -> Result<usize, DieselError> {
-        diesel::update(invoices::dsl::invoices.filter(invoices::account_id.eq(self.account_id.clone())))
+        diesel::update(invoices::dsl::invoices.filter(invoices::payment_hash.eq(self.payment_hash.clone())))
             .set(self)
             .execute(conn)
     }
