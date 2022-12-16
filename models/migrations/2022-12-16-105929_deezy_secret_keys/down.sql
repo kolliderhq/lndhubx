@@ -1,0 +1,1 @@
+DROP TABLE deezy_secret_keys;

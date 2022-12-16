@@ -11,6 +11,27 @@ table! {
 }
 
 table! {
+    deezy_btc_ln_swaps (id) {
+        id -> Int4,
+        created_at -> Nullable<Timestamp>,
+        uid -> Int4,
+        ln_address -> Text,
+        secret_access_key -> Text,
+        btc_address -> Text,
+        sig -> Text,
+        webhook_url -> Nullable<Text>,
+    }
+}
+
+table! {
+    deezy_secret_keys (secret_key) {
+        secret_key -> Text,
+        created_at -> Nullable<Timestamp>,
+        uid -> Int4,
+    }
+}
+
+table! {
     internal_user_mappings (username) {
         username -> Text,
         uid -> Int4,
@@ -113,6 +134,8 @@ joinable!(internal_user_mappings -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
+    deezy_btc_ln_swaps,
+    deezy_secret_keys,
     internal_user_mappings,
     invoices,
     ln_addresses,

@@ -15,9 +15,9 @@ use rust_decimal::prelude::Decimal;
 use rust_decimal_macros::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
 use uuid::Uuid;
 use xerror::api::*;
-use std::collections::HashMap;
 
 use msgs::api::*;
 use msgs::*;
@@ -29,9 +29,9 @@ use crate::WebSender;
 
 use models::invoices::*;
 use models::ln_addresses::*;
-use models::transactions::Transaction;
 use models::summary_transactions::SummaryTransaction;
 use models::users::{ShareableUser, User};
+use models::deezy_stuff::*;
 
 const MINIMUM_PATTERN_LENGTH: usize = 1;
 
@@ -110,7 +110,7 @@ pub async fn pay_invoice(
         None => Currency::BTC,
     };
 
-    let money = if let Some(a) =  pay_invoice_data.amount {
+    let money = if let Some(a) = pay_invoice_data.amount {
         Some(Money::new(currency, Some(a)))
     } else {
         None
@@ -505,10 +505,7 @@ pub struct SearchUserParams {
 }
 
 #[get("/search_ln_addresses")]
-pub async fn search_ln_addresses(
-    pool: WebDbPool,
-    params: Query<SearchUserParams>,
-) -> Result<HttpResponse, ApiError> {
+pub async fn search_ln_addresses(pool: WebDbPool, params: Query<SearchUserParams>) -> Result<HttpResponse, ApiError> {
     if params.text.len() < MINIMUM_PATTERN_LENGTH {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
@@ -557,15 +554,11 @@ pub struct CheckPaymentParams {
 
 #[derive(Serialize)]
 pub struct CheckPaymentHashResponse {
-    paid: bool
+    paid: bool,
 }
 
 #[get("/checkpayment")]
-pub async fn check_payment(
-    pool: WebDbPool,
-    params: Query<CheckPaymentParams>,
-) -> Result<HttpResponse, ApiError> {
-
+pub async fn check_payment(pool: WebDbPool, params: Query<CheckPaymentParams>) -> Result<HttpResponse, ApiError> {
     let payment_hash = params.payment_hash.clone();
 
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
@@ -575,9 +568,7 @@ pub async fn check_payment(
         Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
     };
 
-    let response = CheckPaymentHashResponse {
-        paid: invoice.settled
-    };
+    let response = CheckPaymentHashResponse { paid: invoice.settled };
 
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
@@ -593,7 +584,11 @@ pub struct KeySendData {
 }
 
 #[post("/keysend")]
-pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeySendData>) -> Result<HttpResponse, ApiError> {
+pub async fn keysend(
+    auth_data: AuthData,
+    web_sender: WebSender,
+    data: Json<KeySendData>,
+) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
     let uid = auth_data.uid as u64;
@@ -643,4 +638,128 @@ pub async fn keysend(auth_data: AuthData, web_sender: WebSender, data: Json<KeyS
         return Ok(HttpResponse::Ok().json(&payment_response));
     }
     Err(ApiError::Comms(CommsError::ServerResponseTimeout))
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+pub struct BtcLnSwapResponse{
+    address: String,
+    commitment: String,
+    signature: String,
+    secret_access_key: String,
+}
+
+#[get("/get_onchain_address")]
+pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+
+    let client = reqwest::Client::new();
+    let mut map = HashMap::new();
+    let ln_address = format!("{}@kollider.me", user.username);
+
+    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid as i32) {
+        map.insert("secret_access_key".to_string(), sk.secret_key);
+    }
+
+    map.insert("lnurl_or_lnaddress".to_string(), ln_address.clone());
+
+    let res = client
+        .post("https://api.deezy.io/v1/source")
+        .json(&map)
+        .send();
+
+    let mut response = match res {
+        Ok(r) => r,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    let body = match response.text() {
+        Ok(b) => b,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    let swap_response: BtcLnSwapResponse = match serde_json::from_str(&body) {
+        Ok(sp) => sp,
+        Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
+    };
+
+    let insertable_sk = InsertableDeezySecretKey {
+        secret_key: swap_response.secret_access_key.clone(),
+        uid: user.uid,
+    };
+
+    if let Err(_) = insertable_sk.insert(&conn) {
+        dbg!("error inserting sk for user");
+    }
+
+    let insertable_swap = InsertableDeezyBtcLnSwap {
+        uid: user.uid,
+        secret_access_key: swap_response.secret_access_key.clone(),
+        ln_address: ln_address,
+        btc_address: swap_response.address.clone(),
+        sig: swap_response.signature.clone(),
+        webhook_url: None,
+    };
+
+    if let Err(_) = insertable_swap.insert(&conn) {
+        dbg!("Error inserting swap request.");
+    }
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(&swap_response))
+}
+
+#[get("/get_btc_ln_swap_state")]
+pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+
+    let client = reqwest::Client::new();
+    let mut map = HashMap::new();
+
+    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid as i32) {
+        map.insert("secret_access_key".to_string(), sk.secret_key);
+    } else {
+        return Err(ApiError::Db(DbError::UserDoesNotExist))
+    }
+
+    dbg!(&map);
+
+    let res = client
+        .post("https://api.deezy.io/v1/source/lookup")
+        .json(&map)
+        .send();
+
+    let mut response = match res {
+        Ok(r) => r,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    let body = match response.text() {
+        Ok(b) => b,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+    dbg!(&body);
+
+    // let swap_response: BtcLnSwapResponse = match serde_json::from_str(&body) {
+    //     Ok(sp) => sp,
+    //     Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
+    // };
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(json!({})))
 }

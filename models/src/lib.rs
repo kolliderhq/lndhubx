@@ -14,6 +14,7 @@ pub mod transactions;
 pub mod summary_transactions;
 pub mod users;
 pub mod ln_addresses;
+pub mod deezy_stuff;
 
 cfg_if::cfg_if! {
     if #[cfg(debug_assertions)] {
