@@ -671,6 +671,7 @@ pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result
 
     let res = client
         .post("https://api.deezy.io/v1/source")
+        .header("x-api-token", "")
         .json(&map)
         .send();
 
@@ -740,6 +741,7 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
 
     let res = client
         .post("https://api.deezy.io/v1/source/lookup")
+
         .json(&map)
         .send();
 
@@ -762,4 +764,71 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
         .json(json!({})))
+}
+
+#[derive(Deserialize)]
+pub struct OnchainSwapData {
+    pub amount: u64,
+    pub address: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DeezySwapRequestBody {
+    pub amount_sats: u64,
+    pub on_chain_address: String,
+    pub on_chain_sats_per_vbyte: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LnBtcSwapResponse{
+    pub bolt11_invoice: String,
+    pub fee_sats: u64,
+}
+
+#[post("/make_onchain_swap")]
+pub async fn make_onchain_swap(pool: WebDbPool, auth_data: AuthData, data: Json<OnchainSwapData>) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    let user = match User::get_by_id(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+
+    let client = reqwest::Client::new();
+
+    let body = DeezySwapRequestBody {
+        amount_sats: data.amount,
+        on_chain_address: data.address.clone(),
+        on_chain_sats_per_vbyte: 2,
+    };
+
+    let res = client
+        .post("https://api.deezy.io/v1/swap")
+        .body(serde_json::to_string(&body).unwrap())
+        .header("x-api-token", "")
+        .header("Content-Type", "application/json")
+        .send();
+
+    let mut response = match res {
+        Ok(r) => r,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    let body = match response.text() {
+        Ok(b) => b,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    dbg!(&body);
+
+    let swap_response: LnBtcSwapResponse= match serde_json::from_str(&body) {
+        Ok(sp) => sp,
+        Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
+    };
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(swap_response))
 }

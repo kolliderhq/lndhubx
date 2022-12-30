@@ -88,6 +88,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::user::check_payment)
             .service(routes::user::get_onchain_address)
             .service(routes::user::get_btc_ln_swap_state)
+            .service(routes::user::make_onchain_swap)
             .service(routes::lnurl::create_lnurl_withdrawal)
             .service(routes::lnurl::get_lnurl_withdrawal)
             .service(routes::lnurl::pay_lnurl_withdrawal)
