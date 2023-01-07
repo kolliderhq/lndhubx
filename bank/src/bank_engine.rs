@@ -53,7 +53,6 @@ pub struct BankEngineSettings {
     pub reserve_ratio: Decimal,
     pub withdrawal_only: bool,
     pub logging_settings: LoggingSettings,
-    pub deposit_limits: HashMap<String, Decimal>,
     pub influx_host: String,
     pub influx_org: String,
     pub influx_bucket: String,
@@ -108,7 +107,6 @@ pub struct BankEngine {
     pub external_tx_fee: Decimal,
     pub reserve_ratio: Decimal,
     pub withdrawal_only: bool,
-    pub deposit_limits: HashMap<Currency, Decimal>,
     pub logger: slog::Logger,
     pub tx_seq: u64,
     pub lnurl_withdrawal_requests: HashMap<Uuid, (u64, PaymentRequest)>,
@@ -146,17 +144,6 @@ impl BankEngine {
             reserve_ratio: settings.reserve_ratio,
             ln_network_max_fee: settings.ln_network_max_fee,
             withdrawal_only: settings.withdrawal_only,
-            deposit_limits: settings
-                .deposit_limits
-                .into_iter()
-                .map(|(currency, limit)| {
-                    (
-                        Currency::from_str(&currency)
-                            .unwrap_or_else(|_| panic!("Failed to convert {} into a valid currency", currency)),
-                        limit,
-                    )
-                })
-                .collect::<HashMap<Currency, Decimal>>(),
             logger,
             tx_seq: 0,
             lnurl_withdrawal_requests: HashMap::new(),
@@ -1537,32 +1524,6 @@ impl BankEngine {
                     }
 
                     let currency = msg.currency;
-                    let deposit_limit = self
-                        .deposit_limits
-                        .get(&currency)
-                        .unwrap_or_else(|| panic!("Failed to get deposit limit for {}", currency));
-
-                    // Check whether deposit limit is exceeded.
-                    if target_account.balance + msg.amount.value > *deposit_limit {
-                        let invoice_response = InvoiceResponse {
-                            amount: money,
-                            req_id: msg.req_id,
-                            uid: msg.uid,
-                            rate: None,
-                            meta: msg.meta.clone(),
-                            metadata: msg.metadata.clone(),
-                            payment_request: None,
-                            payment_hash: None,
-                            currency,
-                            target_account_currency: msg.target_account_currency,
-                            account_id: Some(target_account.account_id),
-                            error: Some(InvoiceResponseError::DepositLimitExceeded),
-                            fees: None,
-                        };
-                        let msg = Message::Api(Api::InvoiceResponse(invoice_response));
-                        listener(msg, ServiceIdentity::Api);
-                        return;
-                    }
 
                     if let Ok(mut invoice) = self
                         .lnd_connector
