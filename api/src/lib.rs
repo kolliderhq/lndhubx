@@ -95,6 +95,9 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::lnurl::lnurl_pay_address)
             .service(routes::lnurl::pay_address)
             .service(routes::external::get_spot_prices)
+            .service(routes::nostr::set_nostr_pubkey)
+            .service(routes::nostr::update_nostr_pubkey)
+            .service(routes::nostr::nostr_nip05)
     })
     .bind(endpoint)?
     .run()

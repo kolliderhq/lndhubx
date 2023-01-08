@@ -70,6 +70,14 @@ table! {
 }
 
 table! {
+    nostr_public_keys (pubkey) {
+        created_at -> Nullable<Timestamp>,
+        pubkey -> Text,
+        uid -> Int4,
+    }
+}
+
+table! {
     pre_signups (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -129,6 +137,7 @@ table! {
     }
 }
 
+joinable!(nostr_public_keys -> users (uid));
 joinable!(accounts -> users (uid));
 joinable!(internal_user_mappings -> users (uid));
 
@@ -139,6 +148,7 @@ allow_tables_to_appear_in_same_query!(
     internal_user_mappings,
     invoices,
     ln_addresses,
+    nostr_public_keys,
     pre_signups,
     summary_transactions,
     transactions,
