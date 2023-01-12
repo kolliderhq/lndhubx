@@ -1,10 +1,15 @@
 use reqwest;
 
-use actix_web::{get, HttpResponse};
+use actix_web::{get, HttpResponse, web};
 
 use serde::{Deserialize, Serialize};
 use rust_decimal::prelude::*;
 use xerror::api::*;
+
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+use crate::PriceCache;
 
 #[derive(Deserialize, Debug, Serialize)]
 pub struct FtxSpotPrice {
@@ -22,7 +27,7 @@ pub struct FtxSpotResponse {
 }
 
 #[get("/get_spot_prices")]
-pub async fn get_spot_prices() -> Result<HttpResponse, ApiError> {
+pub async fn get_spot_prices(price_cache: web::Data<Arc<RwLock<PriceCache>>>) -> Result<HttpResponse, ApiError> {
     let available_pairs = vec!["BTCUSDT", "BTCEUR", "EURUSDT"];
     let res = reqwest::get("https://api.binance.com/api/v3/ticker/24hr");
     let mut response = match res {

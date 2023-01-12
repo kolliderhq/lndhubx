@@ -6,8 +6,12 @@ use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::collections::HashMap;
 
 use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use core_types::DbPool;
@@ -27,6 +31,13 @@ pub struct ApiSettings {
     quota_replenishment_interval_millis: u64,
     quota_size: u64,
 }
+
+pub struct PriceCache {
+    pub price_cache: HashMap<String, f64>,
+    pub last_updted: std::time::Instant,
+}
+
+type SharedPriceCache = Arc<Mutex<PriceCache>>;
 
 pub type WebDbPool = web::Data<DbPool>;
 pub type WebSender = web::Data<mpsc::Sender<Envelope>>;
@@ -55,6 +66,8 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
     let replenishment_interval = settings.quota_replenishment_interval_millis;
     let max_requests = settings.quota_size as usize;
 
+    let price_cache: SharedPriceCache = Arc::default();
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -70,6 +83,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             )
             .app_data(Data::new(pool.clone()))
             .app_data(Data::new(tx.clone()))
+            .app_data(Data::new(price_cache.clone()))
             .service(routes::auth::create)
             .service(routes::auth::auth)
             .service(routes::auth::whoami)
