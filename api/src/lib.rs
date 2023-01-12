@@ -6,11 +6,11 @@ use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::collections::HashMap;
+use rust_decimal::prelude::*;
 
 use tokio::sync::mpsc;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
@@ -32,12 +32,28 @@ pub struct ApiSettings {
     quota_size: u64,
 }
 
-pub struct PriceCache {
-    pub price_cache: HashMap<String, f64>,
-    pub last_updted: std::time::Instant,
+#[derive(Deserialize, Debug, Serialize, Clone)]
+pub struct FtxSpotPrice {
+    symbol: String,
+    #[serde(alias = "lastPrice")]
+    price: Option<Decimal>,
+    #[serde(alias = "priceChangePercent")]
+    change_24h: Option<Decimal>,
 }
 
-type SharedPriceCache = Arc<Mutex<PriceCache>>;
+pub struct PriceCache {
+    pub spot_prices: Vec<FtxSpotPrice>,
+    pub last_updated: std::time::Instant,
+}
+
+impl Default for PriceCache {
+    fn default() -> Self {
+        Self {
+            spot_prices: Vec::new(),
+            last_updated: std::time::Instant::now(),
+        }
+    }
+}
 
 pub type WebDbPool = web::Data<DbPool>;
 pub type WebSender = web::Data<mpsc::Sender<Envelope>>;
@@ -66,7 +82,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
     let replenishment_interval = settings.quota_replenishment_interval_millis;
     let max_requests = settings.quota_size as usize;
 
-    let price_cache: SharedPriceCache = Arc::default();
+    let price_cache = Arc::new(RwLock::new(PriceCache::default()));
 
     HttpServer::new(move || {
         App::new()
