@@ -128,6 +128,19 @@ table! {
 }
 
 table! {
+    user_profiles (uid) {
+        uid -> Int4,
+        email -> Nullable<Text>,
+        nostr_notifications -> Nullable<Bool>,
+        email_notifications -> Nullable<Bool>,
+        img_url -> Nullable<Text>,
+        twitter_handle -> Nullable<Text>,
+        is_twitter_verified -> Nullable<Bool>,
+        is_email_verified -> Nullable<Bool>,
+    }
+}
+
+table! {
     users (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -137,9 +150,10 @@ table! {
     }
 }
 
+joinable!(internal_user_mappings -> users (uid));
 joinable!(nostr_public_keys -> users (uid));
 joinable!(accounts -> users (uid));
-joinable!(internal_user_mappings -> users (uid));
+joinable!(user_profiles -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
@@ -152,5 +166,6 @@ allow_tables_to_appear_in_same_query!(
     pre_signups,
     summary_transactions,
     transactions,
+    user_profiles,
     users,
 );
