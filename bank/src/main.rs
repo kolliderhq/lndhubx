@@ -29,9 +29,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli_socket = context.create_response(&settings.bank_cli_resp_address);
 
-    let res = nostr_client.send_private_message(&my_identity, pubkey, "Hello from kollider!", 0);
-    dbg!(res);
-
     start(
         settings,
         lnd_connector_settings,
