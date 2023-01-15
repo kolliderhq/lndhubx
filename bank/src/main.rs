@@ -6,14 +6,6 @@ use utils::xzmq::SocketContext;
 use bank::{bank_engine::*, start};
 use lnd_connector::connector::LndConnectorSettings;
 
-use std::{
-    str::FromStr,
-    sync::{Arc, Mutex},
-    thread,
-};
-
-use nostr_rust::{nostr_client::Client, req::ReqFilter, Identity, Message, events::extract_events_ws, utils::parse_content_tags};
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = utils::config::get_config_from_env::<BankEngineSettings>().expect("Failed to load settings.");
