@@ -5,7 +5,7 @@ use diesel::result::Error as DieselError;
 use serde::{Deserialize, Serialize};
 
 
-#[derive(Queryable, Identifiable, Debug, Serialize)]
+#[derive(Queryable, Identifiable, Debug, Serialize, Deserialize)]
 #[primary_key(uid)]
 pub struct UserProfile {
     pub uid: i32,

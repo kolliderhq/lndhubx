@@ -22,7 +22,7 @@ pub async fn get_spot_prices(price_cache: web::Data<Arc<RwLock<PriceCache>>>) ->
     let available_pairs = vec!["BTCUSDT", "BTCEUR", "EURUSDT"];
     let last_updated = &(**price_cache).read().await.last_updated.clone();
 
-    let spot_prices = if last_updated.elapsed().as_secs() > 300 {
+    let spot_prices = if last_updated.elapsed().as_secs() > 5 {
         let res = reqwest::get("https://api.binance.com/api/v3/ticker/24hr");
         let mut response = match res {
             Ok(r) => r,

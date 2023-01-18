@@ -35,8 +35,42 @@ pub async fn get_user_profile(pool: WebDbPool, auth_data: AuthData) -> Result<Ht
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-    if let Ok(user_profile) = UserProfile::get_by_uid(&conn, uid as i32) {
-        return Ok(HttpResponse::Ok().json(&user_profile));
+    if let Ok(up) = UserProfile::get_by_uid(&conn, uid as i32) {
+        return Ok(HttpResponse::Ok().json(&up));
+    } else {
+        return Err(ApiError::Db(DbError::UserDoesNotExist))
+    }
+
+}
+
+#[derive(Deserialize)]
+pub struct UpdateProfileData {
+    pub email: Option<String>,
+    pub nostr_notifications: Option<bool>,
+    pub email_notifications: Option<bool>,
+	pub img_url: Option<String>,
+	pub twitter_handle: Option<String>,
+}
+
+#[post("/user_profile")]
+pub async fn user_profile(pool: WebDbPool, auth_data: AuthData, data: Json<UpdateProfileData>) -> Result<HttpResponse, ApiError> {
+
+    let uid = auth_data.uid as u64;
+
+    let update_user_profile = UpdateUserProfile {
+        email: data.email.clone(),
+        nostr_notifications: data.nostr_notifications,
+        email_notifications: data.email_notifications,
+        img_url: data.img_url.clone(),
+        twitter_handle: data.twitter_handle.clone(),
+        is_twitter_verified: None,
+        is_email_verified: None,
+    };
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    if let Ok(_) = update_user_profile.update(&conn, uid as i32) {
+        return Ok(HttpResponse::Ok().json(json!({"status": "ok"})));
     } else {
         return Err(ApiError::Db(DbError::UserDoesNotExist))
     }

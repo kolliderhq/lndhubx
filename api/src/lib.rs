@@ -129,6 +129,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::nostr::update_nostr_pubkey)
             .service(routes::nostr::nostr_nip05)
             .service(routes::user_profile::get_user_profile)
+            .service(routes::user_profile::user_profile)
     })
     .bind(endpoint)?
     .run()
