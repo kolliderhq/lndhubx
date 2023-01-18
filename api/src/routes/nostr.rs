@@ -119,27 +119,27 @@ pub async fn nostr_nip05(pool: WebDbPool, params: Query<Nip05Params>) -> Result<
   return Ok(HttpResponse::Ok().json(resp));
 }
 
-#[derive(Deserialize)]
-pub struct GetNostrProfileParams {
-    ln_address: Option<String>,
-	pubkey: Option<String>
-}
+// #[derive(Deserialize)]
+// pub struct GetNostrProfileParams {
+//     ln_address: Option<String>,
+// 	pubkey: Option<String>
+// }
 
-#[get("/get_nostr_profile")]
-pub async fn get_nostr_profile(pool: WebDbPool, params: Query<GetNostrProfileParams>) -> Result<HttpResponse, ApiError> {
-  let username = params.name.clone();
-  let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+// #[get("/get_nostr_profile")]
+// pub async fn get_nostr_profile(pool: WebDbPool, params: Query<GetNostrProfileParams>) -> Result<HttpResponse, ApiError> {
+//   let username = params.name.clone();
+//   let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-  let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
-    Ok(u) => u,
-    Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
-  };
+//   let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
+//     Ok(u) => u,
+//     Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+//   };
 
-  let resp = json!({
-      "names": json!({
-		format!("{}", username): nostr_pubkey.pubkey
-	  })
-  });
+//   let resp = json!({
+//       "names": json!({
+// 		format!("{}", username): nostr_pubkey.pubkey
+// 	  })
+//   });
 
-  return Ok(HttpResponse::Ok().json(resp));
-}
+//   return Ok(HttpResponse::Ok().json(resp));
+// }
