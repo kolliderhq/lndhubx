@@ -168,6 +168,13 @@ pub async fn start(
             };
         }
 
+        // Receiving msgs from nostr engine.
+        if let Ok(frame) = nostr_recv.recv_msg(1) {
+            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
+                bank_engine.process_msg(message, &mut listener).await;
+            };
+        }
+
         if let Ok(msg) = priority_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
         }

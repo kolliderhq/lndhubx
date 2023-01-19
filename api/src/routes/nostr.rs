@@ -14,6 +14,13 @@ use diesel::result::Error;
 
 use crate::jwt::*;
 use crate::WebDbPool;
+use crate::WebSender;
+use crate::comms::*;
+use uuid::Uuid;
+use msgs::{*, api::*};
+use std::{sync::Arc, time::Duration};
+use tokio::time::timeout;
+use tokio::sync::mpsc;
 
 use models::nostr_public_keys::*;
 use models::users::User;
@@ -119,27 +126,48 @@ pub async fn nostr_nip05(pool: WebDbPool, params: Query<Nip05Params>) -> Result<
   return Ok(HttpResponse::Ok().json(resp));
 }
 
-// #[derive(Deserialize)]
-// pub struct GetNostrProfileParams {
-//     ln_address: Option<String>,
-// 	pubkey: Option<String>
-// }
+#[derive(Deserialize)]
+pub struct GetNostrProfileParams {
+    lightning_address: Option<String>,
+	pubkey: Option<String>
+}
 
-// #[get("/get_nostr_profile")]
-// pub async fn get_nostr_profile(pool: WebDbPool, params: Query<GetNostrProfileParams>) -> Result<HttpResponse, ApiError> {
-//   let username = params.name.clone();
-//   let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+#[get("/get_nostr_profile")]
+pub async fn get_nostr_profile(web_sender: WebSender, params: Query<GetNostrProfileParams>) -> Result<HttpResponse, ApiError> {
+  let req_id = Uuid::new_v4();
 
-//   let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
-//     Ok(u) => u,
-//     Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
-//   };
 
-//   let resp = json!({
-//       "names": json!({
-// 		format!("{}", username): nostr_pubkey.pubkey
-// 	  })
-//   });
+    if params.lightning_address.is_none() && params.pubkey.is_none() {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
 
-//   return Ok(HttpResponse::Ok().json(resp));
-// }
+    let request = NostrProfileRequest{
+        req_id,
+        pubkey: params.pubkey.clone(),
+        lightning_address: params.lightning_address.clone()
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::NostrProfileResponse(response)) if response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::NostrProfileRequest(request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::NostrProfileResponse(response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&response));
+    }
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
+}

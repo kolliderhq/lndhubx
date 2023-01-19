@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use core_types::*;
 use diesel::result::Error as DieselError;
-use models::{accounts, invoices::Invoice, users::User};
+use models::{accounts, invoices::Invoice, nostr_public_keys::NostrPublicKey, user_profiles::UserProfile, users::User};
 
 use msgs::api::*;
 use msgs::bank::*;
@@ -934,6 +934,8 @@ impl BankEngine {
                             None => return,
                         };
 
+                        let currency = msg.currency;
+
                         let (mut inbound_account, inbound_uid) = {
                             let user_account = self
                                 .ledger
@@ -1029,7 +1031,7 @@ impl BankEngine {
                                 BANK_UID,
                                 &inbound_account,
                                 inbound_uid,
-                                value,
+                                value.clone(),
                                 Some(rate),
                                 None,
                                 Some(outbound_txid),
@@ -1048,6 +1050,20 @@ impl BankEngine {
                         invoice.settled_date = utils::time::time_now() as i64;
                         if invoice.update(&c).is_err() {
                             slog::error!(self.logger, "Unable to update invoice");
+                        }
+                        if let Ok(user_profile) = UserProfile::get_by_uid(&c, invoice.uid) {
+                            if user_profile.nostr_notifications.unwrap() {
+                                if let Ok(pk) = NostrPublicKey::get_by_uid(&c, invoice.uid) {
+                                    let text = format!("💸 You just got paid {} {} into your Kollider Wallet! 💰", fiat_value.value, currency);
+                                    let nostr_private_msg = msgs::nostr::NostrPrivateMessage {
+                                        pubkey: pk.pubkey.clone(),
+                                        text: text,
+                                    };
+                                    let msg =
+                                        Message::Nostr(msgs::nostr::Nostr::NostrPrivateMessage(nostr_private_msg));
+                                    listener(msg, ServiceIdentity::Nostr)
+                                }
+                            }
                         }
                     } else {
                         slog::error!(self.logger, "Couldn't find payment request. This should never happen.");
@@ -1181,7 +1197,7 @@ impl BankEngine {
                             BANK_UID,
                             &inbound_account,
                             inbound_uid,
-                            value,
+                            value.clone(),
                             None,
                             None,
                             Some(txid.clone()),
@@ -1199,6 +1215,20 @@ impl BankEngine {
                     invoice.settled_date = utils::time::time_now() as i64;
                     if invoice.update(&c).is_err() {
                         slog::error!(self.logger, "Unable to update invoice");
+                    }
+
+                    if let Ok(user_profile) = UserProfile::get_by_uid(&c, invoice.uid) {
+                        if user_profile.nostr_notifications.unwrap() {
+                            if let Ok(pk) = NostrPublicKey::get_by_uid(&c, invoice.uid) {
+                                let text = format!("💸 You just got paid {} {} into your Kollider Wallet! 💰", value.value, currency);
+                                let nostr_private_msg = msgs::nostr::NostrPrivateMessage {
+                                    pubkey: pk.pubkey.clone(),
+                                    text: text,
+                                };
+                                let msg = Message::Nostr(msgs::nostr::Nostr::NostrPrivateMessage(nostr_private_msg));
+                                listener(msg, ServiceIdentity::Nostr)
+                            }
+                        }
                     }
                 }
             }
@@ -2603,6 +2633,18 @@ impl BankEngine {
                         }));
                         listener(msg, ServiceIdentity::Api);
                     }
+                }
+                Api::NostrProfileRequest(req) => {
+                    let msg = Message::Api(Api::NostrProfileRequest(req));
+                    listener(msg, ServiceIdentity::Nostr);
+                    return;
+                }
+
+                Api::NostrProfileResponse(resp) => {
+                    dbg!(&resp);
+                    let msg = Message::Api(Api::NostrProfileResponse(resp));
+                    listener(msg, ServiceIdentity::Api);
+                    return;
                 }
 
                 _ => {}
