@@ -2590,6 +2590,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "nostr_engine"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "core_types",
+ "crossbeam",
+ "crossbeam-channel",
+ "futures 0.3.24",
+ "influxdb2",
+ "log",
+ "models",
+ "msgs",
+ "nostr_rust",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde 1.0.144",
+ "serde_json",
+ "slog",
+ "tokio 1.21.0",
+ "utils",
+ "uuid 0.8.2",
+ "xerror",
+]
+
+[[package]]
 name = "nostr_rust"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2611,29 +2636,6 @@ dependencies = [
  "tokio-tungstenite",
  "tungstenite 0.18.0",
  "url 2.3.0",
-]
-
-[[package]]
-name = "nostridge"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "core_types",
- "crossbeam",
- "futures 0.3.24",
- "influxdb2",
- "log",
- "models",
- "msgs",
- "nostr_rust",
- "rust_decimal",
- "rust_decimal_macros",
- "serde 1.0.144",
- "slog",
- "tokio 1.21.0",
- "utils",
- "uuid 0.8.2",
- "xerror",
 ]
 
 [[package]]

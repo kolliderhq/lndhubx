@@ -78,6 +78,8 @@ pub async fn start(
     api_sender: ZmqSocket,
     dealer_sender: ZmqSocket,
     dealer_recv: ZmqSocket,
+    nostr_sender: ZmqSocket,
+    nostr_recv: ZmqSocket,
     cli_socket: ZmqSocket,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pool = r2d2::Pool::builder()
@@ -132,6 +134,9 @@ pub async fn start(
             if let Err(err) = priority_tx.send(msg) {
                 panic!("Failed to send priority message: {:?}", err);
             }
+        }
+        ServiceIdentity::Nostr => {
+            utils::xzmq::send_as_bincode(&nostr_sender, &msg);
         }
         _ => {}
     };

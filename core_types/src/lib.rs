@@ -9,6 +9,7 @@ use crate::kollider_client::Side;
 use serde::{Deserialize, Serialize};
 
 pub mod kollider_client;
+pub mod nostr;
 
 pub const SATS_IN_BITCOIN: Decimal = dec!(100000000.0);
 
@@ -192,6 +193,7 @@ pub enum ServiceIdentity {
     BankEngine,
     Dealer,
     Loopback,
+    Nostr,
 }
 
 #[derive(Debug, Clone)]

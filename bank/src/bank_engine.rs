@@ -45,6 +45,8 @@ pub struct BankEngineSettings {
     pub bank_zmq_publish_address: String,
     pub bank_dealer_pull_address: String,
     pub bank_dealer_push_address: String,
+    pub bank_nostr_pull_address: String,
+    pub bank_nostr_push_address: String,
     /// The margin users have to keep on their account to account for network fees.
     pub ln_network_fee_margin: Decimal,
     pub ln_network_max_fee: Decimal,

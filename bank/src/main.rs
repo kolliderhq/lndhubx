@@ -19,6 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dealer_tx = context.create_push(&settings.bank_dealer_push_address);
     let dealer_rx = context.create_pull(&settings.bank_dealer_pull_address);
 
+    let nostr_tx = context.create_push(&settings.bank_nostr_push_address);
+    let nostr_rx = context.create_pull(&settings.bank_nostr_pull_address);
+
     let cli_socket = context.create_response(&settings.bank_cli_resp_address);
 
     start(
@@ -28,6 +31,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_tx,
         dealer_tx,
         dealer_rx,
+        nostr_tx,
+        nostr_rx,
         cli_socket,
     )
     .await

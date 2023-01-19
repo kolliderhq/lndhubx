@@ -48,6 +48,15 @@ pub enum DbError {
 }
 
 #[derive(Debug, Error, Serialize)]
+#[error(display = "An Error has occurred using nostr engine.")]
+pub enum NostrEngineError {
+    #[error(display = "Unable to load profile.")]
+    UnableToLoadProfile,
+    #[error(display = "Unable to send private message.")]
+    UnableToSendPrivateMessage,
+}
+
+#[derive(Debug, Error, Serialize)]
 #[error(display = "An Error has occurred when authenticating.")]
 pub enum CommsError {
     #[error(display = "Unable to send message.")]
@@ -85,6 +94,8 @@ pub enum ApiError {
     Request(RequestError),
     #[error(display = "External error.")]
     External(ExternalError),
+    #[error(display = "Nostr error.")]
+    Nostr(NostrEngineError),
 }
 
 impl error::ResponseError for ApiError {
@@ -113,6 +124,10 @@ impl error::ResponseError for ApiError {
             ApiError::External(external) => match external {
                 ExternalError::FailedToFetchExternalData => HttpResponse::InternalServerError(),
             },
+            ApiError::Nostr(nostr_engine_error) => match nostr_engine_error {
+                NostrEngineError::UnableToLoadProfile => HttpResponse::InternalServerError(),
+                NostrEngineError::UnableToSendPrivateMessage => HttpResponse::InternalServerError(),
+            }
         };
         response_builder.json(json!({ "error": self }))
     }
@@ -143,6 +158,10 @@ impl error::ResponseError for ApiError {
             ApiError::External(external) => match external {
                 ExternalError::FailedToFetchExternalData => StatusCode::INTERNAL_SERVER_ERROR,
             },
+            ApiError::Nostr(nostr_engine_error) => match nostr_engine_error {
+                NostrEngineError::UnableToLoadProfile => StatusCode::INTERNAL_SERVER_ERROR,
+                NostrEngineError::UnableToSendPrivateMessage => StatusCode::INTERNAL_SERVER_ERROR,
+            }
         }
     }
 }

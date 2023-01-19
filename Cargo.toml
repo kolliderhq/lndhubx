@@ -14,5 +14,5 @@ members = [
     "ws_client",
     "cli",
     "actix-ratelimit",
-    "nostridge"
+    "nostr_engine"
 ]

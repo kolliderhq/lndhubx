@@ -1,4 +1,4 @@
-use core_types::*;
+use core_types::{*, nostr::NostrProfile};
 use rust_decimal::prelude::*;
 use std::collections::HashMap;
 
@@ -54,6 +54,13 @@ pub enum QuoteResponseError {
     MarketNotAvailable,
     BTCNotFromTo,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum NostrResponseError {
+    ProfileNotFound,
+    ErrorSendingPrivateMessage,
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueryRouteError {
@@ -326,6 +333,20 @@ pub struct QueryRouteResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrProfileRequest {
+    pub req_id: RequestId,
+    pub pubkey: Option<String>,
+    pub lightning_address: Option<String>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrProfileResponse {
+    pub req_id: RequestId,
+    pub profile: Option<NostrProfile>,
+    pub error: Option<NostrResponseError>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
     InvoiceRequest(InvoiceRequest),
     InvoiceResponse(InvoiceResponse),
@@ -349,4 +370,6 @@ pub enum Api {
     PayLnurlWithdrawalResponse(PayLnurlWithdrawalResponse),
     QueryRouteRequest(QueryRouteRequest),
     QueryRouteResponse(QueryRouteResponse),
+    NostrProfileRequest(NostrProfileRequest),
+    NostrProfileResponse(NostrProfileResponse)
 }
