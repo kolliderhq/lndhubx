@@ -38,7 +38,21 @@ pub async fn get_user_profile(pool: WebDbPool, auth_data: AuthData) -> Result<Ht
     if let Ok(up) = UserProfile::get_by_uid(&conn, uid as i32) {
         return Ok(HttpResponse::Ok().json(&up));
     } else {
-        return Err(ApiError::Db(DbError::UserDoesNotExist))
+        let insertable_user_profile = InsertableUserProfile {
+            uid: uid as i32,
+            email: None,
+            img_url: None,
+            is_email_verified: None,
+            is_twitter_verified: None,
+            twitter_handle: None,
+            nostr_notifications: None,
+            email_notifications: None, 
+        };
+
+        if insertable_user_profile.insert(&conn).is_err() {
+            dbg!("Error inserting user profile");
+        }
+        return Ok(HttpResponse::Ok().json(&insertable_user_profile));
     }
 
 }

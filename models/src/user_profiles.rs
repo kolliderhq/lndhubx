@@ -18,7 +18,7 @@ pub struct UserProfile {
     pub is_email_verified: Option<bool>,
 }
 
-#[derive(Insertable, Debug, Deserialize)]
+#[derive(Insertable, Debug, Deserialize, Serialize)]
 #[table_name = "user_profiles"]
 pub struct InsertableUserProfile {
     pub uid: i32,

@@ -71,7 +71,7 @@ fn main() {
     let mut nostr_profile_cache: HashMap<String, NostrProfile> = HashMap::new();
 
     let my_identity =
-        NostrIdentity::from_str(settings.nostr_private_key).unwrap();
+        NostrIdentity::from_str(&settings.nostr_private_key).unwrap();
 
     let nostr_client = Arc::new(Mutex::new(
         Client::new(vec![
