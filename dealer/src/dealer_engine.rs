@@ -272,7 +272,6 @@ impl DealerEngine {
 
         slog::info!(self.logger, "{:?}", bank_state);
         for (account_id, account) in bank_state.fiat_exposures.into_iter() {
-
             let currency = account.currency;
             let exposure = account.balance;
 
@@ -420,8 +419,7 @@ impl DealerEngine {
                             }
                             Some(quote) => match validate_quote(&quote, &swap_request) {
                                 Ok(_) => {
-                                    let best_rate =
-                                        get_better_rate(quote.rate, current_rate, conversion_info);
+                                    let best_rate = get_better_rate(quote.rate, current_rate, conversion_info);
                                     let best_fees = if let (Some(fees), Some(quote_fees)) = (fees, quote.fees) {
                                         Some(std::cmp::min(fees.value, quote_fees.value))
                                     } else {
@@ -917,7 +915,7 @@ impl DealerEngine {
         Decimal::ONE / (price * self.get_inverse_modifier())
     }
 
-    fn get_rate(&self, amount: Money, conversion_info: ConversionInfo) -> (Option<Rate>, Option<Money>) {
+    pub fn get_rate(&self, amount: Money, conversion_info: ConversionInfo) -> (Option<Rate>, Option<Money>) {
         // Example 1:
         // from: BTC
         // to: USD
@@ -982,7 +980,8 @@ impl DealerEngine {
                                 };
                                 // Fees are paid in the target currency.
                                 let fees = Money {
-                                    value: (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate * ( value_in_fiat / price),
+                                    value: (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
+                                        * (value_in_fiat / price),
                                     currency: conversion_info.to,
                                 };
                                 (Some(rate), Some(fees))
@@ -997,7 +996,6 @@ impl DealerEngine {
     }
 
     fn get_rate_inv(&self, amount: Money, conversion_info: ConversionInfo) -> (Option<Rate>, Option<Money>) {
-
         let maybe_quotes = match conversion_info.side {
             Side::Bid => self.bid_quotes.get(&conversion_info.symbol),
             Side::Ask => self.ask_quotes.get(&conversion_info.symbol),
@@ -1006,7 +1004,6 @@ impl DealerEngine {
         match maybe_quotes {
             None => (None, None),
             Some(quotes) => {
-
                 let value_in_fiat = amount.value.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero);
 
                 if let Some(lookup_quantity) = value_in_fiat.to_u64() {
@@ -1036,7 +1033,8 @@ impl DealerEngine {
                                 };
                                 // Fees are paid in the target currency.
                                 let fees = Money {
-                                    value: (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate * ( value_in_fiat / price),
+                                    value: (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
+                                        * (value_in_fiat / price),
                                     currency: conversion_info.to,
                                 };
                                 (Some(rate), Some(fees))
@@ -1106,27 +1104,23 @@ fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(
     Ok(())
 }
 
-fn get_better_rate(
-    rate1: Option<Rate>,
-    rate2: Option<Rate>,
-    conversion_info: ConversionInfo,
-) -> Option<Rate> {
+fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, conversion_info: ConversionInfo) -> Option<Rate> {
     let is_linear = conversion_info.is_linear();
     if is_linear {
         let r1 = rate1.unwrap_or(Rate::default());
         let r2 = rate2.unwrap_or(Rate::default());
         if r1.value > r2.value {
-           Some(r1)
+            Some(r1)
         } else {
-           Some(r2)
+            Some(r2)
         }
     } else {
         let r1 = rate1.unwrap_or(Rate::default());
         let r2 = rate2.unwrap_or(Rate::default());
         if r1.value < r2.value {
-           Some(r1)
+            Some(r1)
         } else {
-           Some(r2)
+            Some(r2)
         }
     }
 }
