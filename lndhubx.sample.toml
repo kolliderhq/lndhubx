@@ -16,6 +16,9 @@ bank_zmq_publish_address = "tcp://0.0.0.0:5556"
 bank_dealer_pull_address = "tcp://0.0.0.0:5557"
 bank_dealer_push_address = "tcp://0.0.0.0:5558"
 
+bank_nostr_pull_address = "tcp://0.0.0.0:5560"
+bank_nostr_push_address = "tcp://0.0.0.0:5561"
+
 bank_cli_resp_address = "tcp://127.0.0.1:5559"
 
 deposit_limit = 0.001
@@ -33,6 +36,10 @@ quota_size = 20
 dealer_bank_push_address = "tcp://0.0.0.0:5557"
 dealer_bank_pull_address = "tcp://0.0.0.0:5558"
 
+### Nostr Engine
+nostr_bank_push_address = "tcp://0.0.0.0:5560"
+nostr_bank_pull_address = "tcp://0.0.0.0:5561"
+nostr_private_key = ""
 
 ## The margin users have to keep on their account to account
 ## for network fees.
