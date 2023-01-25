@@ -13,6 +13,7 @@ use core_types::*;
 use futures::prelude::*;
 use influxdb2::Client;
 use rust_decimal::prelude::*;
+use rust_decimal_macros::dec;
 use utils::xzmq::ZmqSocket;
 
 pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &str) {
@@ -46,6 +47,51 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     }
 }
 
+pub async fn store_quotes(dealer: &DealerEngine, client: &Client, bucket: &str) {
+    let some_sats = Money::new(Currency::BTC, Some(dec!(0.000005000)));
+    let (btc_usd_rate, _btc_usd_fee) = dealer.get_rate(some_sats.clone(), Currency::USD);
+
+    let (btc_eur_rate, _btc_eur_fee) = dealer.get_rate(some_sats, Currency::EUR);
+
+    let one_usd = Money::new(Currency::USD, Some(dec!(1.0)));
+    let (usd_btc_rate, _usd_btc_fee) = dealer.get_rate(one_usd, Currency::BTC);
+    let (usd_eur_rate, _usd_eur_fee) = dealer.get_rate(one_usd, Currency::EUR);
+
+    let one_eur = Money::new(Currency::EUR, Some(dec!(1.0)));
+    let (eur_btc_rate, _eur_btc_fee) = dealer.get_rate(one_eur, Currency::BTC);
+    let (eur_usd_rate, _eur_usd_fee) = dealer.get_rate(one_eur, Currency::USD);
+
+    let fields = vec![
+        ("btc_usd", btc_usd_rate),
+        ("btc_eur", btc_eur_rate),
+        ("usd_btc", usd_btc_rate),
+        ("usd_eur", usd_eur_rate),
+        ("eur_btc", eur_btc_rate),
+        ("eur_usd", eur_usd_rate),
+    ];
+
+    let builder = fields.into_iter().fold(
+        influxdb2::models::DataPoint::builder("swap_rates"),
+        |builder, (field_name, value)| {
+            if let Some(rate) = value {
+                match rate.value.to_f64() {
+                    Some(converted) => builder.field(field_name, converted),
+                    None => builder,
+                }
+            } else {
+                builder
+            }
+        },
+    );
+
+    if let Ok(data_point) = builder.build() {
+        let points = vec![data_point];
+        if let Err(err) = client.write(bucket, stream::iter(points)).await {
+            eprintln!("Failed to write swap rates data point to Influx. Err: {}", err);
+        }
+    }
+}
+
 pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_recv: ZmqSocket) {
     let (kollider_client_tx, kollider_client_rx) = bounded(2024);
 
@@ -69,14 +115,12 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     let mut synth_dealer = DealerEngine::new(settings.clone(), ws_client);
 
     let influx_client = match settings.clone().influx_host {
-        Some(host) => {
-            Some(Client::new(
-                host,
+        Some(host) => Some(Client::new(
+            host,
             settings.influx_org.clone(),
             settings.influx_token.clone(),
-            ))
-        },
-        None => None
+        )),
+        None => None,
     };
 
     let mut listener = |msg: Message| {
@@ -86,6 +130,7 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
     let mut last_health_check = Instant::now();
     let mut last_house_keeping = Instant::now();
     let mut last_risk_check = Instant::now();
+    let mut last_influx_quotes = Instant::now();
 
     loop {
         // Before we proceed we have to have received a bank state message
@@ -119,7 +164,12 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
                 last_risk_check = Instant::now();
             }
             if influx_client.is_some() {
-                insert_dealer_state(&synth_dealer, &influx_client.as_ref().unwrap(), &settings.influx_bucket.clone()).await;
+                insert_dealer_state(
+                    &synth_dealer,
+                    &influx_client.as_ref().unwrap(),
+                    &settings.influx_bucket.clone(),
+                )
+                .await;
             }
         }
 
@@ -131,6 +181,12 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
         if last_house_keeping.elapsed().as_secs() > 30 {
             last_house_keeping = Instant::now();
             synth_dealer.sweep_excess_funds(&mut listener);
+        }
+
+        if last_influx_quotes.elapsed().as_secs() > 1 {
+            if let Some(ref client) = influx_client {
+                store_quotes(&synth_dealer, client, &settings.influx_bucket).await;
+            }
         }
     }
 }
