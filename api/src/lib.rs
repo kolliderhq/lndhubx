@@ -43,14 +43,14 @@ pub struct FtxSpotPrice {
 
 pub struct PriceCache {
     pub spot_prices: Vec<FtxSpotPrice>,
-    pub last_updated: std::time::Instant,
+    pub last_updated: Option<std::time::Instant>,
 }
 
 impl Default for PriceCache {
     fn default() -> Self {
         Self {
             spot_prices: Vec::new(),
-            last_updated: std::time::Instant::now(),
+            last_updated: None,
         }
     }
 }
