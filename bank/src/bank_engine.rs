@@ -1220,7 +1220,7 @@ impl BankEngine {
                     if let Ok(user_profile) = UserProfile::get_by_uid(&c, invoice.uid) {
                         if user_profile.nostr_notifications.unwrap() {
                             if let Ok(pk) = NostrPublicKey::get_by_uid(&c, invoice.uid) {
-                                let text = format!("💸 You just got paid {} {} into your Kollider Wallet! 💰", value.try_sats().unwrap(), currency);
+                                let text = format!("💸 You just got paid {} Sats into your Kollider Wallet! 💰", value.try_sats().unwrap(), currency);
                                 let nostr_private_msg = msgs::nostr::NostrPrivateMessage {
                                     pubkey: pk.pubkey.clone(),
                                     text: text,
