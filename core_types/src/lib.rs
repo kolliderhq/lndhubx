@@ -74,8 +74,8 @@ impl fmt::Display for AccountClass {
 impl FromStr for AccountClass {
     type Err = String;
 
-    fn from_str(accountType: &str) -> Result<AccountClass, Self::Err> {
-        match accountType {
+    fn from_str(account_type: &str) -> Result<AccountClass, Self::Err> {
+        match account_type {
             "Cash" => Ok(AccountClass::Cash),
             "Fees" => Ok(AccountClass::Fees),
             _ => Err("unknown account class".to_string()),
@@ -267,14 +267,13 @@ impl Default for LndNodeInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Money {
     pub value: Decimal,
     pub currency: Currency,
 }
 
 impl Money {
-
     pub fn new(currency: Currency, value: Option<Decimal>) -> Self {
         Self {
             currency,
@@ -296,7 +295,7 @@ impl Money {
 
     pub fn try_sats(&self) -> Result<Decimal, String> {
         if self.currency == Currency::BTC {
-           Ok(self.value * SATS_IN_BITCOIN)
+            Ok(self.value * SATS_IN_BITCOIN)
         } else {
             Err("Is not Bitcoin.".to_string())
         }
@@ -304,7 +303,7 @@ impl Money {
     pub fn from_sats(value: Decimal) -> Self {
         Self {
             currency: Currency::BTC,
-            value: value / SATS_IN_BITCOIN
+            value: value / SATS_IN_BITCOIN,
         }
     }
 
@@ -318,7 +317,7 @@ impl Money {
         }
         let exchanged_money = Money {
             currency: c,
-            value: self.value * r
+            value: self.value * r,
         };
         Ok(exchanged_money)
     }
@@ -329,7 +328,6 @@ impl Money {
             value,
         }
     }
-
 }
 
 impl FromStr for Money {
@@ -347,7 +345,7 @@ impl FromStr for Money {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Rate {
     pub value: Decimal,
     pub quote: Currency,
@@ -355,13 +353,8 @@ pub struct Rate {
 }
 
 impl Rate {
-
     pub fn new(base: Currency, quote: Currency, value: Decimal) -> Self {
-        Self {
-            quote,
-            base,
-            value,
-        }
+        Self { quote, base, value }
     }
 
     pub fn set(&mut self, value: Decimal) {
@@ -372,8 +365,8 @@ impl Rate {
         return Rate {
             base: self.quote,
             quote: self.base,
-            value: Decimal::ONE / self.value
-        }
+            value: Decimal::ONE / self.value,
+        };
     }
 }
 
@@ -382,11 +375,10 @@ impl Default for Rate {
         Self {
             value: Decimal::MIN,
             quote: Currency::BTC,
-            base: Currency:: BTC,
+            base: Currency::BTC,
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
