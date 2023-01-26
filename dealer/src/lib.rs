@@ -186,6 +186,7 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
         if last_influx_quotes.elapsed().as_secs() > 1 {
             if let Some(ref client) = influx_client {
                 store_quotes(&synth_dealer, client, &settings.influx_bucket).await;
+                last_influx_quotes = Instant::now();
             }
         }
     }

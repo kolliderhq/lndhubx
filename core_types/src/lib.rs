@@ -74,8 +74,8 @@ impl fmt::Display for AccountClass {
 impl FromStr for AccountClass {
     type Err = String;
 
-    fn from_str(accountType: &str) -> Result<AccountClass, Self::Err> {
-        match accountType {
+    fn from_str(account_type: &str) -> Result<AccountClass, Self::Err> {
+        match account_type {
             "Cash" => Ok(AccountClass::Cash),
             "Fees" => Ok(AccountClass::Fees),
             _ => Err("unknown account class".to_string()),
@@ -345,7 +345,7 @@ impl FromStr for Money {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Rate {
     pub value: Decimal,
     pub quote: Currency,
