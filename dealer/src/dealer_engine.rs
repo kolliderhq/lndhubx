@@ -32,6 +32,11 @@ pub struct HedgeSettings {
     pub max_exposure: Option<u64>,
 }
 
+pub struct DealerPnl {
+    pub total_pnl: Option<Decimal>,
+    pub funding_pnl: Option<Decimal>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DealerEngineSettings {
     pub psql_url: String,
@@ -85,7 +90,11 @@ pub struct DealerEngine {
 }
 
 impl DealerEngine {
-    pub fn new(settings: DealerEngineSettings, ws_client: impl WsClient + 'static) -> Self {
+    pub fn new(
+        settings: DealerEngineSettings,
+        ws_client: impl WsClient + 'static,
+        initial_funding_pnl: Decimal,
+    ) -> Self {
         let mut settings = settings;
 
         let risk_tolerances = settings
@@ -95,9 +104,7 @@ impl DealerEngine {
                 let currency = match Currency::from_str(&c) {
                     Ok(converted) => converted,
                     Err(err) => {
-                        panic!(
-                            "Failed to convert a settings item {c} into a currency, reason: {err:?}"
-                        );
+                        panic!("Failed to convert a settings item {c} into a currency, reason: {err:?}");
                     }
                 };
                 (currency, r)
@@ -112,8 +119,6 @@ impl DealerEngine {
         // making sure that leverage adjustment action is performed first time position state is received
         let last_leverage_check_timestamp =
             Instant::now().sub(Duration::from_millis(settings.leverage_check_interval_ms + 1));
-
-        let funding_profit = Decimal::ZERO;
 
         Self {
             risk_tolerances,
@@ -136,7 +141,7 @@ impl DealerEngine {
             leverage_check_interval_ms: settings.leverage_check_interval_ms,
             last_leverage_check_timestamp,
             spread: settings.spread,
-            funding_profit,
+            funding_profit: initial_funding_pnl,
         }
     }
 
@@ -670,9 +675,7 @@ impl DealerEngine {
                                     }));
                                 listener(msg);
                             } else {
-                                panic!(
-                                    "Received change margin success message with incorrect amount: {msg:?}"
-                                );
+                                panic!("Received change margin success message with incorrect amount: {msg:?}");
                             }
                         }
                     }
@@ -1128,6 +1131,27 @@ impl DealerEngine {
     fn update_funding_profit(&mut self, funding_amount: Decimal) {
         self.funding_profit += funding_amount;
     }
+
+    pub fn get_pnl(&self) -> DealerPnl {
+        let total_pnl = self.last_bank_state.as_ref().and_then(|bank_state| {
+            let btc_cash_balance = bank_state
+                .fiat_exposures
+                .iter()
+                .filter_map(|(_account_id, account)| {
+                    if account.currency == Currency::BTC && account.account_type == AccountType::Internal {
+                        Some(account.balance)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            btc_cash_balance.first().cloned()
+        });
+        DealerPnl {
+            total_pnl,
+            funding_pnl: Some(self.funding_profit),
+        }
+    }
 }
 
 fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(), ()> {
@@ -1390,7 +1414,7 @@ mod tests {
             spread: dec!(0.01),
         };
         let ws_client = MockWsClient::new();
-        let mut dealer = DealerEngine::new(settings, ws_client);
+        let mut dealer = DealerEngine::new(settings, ws_client, Decimal::ZERO);
 
         // BTC/USD
         let mut bids = BTreeMap::new();

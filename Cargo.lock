@@ -557,7 +557,7 @@ dependencies = [
  "crossbeam-channel",
  "diesel",
  "futures 0.3.24",
- "influxdb2",
+ "influxdb2 0.1.1",
  "lightning-invoice",
  "lnd_connector",
  "log",
@@ -859,9 +859,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.22"
+version = "0.4.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfd4d1b31faaa3a89d7934dbded3111da0d2ef28e3ebccdb4f0179f5929d1ef1"
+checksum = "16b0a3d9ed01224b22057780a37bb8c5dbfe1be8ba48678e7bf57ec4b385411f"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -1229,14 +1229,17 @@ name = "dealer"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "chrono",
  "core_types",
  "crossbeam",
  "futures 0.3.24",
- "influxdb2",
+ "influxdb2 0.3.5",
+ "influxdb2-structmap 0.2.0",
  "kollider_hedging",
  "log",
  "models",
  "msgs",
+ "num-traits 0.2.15",
  "rust_decimal",
  "rust_decimal_macros",
  "serde 1.0.144",
@@ -2062,7 +2065,7 @@ dependencies = [
  "fallible-iterator",
  "futures 0.3.24",
  "go-parse-duration",
- "influxdb2-structmap",
+ "influxdb2-structmap 0.1.5",
  "influxdb2-structmap-derive",
  "nom 6.1.2",
  "opentelemetry",
@@ -2079,12 +2082,68 @@ dependencies = [
 ]
 
 [[package]]
+name = "influxdb2"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9adea4aa306353d8cdc2920bf9206af2c37275fe51835ab61e06fa3c5fbf14e"
+dependencies = [
+ "base64 0.13.0",
+ "bytes 1.2.1",
+ "chrono",
+ "csv",
+ "dotenv",
+ "fallible-iterator",
+ "futures 0.3.24",
+ "go-parse-duration",
+ "influxdb2-derive",
+ "influxdb2-structmap 0.2.0",
+ "nom 6.1.2",
+ "opentelemetry",
+ "ordered-float",
+ "parking_lot 0.11.2",
+ "reqwest 0.11.11",
+ "serde 1.0.144",
+ "serde_json",
+ "serde_qs",
+ "smallvec 1.9.0",
+ "snafu",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "url 2.3.0",
+]
+
+[[package]]
+name = "influxdb2-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1e007e3c8368af353f58831a0fdb1b6649df4a8f0a33aa6455fc69a896bbc30"
+dependencies = [
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn",
+]
+
+[[package]]
 name = "influxdb2-structmap"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e986c0ef3fb13fb0f3f2f09f0b0cfa86c3d90c80e181ff423f16386467e066d"
 dependencies = [
  "chrono",
+]
+
+[[package]]
+name = "influxdb2-structmap"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1408e712051787357e99ff732e44e8833e79cea0fabc9361018abfbff72b6265"
+dependencies = [
+ "chrono",
+ "num-traits 0.2.15",
+ "ordered-float",
 ]
 
 [[package]]
@@ -2688,7 +2747,7 @@ dependencies = [
  "crossbeam",
  "crossbeam-channel",
  "futures 0.3.24",
- "influxdb2",
+ "influxdb2 0.1.1",
  "log",
  "models",
  "msgs",
@@ -2846,6 +2905,15 @@ dependencies = [
  "thiserror",
  "tokio 1.21.0",
  "tokio-stream",
+]
+
+[[package]]
+name = "ordered-float"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d84eb1409416d254e4a9c8fa56cc24701755025b458f0fcd8e59e1f5f40c23bf"
+dependencies = [
+ "num-traits 0.2.15",
 ]
 
 [[package]]
@@ -3776,6 +3844,17 @@ dependencies = [
  "itoa 1.0.3",
  "ryu",
  "serde 1.0.144",
+]
+
+[[package]]
+name = "serde_qs"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cac3f1e2ca2fe333923a1ae72caca910b98ed0630bb35ef6f8c8517d6e81afa"
+dependencies = [
+ "percent-encoding 2.1.0",
+ "serde 1.0.144",
+ "thiserror",
 ]
 
 [[package]]
