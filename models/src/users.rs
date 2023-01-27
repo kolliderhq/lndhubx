@@ -18,12 +18,12 @@ pub fn hash(salt: &str, s: &str) -> String {
 
     pbkdf2::derive(PBKDF2_ALG, ITERATIONS, salt.as_bytes(), s.as_bytes(), &mut to_store);
 
-    base64::encode(&to_store)
+    base64::encode(to_store)
 }
 
 #[must_use]
 pub fn verify(salt: &str, password: &str, attempted_password: &str) -> bool {
-    if let Ok(real_pwd) = base64::decode(&password) {
+    if let Ok(real_pwd) = base64::decode(password) {
         pbkdf2::verify(
             PBKDF2_ALG,
             ITERATIONS,

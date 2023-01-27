@@ -5,18 +5,18 @@ extern crate diesel_migrations;
 
 pub mod accounts;
 pub mod conversions;
+pub mod deezy_stuff;
 mod error;
 pub mod internal_user_mappings;
 pub mod invoices;
+pub mod ln_addresses;
+pub mod nostr_public_keys;
 pub mod pre_signups;
 mod schema;
-pub mod transactions;
 pub mod summary_transactions;
-pub mod users;
-pub mod ln_addresses;
-pub mod deezy_stuff;
-pub mod nostr_public_keys;
+pub mod transactions;
 pub mod user_profiles;
+pub mod users;
 
 cfg_if::cfg_if! {
     if #[cfg(debug_assertions)] {

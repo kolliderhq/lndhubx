@@ -1,8 +1,8 @@
 extern crate core;
 
+pub mod accountant;
 pub mod bank_engine;
 pub mod ledger;
-pub mod accountant;
 
 use bank_engine::*;
 use futures::prelude::*;
@@ -195,7 +195,6 @@ pub async fn start(
                 .into_iter()
                 .filter(|t| t.is_finished())
                 .collect::<FuturesUnordered<tokio::task::JoinHandle<()>>>();
-
         }
 
         if reconciliation_interval.elapsed().as_secs() > 3 {
@@ -207,6 +206,5 @@ pub async fn start(
                 panic!("Reconciliation error! Shutting down.");
             }
         }
-
     }
 }

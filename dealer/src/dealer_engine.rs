@@ -81,6 +81,7 @@ pub struct DealerEngine {
     leverage_check_interval_ms: u64,
     last_leverage_check_timestamp: Instant,
     spread: Decimal,
+    funding_profit: Decimal,
 }
 
 impl DealerEngine {
@@ -113,6 +114,8 @@ impl DealerEngine {
         let last_leverage_check_timestamp =
             Instant::now().sub(Duration::from_millis(settings.leverage_check_interval_ms + 1));
 
+        let funding_profit = Decimal::ZERO;
+
         Self {
             risk_tolerances,
             ws_client: Box::new(ws_client),
@@ -134,6 +137,7 @@ impl DealerEngine {
             leverage_check_interval_ms: settings.leverage_check_interval_ms,
             last_leverage_check_timestamp,
             spread: settings.spread,
+            funding_profit,
         }
     }
 
@@ -687,6 +691,9 @@ impl DealerEngine {
                         }));
                         listener(msg)
                     }
+                    KolliderApiResponse::FundingPayment(funding_payment) => {
+                        self.update_funding_profit(funding_payment.amount);
+                    }
                     _ => {
                         slog::warn!(self.logger, "Handling of KolliderApiResponse {:?} not implemented", msg);
                     }
@@ -1119,6 +1126,10 @@ impl DealerEngine {
             }
         }
     }
+
+    fn update_funding_profit(&mut self, funding_amount: Decimal) {
+        self.funding_profit += funding_amount;
+    }
 }
 
 fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(), ()> {
@@ -1141,12 +1152,10 @@ fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, is_linear: bool) ->
                 } else {
                     Some(r2)
                 }
+            } else if r1.value < r2.value {
+                Some(r1)
             } else {
-                if r1.value < r2.value {
-                    Some(r1)
-                } else {
-                    Some(r2)
-                }
+                Some(r2)
             }
         }
         (Some(r1), None) => Some(r1),

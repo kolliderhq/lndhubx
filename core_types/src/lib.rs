@@ -38,7 +38,7 @@ impl fmt::Display for AccountType {
             Self::External => "External",
         };
 
-        write!(f, "{}", sign)
+        write!(f, "{sign}")
     }
 }
 
@@ -67,7 +67,7 @@ impl fmt::Display for AccountClass {
             Self::Fees => "Fee",
         };
 
-        write!(f, "{}", sign)
+        write!(f, "{sign}")
     }
 }
 
@@ -127,7 +127,7 @@ impl fmt::Display for Currency {
             Self::EUR => "EUR",
         };
 
-        write!(f, "{}", sign)
+        write!(f, "{sign}")
     }
 }
 
@@ -244,7 +244,7 @@ impl ConversionInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LndNodeInfo {
     pub identity_pubkey: String,
     pub uris: Vec<String>,
@@ -252,19 +252,6 @@ pub struct LndNodeInfo {
     pub num_pending_channels: u64,
     pub num_peers: u64,
     pub testnet: bool,
-}
-
-impl Default for LndNodeInfo {
-    fn default() -> Self {
-        Self {
-            identity_pubkey: String::from(""),
-            uris: vec![],
-            num_active_channels: 0,
-            num_pending_channels: 0,
-            num_peers: 0,
-            testnet: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -286,11 +273,11 @@ impl Money {
     }
 
     pub fn mult(&self, value: Decimal) -> Decimal {
-        return self.value * value;
+        self.value * value
     }
 
     pub fn div(&self, value: Decimal) -> Decimal {
-        return self.value / value;
+        self.value / value
     }
 
     pub fn try_sats(&self) -> Result<Decimal, String> {
@@ -362,11 +349,11 @@ impl Rate {
     }
 
     pub fn get_inv(&self) -> Rate {
-        return Rate {
+        Rate {
             base: self.quote,
             quote: self.base,
             value: Decimal::ONE / self.value,
-        };
+        }
     }
 }
 

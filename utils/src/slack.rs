@@ -10,7 +10,7 @@ pub use slack_hook::{PayloadBuilder, Slack, SlackText};
 use slog::{Level, OwnedKVList, Record};
 
 #[derive(Debug)]
-pub(in crate) struct SlackDrain {
+pub(crate) struct SlackDrain {
     inner: Arc<Mutex<SlackBot>>,
 }
 
@@ -83,12 +83,12 @@ pub struct SlackChannel {
 }
 
 impl SlackChannel {
-    pub fn send<T: Into<SlackText>>(&mut self, msg: T) -> Result<(), SendError<PayloadBuilder>> {
+    pub fn send<T: Into<SlackText>>(&mut self, msg: T) -> Result<(), Box<SendError<PayloadBuilder>>> {
         let payload = PayloadBuilder::new().text(msg.into());
-        self.tx.send(payload)
+        self.tx.send(payload).map_err(Box::new)
     }
 
-    pub fn send_raw(&mut self, payload: PayloadBuilder) -> Result<(), SendError<PayloadBuilder>> {
-        self.tx.send(payload)
+    pub fn send_raw(&mut self, payload: PayloadBuilder) -> Result<(), Box<SendError<PayloadBuilder>>> {
+        self.tx.send(payload).map_err(Box::new)
     }
 }

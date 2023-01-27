@@ -19,9 +19,9 @@ fn time_now_as_i64() -> i64 {
 #[primary_key(txid)]
 pub struct SummaryTransaction {
     pub txid: String,
-	pub fee_txid: Option<String>,
-	pub outbound_txid: Option<String>,
-	pub inbound_txid: Option<String>,
+    pub fee_txid: Option<String>,
+    pub outbound_txid: Option<String>,
+    pub inbound_txid: Option<String>,
     pub created_at: i64,
     pub outbound_amount: BigDecimal,
     pub inbound_amount: BigDecimal,
@@ -54,7 +54,9 @@ impl SummaryTransaction {
     ) -> Result<Vec<Self>, DieselError> {
         let from = from.unwrap_or(0);
         let to = to.unwrap_or_else(time_now_as_i64);
-        let owning_transactions = summary_transactions::outbound_uid.eq(uid).or(summary_transactions::inbound_uid.eq(uid));
+        let owning_transactions = summary_transactions::outbound_uid
+            .eq(uid)
+            .or(summary_transactions::inbound_uid.eq(uid));
         summary_transactions::dsl::summary_transactions
             .filter(
                 owning_transactions

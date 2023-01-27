@@ -513,6 +513,10 @@ fn process_incoming_message(
             let msg = Message::KolliderApiResponse(response);
             send_to_callback(callback, msg);
         }
+        KolliderApiResponse::FundingPayment(_funding_payment) => {
+            let msg = Message::KolliderApiResponse(response);
+            send_to_callback(callback, msg);
+        }
         _ => {}
     }
 }

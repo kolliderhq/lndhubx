@@ -10,7 +10,7 @@ use std::default::Default;
 pub struct NostrPublicKey {
     pub created_at: Option<std::time::SystemTime>,
     pub pubkey: String,
-	pub uid: i32,
+    pub uid: i32,
 }
 
 #[derive(Insertable, Debug, Deserialize)]
@@ -26,7 +26,6 @@ pub struct UpdateNostrPublicKey {
     pub pubkey: String,
 }
 
-
 impl NostrPublicKey {
     pub fn get_by_pubkey(conn: &diesel::PgConnection, pubkey: String) -> Result<Self, DieselError> {
         nostr_public_keys::dsl::nostr_public_keys
@@ -40,7 +39,7 @@ impl NostrPublicKey {
     }
     pub fn get_by_username(conn: &diesel::PgConnection, username: String) -> Result<Self, DieselError> {
         users::dsl::users
-			.inner_join(nostr_public_keys::dsl::nostr_public_keys)
+            .inner_join(nostr_public_keys::dsl::nostr_public_keys)
             .select((
                 nostr_public_keys::created_at,
                 nostr_public_keys::pubkey,
