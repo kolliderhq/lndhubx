@@ -1381,7 +1381,9 @@ impl BankEngine {
                     }
 
                     let amount_in_sats = amount.try_sats().unwrap().to_u64().unwrap_or_else(|| {
-                        panic!("Failed to convert  decimal amount in BTC: {amount:?} to u64 amount in SATs")
+                        panic!(
+                            "Failed to convert  decimal amount in BTC: {amount:?} to u64 amount in SATs"
+                        )
                     });
 
                     if let Ok(mut invoice) = self
