@@ -173,7 +173,7 @@ impl Handler<ActorMessage> for MemcacheStoreActor {
             if let Ok(client) = p.get() {
                 match msg {
                     ActorMessage::Set { key, value, expiry } => ActorResponse::Set(Box::pin(async move {
-                        let ex_key = format!("{}:expire", key);
+                        let ex_key = format!("{key}:expire");
                         let now = SystemTime::now();
                         let now = now.duration_since(UNIX_EPOCH).unwrap();
                         let result = client.set(&key, value as u64, expiry.as_secs().try_into().unwrap());

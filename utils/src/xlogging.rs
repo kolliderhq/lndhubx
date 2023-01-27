@@ -55,10 +55,10 @@ pub fn init_log(config: &LoggingSettings) -> Logger {
         "error" => slog::Level::Error,
         "critical" => slog::Level::Critical,
         "trace" => slog::Level::Trace,
-        st => panic!("Unknown logging level {:?}", st),
+        st => panic!("Unknown logging level {st:?}"),
     };
 
-    let file_drain = build_file_drain(&log_path).expect(&format!("Could not open file {}", log_path)[..]);
+    let file_drain = build_file_drain(&log_path).expect(&format!("Could not open file {log_path}")[..]);
 
     if let Some(drain_stdout) = drain_stdout_async {
         // create a logger w/ both a file drain and a stdout drain

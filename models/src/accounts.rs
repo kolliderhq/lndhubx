@@ -15,7 +15,7 @@ pub struct Account {
     pub currency: String,
     pub account_type: String,
     pub uid: i32,
-    pub created_at: i64, 
+    pub created_at: i64,
     pub account_class: String,
 }
 
@@ -121,7 +121,7 @@ impl Account {
         let internal_accounts = Self::get_accounts(conn, 52172712, "dealer", "Internal", "Cash");
         let external_accounts = Self::get_accounts(conn, 52172712, "dealer", "External", "Cash");
         let mut internal_accounts = internal_accounts.unwrap_or_else(|_| Vec::new());
-        let mut external_accounts = external_accounts.unwrap_or_else(|_| Vec::new());
+        let external_accounts = external_accounts.unwrap_or_else(|_| Vec::new());
         internal_accounts.extend(external_accounts);
         Ok(internal_accounts)
     }

@@ -4,9 +4,9 @@ use std::thread;
 use core_types::nostr::NostrProfile;
 use msgs::{nostr::*, *};
 use nostr_sdk::blocking::Client;
-use nostr_sdk::prelude::{Keys, Kind, SubscriptionFilter, FromPkStr, FromSkStr};
-use utils::xzmq::SocketContext;
+use nostr_sdk::prelude::{FromPkStr, FromSkStr, Keys, Kind, SubscriptionFilter};
 use serde::{Deserialize, Serialize};
+use utils::xzmq::SocketContext;
 
 fn get_user_profile(client: Client, pubkey: String) -> Option<NostrProfile> {
     let keys = Keys::from_pk_str(&pubkey).unwrap();
@@ -17,7 +17,7 @@ fn get_user_profile(client: Client, pubkey: String) -> Option<NostrProfile> {
         .limit(1);
     let events = client.get_events_of(vec![subscription]).unwrap();
 
-    if let Some(event) = events.iter().next() {
+    if let Some(event) = events.first() {
         let nostr_profile = serde_json::from_str::<NostrProfile>(&event.content).unwrap();
         Some(nostr_profile)
     } else {
@@ -25,7 +25,7 @@ fn get_user_profile(client: Client, pubkey: String) -> Option<NostrProfile> {
     }
 }
 
-fn send_nostr_private_msg(client: Client, pubkey: &String, text: &String) {
+fn send_nostr_private_msg(client: Client, pubkey: &str, text: &str) {
     let keys = Keys::from_pk_str(pubkey).unwrap();
     client.send_direct_msg(keys.public_key(), text).unwrap();
 }
@@ -49,13 +49,15 @@ fn main() {
     let keys = Keys::from_sk_str(&settings.nostr_private_key).unwrap();
     let nostr_client = Client::new(&keys);
 
-    nostr_client.add_relays(vec![
-        ("wss://relay.nostr.info", None),
-        // "wss://nostr-pub.wellorder.net",
-        // "wss://relay.damus.io",
-        // "wss://nostr.zebedee.cloud",
-        // "wss://nostr.bitcoiner.social",
-    ]).unwrap();
+    nostr_client
+        .add_relays(vec![
+            ("wss://relay.nostr.info", None),
+            // "wss://nostr-pub.wellorder.net",
+            // "wss://relay.damus.io",
+            // "wss://nostr.zebedee.cloud",
+            // "wss://nostr.bitcoiner.social",
+        ])
+        .unwrap();
 
     nostr_client.connect();
 

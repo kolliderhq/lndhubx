@@ -81,6 +81,7 @@ pub struct DealerEngine {
     leverage_check_interval_ms: u64,
     last_leverage_check_timestamp: Instant,
     spread: Decimal,
+    funding_profit: Decimal,
 }
 
 impl DealerEngine {
@@ -95,8 +96,7 @@ impl DealerEngine {
                     Ok(converted) => converted,
                     Err(err) => {
                         panic!(
-                            "Failed to convert a settings item {} into a currency, reason: {:?}",
-                            c, err
+                            "Failed to convert a settings item {c} into a currency, reason: {err:?}"
                         );
                     }
                 };
@@ -112,6 +112,8 @@ impl DealerEngine {
         // making sure that leverage adjustment action is performed first time position state is received
         let last_leverage_check_timestamp =
             Instant::now().sub(Duration::from_millis(settings.leverage_check_interval_ms + 1));
+
+        let funding_profit = Decimal::ZERO;
 
         Self {
             risk_tolerances,
@@ -134,6 +136,7 @@ impl DealerEngine {
             leverage_check_interval_ms: settings.leverage_check_interval_ms,
             last_leverage_check_timestamp,
             spread: settings.spread,
+            funding_profit,
         }
     }
 
@@ -345,7 +348,7 @@ impl DealerEngine {
             }
 
             let (order_quantity, trade_side) = match delta_qty.to_i64() {
-                Some(converted) => (converted.abs() as u64, Side::from_sign(converted)),
+                Some(converted) => (converted.unsigned_abs(), Side::from_sign(converted)),
                 None => {
                     slog::error!(
                         self.logger,
@@ -668,8 +671,7 @@ impl DealerEngine {
                                 listener(msg);
                             } else {
                                 panic!(
-                                    "Received change margin success message with incorrect amount: {:?}",
-                                    msg
+                                    "Received change margin success message with incorrect amount: {msg:?}"
                                 );
                             }
                         }
@@ -686,6 +688,9 @@ impl DealerEngine {
                             payment_request: add_margin_request.invoice,
                         }));
                         listener(msg)
+                    }
+                    KolliderApiResponse::FundingPayment(funding_payment) => {
+                        self.update_funding_profit(funding_payment.amount);
                     }
                     _ => {
                         slog::warn!(self.logger, "Handling of KolliderApiResponse {:?} not implemented", msg);
@@ -1119,6 +1124,10 @@ impl DealerEngine {
             }
         }
     }
+
+    fn update_funding_profit(&mut self, funding_amount: Decimal) {
+        self.funding_profit += funding_amount;
+    }
 }
 
 fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(), ()> {
@@ -1141,12 +1150,10 @@ fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, is_linear: bool) ->
                 } else {
                     Some(r2)
                 }
+            } else if r1.value < r2.value {
+                Some(r1)
             } else {
-                if r1.value < r2.value {
-                    Some(r1)
-                } else {
-                    Some(r2)
-                }
+                Some(r2)
             }
         }
         (Some(r1), None) => Some(r1),

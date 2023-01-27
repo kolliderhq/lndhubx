@@ -19,10 +19,10 @@ pub fn generate_authentication_signature(b64_secret: &str) -> Result<(String, St
 }
 
 fn hmac_encrypt_message(b64_secret: &str, message: &str) -> Result<String, ()> {
-    let decoded_secret = base64::decode(&b64_secret).map_err(|_| ())?;
+    let decoded_secret = base64::decode(b64_secret).map_err(|_| ())?;
     let mut mac = HmacSha256::new_from_slice(&decoded_secret).map_err(|_| ())?;
     mac.update(message.as_bytes());
     let result = mac.finalize();
     let code_bytes = result.into_bytes();
-    Ok(base64::encode(&code_bytes))
+    Ok(base64::encode(code_bytes))
 }

@@ -114,6 +114,7 @@ pub enum KolliderApiResponse {
     ChangeMarginSuccess(ChangeMarginSuccess),
     ChangeMarginRejection(ChangeMarginRejection),
     AddMarginRequest(AddMarginRequest),
+    FundingPayment(FundingPayment),
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -288,4 +289,11 @@ pub struct AddMarginRequest {
     pub symbol: Symbol,
     pub amount: Decimal,
     pub invoice: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct FundingPayment {
+    pub symbol: Symbol,
+    pub rate: Decimal,
+    pub amount: Decimal,
 }

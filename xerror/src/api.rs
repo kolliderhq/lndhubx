@@ -127,7 +127,7 @@ impl error::ResponseError for ApiError {
             ApiError::Nostr(nostr_engine_error) => match nostr_engine_error {
                 NostrEngineError::UnableToLoadProfile => HttpResponse::InternalServerError(),
                 NostrEngineError::UnableToSendPrivateMessage => HttpResponse::InternalServerError(),
-            }
+            },
         };
         response_builder.json(json!({ "error": self }))
     }
@@ -161,7 +161,7 @@ impl error::ResponseError for ApiError {
             ApiError::Nostr(nostr_engine_error) => match nostr_engine_error {
                 NostrEngineError::UnableToLoadProfile => StatusCode::INTERNAL_SERVER_ERROR,
                 NostrEngineError::UnableToSendPrivateMessage => StatusCode::INTERNAL_SERVER_ERROR,
-            }
+            },
         }
     }
 }

@@ -1,15 +1,14 @@
 use reqwest;
 
-use actix_web::{get, HttpResponse, web};
+use actix_web::{get, web, HttpResponse};
 
 use serde::{Deserialize, Serialize};
-use rust_decimal::prelude::*;
 use xerror::api::*;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::{PriceCache, FtxSpotPrice};
+use crate::{FtxSpotPrice, PriceCache};
 
 #[derive(Deserialize, Debug, Serialize)]
 pub struct FtxSpotResponse {
@@ -22,7 +21,7 @@ pub async fn get_spot_prices(price_cache: web::Data<Arc<RwLock<PriceCache>>>) ->
     let available_pairs = vec!["BTCUSDT", "BTCEUR", "EURUSDT"];
     let last_updated = &(**price_cache).read().await.last_updated.clone();
 
-    let spot_prices = if last_updated.is_none() || last_updated.unwrap().elapsed().as_secs() > 600  {
+    let spot_prices = if last_updated.is_none() || last_updated.unwrap().elapsed().as_secs() > 600 {
         let res = reqwest::get("https://api.binance.com/api/v3/ticker/24hr");
         let mut response = match res {
             Ok(r) => r,
@@ -34,9 +33,12 @@ pub async fn get_spot_prices(price_cache: web::Data<Arc<RwLock<PriceCache>>>) ->
             Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
         };
 
-        let spot_prices: Vec<FtxSpotPrice>= match serde_json::from_str(&body) {
+        let spot_prices: Vec<FtxSpotPrice> = match serde_json::from_str(&body) {
             Ok(sp) => sp,
-            Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
+            Err(err) => {
+                dbg!(&err);
+                return Err(ApiError::External(ExternalError::FailedToFetchExternalData));
+            }
         };
 
         let mut price_cache = price_cache.write().await;

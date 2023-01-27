@@ -35,24 +35,24 @@ impl ResponseHandler {
             Ok(frame) => match serde_json::from_slice::<Message>(&frame) {
                 Ok(msg) => match msg {
                     Message::Dealer(Dealer::CreateInvoiceResponse(create_invoice_response)) => {
-                        println!("Received create invoice response: {:?}", create_invoice_response);
+                        println!("Received create invoice response: {create_invoice_response:?}");
                     }
                     Message::Dealer(Dealer::BankState(state)) => {
-                        println!("Received bank state: {:?}", state);
+                        println!("Received bank state: {state:?}");
                     }
                     Message::Cli(CliMsg::MakeTxResult(tx_result)) => {
-                        println!("Received transaction result: {:?}", tx_result);
+                        println!("Received transaction result: {tx_result:?}");
                     }
                     _ => {
-                        println!("Received unhandled message: {:?}", msg)
+                        println!("Received unhandled message: {msg:?}")
                     }
                 },
                 Err(err) => {
-                    eprintln!("Error while deserializing a payload into message: {:?}", err)
+                    eprintln!("Error while deserializing a payload into message: {err:?}")
                 }
             },
             Err(err) => {
-                eprintln!("Error while receiving a message: {:?}", err)
+                eprintln!("Error while receiving a message: {err:?}")
             }
         }
     }

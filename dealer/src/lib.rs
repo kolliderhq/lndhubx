@@ -42,14 +42,14 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {err}");
         }
     }
 }
 
 pub async fn store_quotes(dealer: &DealerEngine, client: &Client, bucket: &str) {
     let some_sats = Money::new(Currency::BTC, Some(dec!(0.000005000)));
-    let (btc_usd_rate, _btc_usd_fee) = dealer.get_rate(some_sats.clone(), Currency::USD);
+    let (btc_usd_rate, _btc_usd_fee) = dealer.get_rate(some_sats, Currency::USD);
 
     let (btc_eur_rate, _btc_eur_fee) = dealer.get_rate(some_sats, Currency::EUR);
 
@@ -87,7 +87,7 @@ pub async fn store_quotes(dealer: &DealerEngine, client: &Client, bucket: &str) 
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write swap rates data point to Influx. Err: {}", err);
+            eprintln!("Failed to write swap rates data point to Influx. Err: {err}");
         }
     }
 }
@@ -166,7 +166,7 @@ pub async fn start(settings: DealerEngineSettings, bank_sender: ZmqSocket, bank_
             if influx_client.is_some() {
                 insert_dealer_state(
                     &synth_dealer,
-                    &influx_client.as_ref().unwrap(),
+                    influx_client.as_ref().unwrap(),
                     &settings.influx_bucket.clone(),
                 )
                 .await;

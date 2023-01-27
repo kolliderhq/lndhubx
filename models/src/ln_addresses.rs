@@ -16,7 +16,9 @@ pub struct LnAddress {
 
 impl LnAddress {
     pub fn get_by_id(conn: &diesel::PgConnection, id: i32) -> Result<Self, DieselError> {
-        ln_addresses::dsl::ln_addresses.filter(ln_addresses::id.eq(id)).first::<Self>(conn)
+        ln_addresses::dsl::ln_addresses
+            .filter(ln_addresses::id.eq(id))
+            .first::<Self>(conn)
     }
 
     pub fn get_by_username(conn: &diesel::PgConnection, username: String) -> Result<Self, DieselError> {
@@ -26,12 +28,11 @@ impl LnAddress {
     }
 
     pub fn search_by_username_fragment(conn: &diesel::PgConnection, fragment: &str) -> Result<Vec<Self>, DieselError> {
-        let pattern = format!("%{}%", fragment);
+        let pattern = format!("%{fragment}%");
         ln_addresses::dsl::ln_addresses
             .filter(ln_addresses::username.ilike(pattern))
             .load::<Self>(conn)
     }
-
 }
 
 #[derive(Insertable, Debug, Deserialize)]
@@ -55,5 +56,5 @@ impl InsertableLnAddress {
 pub struct ShareableLnAddress {
     pub id: i32,
     pub username: String,
-    pub domain: String
+    pub domain: String,
 }

@@ -6,9 +6,9 @@ use serde_json::json;
 use uuid::Uuid;
 use xerror::api::*;
 
-use models::users::*;
 use models::ln_addresses::*;
 use models::user_profiles::*;
+use models::users::*;
 
 use crate::jwt::*;
 use crate::WebDbPool;
@@ -40,19 +40,17 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
 
     let uid = match user.insert(&conn) {
         Ok(uid) => uid,
-        Err(err) => {
-            match err {
-                DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
-                    return Err(ApiError::Db(DbError::UserAlreadyExists))
-                }
-                _ => return Err(ApiError::Db(DbError::Unknown)),
+        Err(err) => match err {
+            DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
+                return Err(ApiError::Db(DbError::UserAlreadyExists))
             }
-        }
+            _ => return Err(ApiError::Db(DbError::Unknown)),
+        },
     };
 
     // TODO: Make this configurable.
     let ln_address = InsertableLnAddress {
-        username: format!("{}@kollider.me", username),
+        username: format!("{username}@kollider.me"),
         domain: String::from("kollider.me"),
     };
 
@@ -68,7 +66,7 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
         is_twitter_verified: None,
         twitter_handle: None,
         nostr_notifications: None,
-        email_notifications: None, 
+        email_notifications: None,
     };
 
     if insertable_user_profile.insert(&conn).is_err() {

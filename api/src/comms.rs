@@ -13,12 +13,14 @@ use utils::time;
 
 use crate::ApiSettings;
 
+type ResponseFilter = Option<Box<dyn Send + Fn(&Message) -> bool>>;
+
 pub struct CommsActor;
 
 pub struct Envelope {
     pub(crate) message: Message,
     pub(crate) response_tx: Option<mpsc::Sender<Result<Message, String>>>,
-    pub(crate) response_filter: Option<Box<dyn Send + Fn(&Message) -> bool>>,
+    pub(crate) response_filter: ResponseFilter,
 }
 
 impl fmt::Debug for Envelope {

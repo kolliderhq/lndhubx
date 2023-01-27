@@ -4,14 +4,13 @@ use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
+use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::env;
-use rust_decimal::prelude::*;
 
-use tokio::sync::mpsc;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::sync::RwLock;
-
 
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
 use core_types::DbPool;
@@ -41,25 +40,17 @@ pub struct FtxSpotPrice {
     change_24h: Option<Decimal>,
 }
 
+#[derive(Default)]
 pub struct PriceCache {
     pub spot_prices: Vec<FtxSpotPrice>,
     pub last_updated: Option<std::time::Instant>,
-}
-
-impl Default for PriceCache {
-    fn default() -> Self {
-        Self {
-            spot_prices: Vec::new(),
-            last_updated: None,
-        }
-    }
 }
 
 pub type WebDbPool = web::Data<DbPool>;
 pub type WebSender = web::Data<mpsc::Sender<Envelope>>;
 
 pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
-    let endpoint = env::var("ENDPOINT").unwrap_or("127.0.0.1:8080".to_string());
+    let endpoint = env::var("ENDPOINT").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
         .expect("Failed to create pool.");
@@ -114,7 +105,7 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::user::get_node_info)
             .service(routes::user::get_query_route)
             .service(routes::user::check_username_available)
-			.service(routes::user::search_ln_addresses)
+            .service(routes::user::search_ln_addresses)
             .service(routes::user::check_payment)
             .service(routes::user::get_onchain_address)
             .service(routes::user::get_btc_ln_swap_state)

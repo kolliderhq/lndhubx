@@ -27,11 +27,11 @@ use crate::jwt::*;
 use crate::WebDbPool;
 use crate::WebSender;
 
+use models::deezy_stuff::*;
 use models::invoices::*;
 use models::ln_addresses::*;
 use models::summary_transactions::SummaryTransaction;
-use models::users::{ShareableUser, User};
-use models::deezy_stuff::*;
+use models::users::User;
 
 const MINIMUM_PATTERN_LENGTH: usize = 1;
 
@@ -110,11 +110,7 @@ pub async fn pay_invoice(
         None => Currency::BTC,
     };
 
-    let money = if let Some(a) = pay_invoice_data.amount {
-        Some(Money::new(currency, Some(a)))
-    } else {
-        None
-    };
+    let money = pay_invoice_data.amount.map(|a| Money::new(currency, Some(a)));
 
     let payment_request = PaymentRequest {
         currency,
@@ -541,7 +537,7 @@ pub async fn check_username_available(
     username_data: Json<CheckUsernameData>,
 ) -> Result<HttpResponse, ApiError> {
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
-    match User::get_by_username(&conn, username_data.username.to_lowercase().clone()) {
+    match User::get_by_username(&conn, username_data.username.to_lowercase()) {
         Ok(_) => Ok(HttpResponse::Ok().json(json!({ "available": false}))),
         _ => Ok(HttpResponse::Ok().json(json!({ "available": true}))),
     }
@@ -593,7 +589,7 @@ pub async fn keysend(
 
     let uid = auth_data.uid as u64;
 
-    if data.amount <= 0 {
+    if data.amount == 0 {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
@@ -641,7 +637,7 @@ pub async fn keysend(
 }
 
 #[derive(Deserialize, Debug, Serialize)]
-pub struct BtcLnSwapResponse{
+pub struct BtcLnSwapResponse {
     address: String,
     commitment: String,
     signature: String,
@@ -663,7 +659,7 @@ pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result
     let mut map = HashMap::new();
     let ln_address = format!("{}@kollider.me", user.username);
 
-    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid as i32) {
+    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid) {
         map.insert("secret_access_key".to_string(), sk.secret_key);
     }
 
@@ -687,7 +683,10 @@ pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result
 
     let swap_response: BtcLnSwapResponse = match serde_json::from_str(&body) {
         Ok(sp) => sp,
-        Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
+        Err(err) => {
+            dbg!(&err);
+            return Err(ApiError::External(ExternalError::FailedToFetchExternalData));
+        }
     };
 
     let insertable_sk = InsertableDeezySecretKey {
@@ -695,20 +694,20 @@ pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result
         uid: user.uid,
     };
 
-    if let Err(_) = insertable_sk.insert(&conn) {
+    if insertable_sk.insert(&conn).is_err() {
         dbg!("error inserting sk for user");
     }
 
     let insertable_swap = InsertableDeezyBtcLnSwap {
         uid: user.uid,
         secret_access_key: swap_response.secret_access_key.clone(),
-        ln_address: ln_address,
+        ln_address,
         btc_address: swap_response.address.clone(),
         sig: swap_response.signature.clone(),
         webhook_url: None,
     };
 
-    if let Err(_) = insertable_swap.insert(&conn) {
+    if insertable_swap.insert(&conn).is_err() {
         dbg!("Error inserting swap request.");
     }
 
@@ -731,19 +730,15 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
     let client = reqwest::Client::new();
     let mut map = HashMap::new();
 
-    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid as i32) {
+    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid) {
         map.insert("secret_access_key".to_string(), sk.secret_key);
     } else {
-        return Err(ApiError::Db(DbError::UserDoesNotExist))
+        return Err(ApiError::Db(DbError::UserDoesNotExist));
     }
 
     dbg!(&map);
 
-    let res = client
-        .post("https://api.deezy.io/v1/source/lookup")
-
-        .json(&map)
-        .send();
+    let res = client.post("https://api.deezy.io/v1/source/lookup").json(&map).send();
 
     let mut response = match res {
         Ok(r) => r,
@@ -780,21 +775,24 @@ pub struct DeezySwapRequestBody {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct LnBtcSwapResponse{
+pub struct LnBtcSwapResponse {
     pub bolt11_invoice: String,
     pub fee_sats: u64,
 }
 
 #[post("/make_onchain_swap")]
-pub async fn make_onchain_swap(pool: WebDbPool, auth_data: AuthData, data: Json<OnchainSwapData>) -> Result<HttpResponse, ApiError> {
+pub async fn make_onchain_swap(
+    pool: WebDbPool,
+    auth_data: AuthData,
+    data: Json<OnchainSwapData>,
+) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-    let user = match User::get_by_id(&conn, uid as i32) {
-        Ok(u) => u,
-        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
-    };
+    if User::get_by_id(&conn, uid as i32).is_err() {
+        return Err(ApiError::Db(DbError::UserDoesNotExist));
+    }
 
     let client = reqwest::Client::new();
 
@@ -823,9 +821,12 @@ pub async fn make_onchain_swap(pool: WebDbPool, auth_data: AuthData, data: Json<
 
     dbg!(&body);
 
-    let swap_response: LnBtcSwapResponse= match serde_json::from_str(&body) {
+    let swap_response: LnBtcSwapResponse = match serde_json::from_str(&body) {
         Ok(sp) => sp,
-        Err(err) => {dbg!(&err); return Err(ApiError::External(ExternalError::FailedToFetchExternalData))},
+        Err(err) => {
+            dbg!(&err);
+            return Err(ApiError::External(ExternalError::FailedToFetchExternalData));
+        }
     };
 
     Ok(HttpResponse::Ok()

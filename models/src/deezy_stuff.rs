@@ -13,16 +13,17 @@ pub struct DeezyBtcLnSwap {
     pub created_at: Option<std::time::SystemTime>,
     pub uid: i32,
     pub ln_address: String,
-	pub secret_access_key: String,
-	pub btc_address: String,
-	pub sig: String,
-	pub webhook_url: Option<String>,
+    pub secret_access_key: String,
+    pub btc_address: String,
+    pub sig: String,
+    pub webhook_url: Option<String>,
 }
 
 impl DeezyBtcLnSwap {
-
     pub fn get_btc_address(conn: &diesel::PgConnection, address: String) -> Result<Self, DieselError> {
-        deezy_btc_ln_swaps::dsl::deezy_btc_ln_swaps.filter(deezy_btc_ln_swaps::btc_address.eq(address)).first::<Self>(conn)
+        deezy_btc_ln_swaps::dsl::deezy_btc_ln_swaps
+            .filter(deezy_btc_ln_swaps::btc_address.eq(address))
+            .first::<Self>(conn)
     }
 
     pub fn get_by_sig(conn: &diesel::PgConnection, sig: String) -> Result<Self, DieselError> {
@@ -37,10 +38,10 @@ impl DeezyBtcLnSwap {
 pub struct InsertableDeezyBtcLnSwap {
     pub uid: i32,
     pub ln_address: String,
-	pub secret_access_key: String,
-	pub btc_address: String,
-	pub sig: String,
-	pub webhook_url: Option<String>,
+    pub secret_access_key: String,
+    pub btc_address: String,
+    pub sig: String,
+    pub webhook_url: Option<String>,
 }
 
 impl InsertableDeezyBtcLnSwap {
@@ -62,9 +63,10 @@ pub struct DeezySecretKey {
 }
 
 impl DeezySecretKey {
-
     pub fn get_by_uid(conn: &diesel::PgConnection, uid: i32) -> Result<Self, DieselError> {
-        deezy_secret_keys::dsl::deezy_secret_keys.filter(deezy_secret_keys::uid.eq(uid)).first::<Self>(conn)
+        deezy_secret_keys::dsl::deezy_secret_keys
+            .filter(deezy_secret_keys::uid.eq(uid))
+            .first::<Self>(conn)
     }
 }
 
