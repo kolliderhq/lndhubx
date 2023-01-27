@@ -28,7 +28,7 @@ impl LnAddress {
     }
 
     pub fn search_by_username_fragment(conn: &diesel::PgConnection, fragment: &str) -> Result<Vec<Self>, DieselError> {
-        let pattern = format!("%{}%", fragment);
+        let pattern = format!("%{fragment}%");
         ln_addresses::dsl::ln_addresses
             .filter(ln_addresses::username.ilike(pattern))
             .load::<Self>(conn)

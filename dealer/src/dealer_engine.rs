@@ -96,8 +96,7 @@ impl DealerEngine {
                     Ok(converted) => converted,
                     Err(err) => {
                         panic!(
-                            "Failed to convert a settings item {} into a currency, reason: {:?}",
-                            c, err
+                            "Failed to convert a settings item {c} into a currency, reason: {err:?}"
                         );
                     }
                 };
@@ -349,7 +348,7 @@ impl DealerEngine {
             }
 
             let (order_quantity, trade_side) = match delta_qty.to_i64() {
-                Some(converted) => (converted.abs() as u64, Side::from_sign(converted)),
+                Some(converted) => (converted.unsigned_abs(), Side::from_sign(converted)),
                 None => {
                     slog::error!(
                         self.logger,
@@ -672,8 +671,7 @@ impl DealerEngine {
                                 listener(msg);
                             } else {
                                 panic!(
-                                    "Received change margin success message with incorrect amount: {:?}",
-                                    msg
+                                    "Received change margin success message with incorrect amount: {msg:?}"
                                 );
                             }
                         }

@@ -7,7 +7,7 @@ where
     let environment: String = env::var("ENV").unwrap_or_else(|_| "dev".into());
     let file_name: String = env::var("FILE_NAME").expect("FILE_NAME was not specified as an environment variable.");
 
-    let file_path = format!("{}.{}.toml", file_name, environment);
+    let file_path = format!("{file_name}.{environment}.toml");
 
     let mut configuration = config::Config::default();
     configuration.merge(config::File::with_name(&file_path))?;

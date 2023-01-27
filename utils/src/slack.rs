@@ -63,7 +63,7 @@ impl SlackBot {
     fn handle(slack: Slack, rx: Receiver<PayloadBuilder>, channel: String) {
         while let Ok(msg) = rx.recv() {
             if let Err(e) = msg.channel(channel.clone()).build().and_then(|ref x| slack.send(x)) {
-                eprintln!("[SLACK] {:?}", e);
+                eprintln!("[SLACK] {e:?}");
             }
         }
     }

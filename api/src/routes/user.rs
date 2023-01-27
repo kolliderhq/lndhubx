@@ -659,7 +659,7 @@ pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result
     let mut map = HashMap::new();
     let ln_address = format!("{}@kollider.me", user.username);
 
-    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid as i32) {
+    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid) {
         map.insert("secret_access_key".to_string(), sk.secret_key);
     }
 
@@ -730,7 +730,7 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
     let client = reqwest::Client::new();
     let mut map = HashMap::new();
 
-    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid as i32) {
+    if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid) {
         map.insert("secret_access_key".to_string(), sk.secret_key);
     } else {
         return Err(ApiError::Db(DbError::UserDoesNotExist));

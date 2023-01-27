@@ -5,7 +5,7 @@ const PREFIX: &str = "lnurl";
 pub fn encode(url: String, q: Option<String>) -> Result<String, bech32::Error> {
     let mut unencoded = url;
     if let Some(id) = q {
-        unencoded = format!("{}?q={}", unencoded, id);
+        unencoded = format!("{unencoded}?q={id}");
     }
     bech32::encode(PREFIX, unencoded.as_bytes().to_vec().to_base32())
 }

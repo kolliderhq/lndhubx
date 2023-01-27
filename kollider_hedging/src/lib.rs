@@ -74,7 +74,7 @@ impl Drop for KolliderHedgingClient {
         self.run_flag.store(false, std::sync::atomic::Ordering::SeqCst);
         if let Some(join_handle) = self.join_handle.take() {
             if let Err(err) = join_handle.join() {
-                eprintln!("Websocket thread had panicked, {:?}", err);
+                eprintln!("Websocket thread had panicked, {err:?}");
             }
         }
     }
@@ -123,7 +123,7 @@ impl KolliderHedgingClient {
                         let response = match serde_json::from_str::<KolliderApiResponse>(&txt) {
                             Ok(deserialized) => deserialized,
                             Err(err) => {
-                                eprintln!("Failed to deserialize: {}, reason: {}", txt, err);
+                                eprintln!("Failed to deserialize: {txt}, reason: {err}");
                                 continue;
                             }
                         };
@@ -156,7 +156,7 @@ impl KolliderHedgingClient {
                 }
             }
             if let Err(err) = socket.close(None) {
-                eprintln!("Failed to close a websocket gracefully, {:?}", err);
+                eprintln!("Failed to close a websocket gracefully, {err:?}");
             }
         });
 
@@ -523,7 +523,7 @@ fn process_incoming_message(
 
 fn send_to_callback(callback: &Sender<Message>, msg: Message) {
     if let Err(err) = callback.send(msg) {
-        panic!("Failed to send a message to a callback sender, reason: {:?}", err);
+        panic!("Failed to send a message to a callback sender, reason: {err:?}");
     }
 }
 
@@ -531,7 +531,7 @@ fn get_locked_state(shared_state: &Arc<Mutex<State>>) -> MutexGuard<State> {
     match shared_state.lock() {
         Ok(locked) => locked,
         Err(err) => {
-            panic!("Could not lock a shared state, reason: {:?}", err);
+            panic!("Could not lock a shared state, reason: {err:?}");
         }
     }
 }

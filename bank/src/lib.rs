@@ -66,7 +66,7 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {err}");
         }
     }
 }
@@ -132,7 +132,7 @@ pub async fn start(
         }
         ServiceIdentity::Loopback => {
             if let Err(err) = priority_tx.send(msg) {
-                panic!("Failed to send priority message: {:?}", err);
+                panic!("Failed to send priority message: {err:?}");
             }
         }
         ServiceIdentity::Nostr => {

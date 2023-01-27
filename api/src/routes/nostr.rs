@@ -116,7 +116,7 @@ pub async fn nostr_nip05(pool: WebDbPool, params: Query<Nip05Params>) -> Result<
 
     let resp = json!({
         "names": json!({
-          format!("{}", username): nostr_pubkey.pubkey
+          format!("{username}"): nostr_pubkey.pubkey
         })
     });
 

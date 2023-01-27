@@ -72,7 +72,7 @@ impl User {
     }
 
     pub fn search_by_username_fragment(conn: &diesel::PgConnection, fragment: &str) -> Result<Vec<Self>, DieselError> {
-        let pattern = format!("%{}%", fragment);
+        let pattern = format!("%{fragment}%");
         users::dsl::users
             .filter(users::username.ilike(pattern))
             .filter(users::is_internal.eq(false))

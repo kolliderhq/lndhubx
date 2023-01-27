@@ -50,7 +50,7 @@ pub async fn create(pool: WebDbPool, register_data: Json<RegisterData>) -> Resul
 
     // TODO: Make this configurable.
     let ln_address = InsertableLnAddress {
-        username: format!("{}@kollider.me", username),
+        username: format!("{username}@kollider.me"),
         domain: String::from("kollider.me"),
     };
 

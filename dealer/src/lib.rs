@@ -42,7 +42,7 @@ pub async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket:
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {err}");
         }
     }
 }
@@ -87,7 +87,7 @@ pub async fn store_quotes(dealer: &DealerEngine, client: &Client, bucket: &str) 
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write swap rates data point to Influx. Err: {}", err);
+            eprintln!("Failed to write swap rates data point to Influx. Err: {err}");
         }
     }
 }

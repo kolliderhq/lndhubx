@@ -210,7 +210,7 @@ impl BankEngine {
                     "Could not initialise internal user account, reason {:?}",
                     err
                 );
-                panic!("Could not initialise internal user account, reason {:?}", err);
+                panic!("Could not initialise internal user account, reason {err:?}");
             }
         };
         let mut parsed_accounts = Vec::new();
@@ -385,8 +385,7 @@ impl BankEngine {
             user_account.accounts.insert(account_id, account);
         } else {
             panic!(
-                "Failed to find user account, uid: {} while inserting account state: account_id: {}, account: {:?}",
-                uid, account_id, account
+                "Failed to find user account, uid: {uid} while inserting account state: account_id: {account_id}, account: {account:?}"
             );
         }
     }
@@ -552,7 +551,7 @@ impl BankEngine {
         };
 
         let t = utils::time::time_now();
-        let txid = format!("{}", t);
+        let txid = format!("{t}");
 
         let tx = models::summary_transactions::SummaryTransaction {
             txid: txid.clone(),
@@ -725,7 +724,7 @@ impl BankEngine {
         let inbound_username = payment_request
             .recipient
             .as_ref()
-            .unwrap_or_else(|| panic!("Recipient's username not specified: {:?}", payment_request))
+            .unwrap_or_else(|| panic!("Recipient's username not specified: {payment_request:?}"))
             .clone();
 
         let outbound_uid = payment_request.uid;
@@ -846,7 +845,7 @@ impl BankEngine {
                 None,
                 Some(String::from("InternalTransfer")),
                 Some(format!("{}@kollider.me", outbound_user.username)),
-                Some(format!("{}@kollider.me", inbound_username)),
+                Some(format!("{inbound_username}@kollider.me")),
             )
             .is_err()
         {
@@ -1104,7 +1103,7 @@ impl BankEngine {
                         Some(curr) => match Currency::from_str(curr) {
                             Ok(converted) => converted,
                             Err(err) => {
-                                panic!("Failed to convert {} into a valid currency, reason: {:?}", curr, err);
+                                panic!("Failed to convert {curr} into a valid currency, reason: {err:?}");
                             }
                         },
                         None => Currency::BTC,
@@ -1115,7 +1114,7 @@ impl BankEngine {
                         Some(curr) => match Currency::from_str(curr) {
                             Ok(converted) => converted,
                             Err(err) => {
-                                panic!("Failed to convert {} into a valid currency, reason: {:?}", curr, err);
+                                panic!("Failed to convert {curr} into a valid currency, reason: {err:?}");
                             }
                         },
                         None => Currency::BTC,
@@ -1383,8 +1382,7 @@ impl BankEngine {
 
                     let amount_in_sats = amount.try_sats().unwrap().to_u64().unwrap_or_else(|| {
                         panic!(
-                            "Failed to convert  decimal amount in BTC: {:?} to u64 amount in SATs",
-                            amount
+                            "Failed to convert  decimal amount in BTC: {amount:?} to u64 amount in SATs"
                         )
                     });
 
@@ -2022,7 +2020,7 @@ impl BankEngine {
                                     Some(inbound_txid),
                                     None,
                                     Some(String::from("ExternalPayment")),
-                                    Some(format!("{}@kollider.xyz", outbound_username)),
+                                    Some(format!("{outbound_username}@kollider.xyz")),
                                     Some(inbound_username),
                                 )
                                 .is_err()
@@ -2068,7 +2066,7 @@ impl BankEngine {
                                     Some(txid),
                                     None,
                                     Some(String::from("ExternalPayment")),
-                                    Some(format!("{}@kollider.xyz", outbound_username)),
+                                    Some(format!("{outbound_username}@kollider.xyz")),
                                     Some(inbound_username),
                                 )
                                 .is_err()
@@ -2131,7 +2129,7 @@ impl BankEngine {
                                         error: None,
                                     }));
                                     if let Err(err) = payment_task_sender.send(msg) {
-                                        panic!("Failed to send a payment task: {:?}", err);
+                                        panic!("Failed to send a payment task: {err:?}");
                                     }
                                 }
                                 Err(e) => {
@@ -2161,7 +2159,7 @@ impl BankEngine {
                                         error: Some(e.to_string()),
                                     }));
                                     if let Err(err) = payment_task_sender.send(msg) {
-                                        panic!("Failed to send a payment task: {:?}", err);
+                                        panic!("Failed to send a payment task: {err:?}");
                                     }
                                 }
                             }
@@ -2715,8 +2713,7 @@ impl BankEngine {
 
                         let pr = payment_response.clone().payment_request.unwrap_or_else(|| {
                             panic!(
-                                "Payment request has not been specified in the payment response: {:?}",
-                                payment_response
+                                "Payment request has not been specified in the payment response: {payment_response:?}"
                             )
                         });
 
@@ -2988,7 +2985,7 @@ impl BankEngine {
         };
         let amount_in_milli_satoshi = decoded
             .amount_milli_satoshis()
-            .unwrap_or_else(|| panic!("Amount in millisatoshi is not specified: {:?}", decoded));
+            .unwrap_or_else(|| panic!("Amount in millisatoshi is not specified: {decoded:?}"));
         // scale 3, which corresponds to dividing by 10^3 = 1000
         let amount_in_sats = Decimal::new(amount_in_milli_satoshi as i64, 3);
 

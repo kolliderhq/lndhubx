@@ -17,15 +17,14 @@ impl SocketContext {
             Ok(created) => created,
             Err(err) => {
                 panic!(
-                    "Failed to create a {:?} socket listening on: {}, reason: {:?}",
-                    socket_type, address, err
+                    "Failed to create a {socket_type:?} socket listening on: {address}, reason: {err:?}"
                 );
             }
         };
         match socket.bind(address) {
             Ok(()) => socket,
             Err(err) => {
-                panic!("Failed to bind socket to {}, reason: {:?}", address, err);
+                panic!("Failed to bind socket to {address}, reason: {err:?}");
             }
         }
     }
@@ -35,20 +34,19 @@ impl SocketContext {
             Ok(created) => created,
             Err(err) => {
                 panic!(
-                    "Failed to create a {:?} socket connecting to: {}, reason: {:?}",
-                    socket_type, address, err
+                    "Failed to create a {socket_type:?} socket connecting to: {address}, reason: {err:?}"
                 );
             }
         };
         if socket_type == zmq::SUB {
             if let Err(err) = socket.set_subscribe(&[]) {
-                panic!("Failed to set subscribe on the socket, reason {:?}", err);
+                panic!("Failed to set subscribe on the socket, reason {err:?}");
             }
         }
         match socket.connect(address) {
             Ok(()) => socket,
             Err(err) => {
-                panic!("Failed to connect socket to {}, reason: {:?}", address, err);
+                panic!("Failed to connect socket to {address}, reason: {err:?}");
             }
         }
     }
@@ -92,15 +90,13 @@ where
         Ok(serialized) => serialized,
         Err(err) => {
             panic!(
-                "Failed to serialize a message: {:?} into a json payload, reason: {:?}",
-                message, err
+                "Failed to serialize a message: {message:?} into a json payload, reason: {err:?}"
             );
         }
     };
     if let Err(err) = socket.send(payload.as_str(), 0x00) {
         panic!(
-            "Failed to send a message: {:?} as a json payload, reason: {:?}",
-            message, err
+            "Failed to send a message: {message:?} as a json payload, reason: {err:?}"
         );
     }
 }
@@ -113,15 +109,13 @@ where
         Ok(serialized) => serialized,
         Err(err) => {
             panic!(
-                "Failed to serialize a message: {:?} into a bincode payload, reason: {:?}",
-                message, err
+                "Failed to serialize a message: {message:?} into a bincode payload, reason: {err:?}"
             );
         }
     };
     if let Err(err) = socket.send(payload, 0x00) {
         panic!(
-            "Failed to send a message: {:?} as a bincode payload, reason: {:?}",
-            message, err
+            "Failed to send a message: {message:?} as a bincode payload, reason: {err:?}"
         );
     }
 }
@@ -134,15 +128,13 @@ where
         Ok(serialized) => vec![vec![], vec![], serialized],
         Err(err) => {
             panic!(
-                "Failed to serialize a message: {:?} into a bincode payload, reason: {:?}",
-                message, err
+                "Failed to serialize a message: {message:?} into a bincode payload, reason: {err:?}"
             );
         }
     };
     if let Err(err) = socket.send_multipart(payload, 0x00) {
         panic!(
-            "Failed to send a message: {:?} as a multipart bincode payload, reason: {:?}",
-            message, err
+            "Failed to send a message: {message:?} as a multipart bincode payload, reason: {err:?}"
         );
     }
 }
