@@ -393,7 +393,6 @@ impl DealerEngine {
                         error: None,
                         fees: None,
                     };
-<<<<<<< HEAD
                     if swap_request.from == swap_request.to {
                         swap_response.error = Some(SwapResponseError::Invalid);
                         let msg = Message::Api(Api::SwapResponse(swap_response));
@@ -407,8 +406,6 @@ impl DealerEngine {
                         listener(msg);
                         return;
                     }
-=======
->>>>>>> ede317e9d51706e1b92847fa899d536fd0acb801
                     let time_now = SystemTime::now();
                     let invalidated_quotes = time_now
                         .sub(Duration::from_millis(QUOTE_TTL_MS))
