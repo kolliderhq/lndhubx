@@ -394,6 +394,7 @@ impl DealerEngine {
                         fees: None,
                     };
                     if swap_request.from == swap_request.to {
+                        swap_response.success = false;
                         swap_response.error = Some(SwapResponseError::Invalid);
                         let msg = Message::Api(Api::SwapResponse(swap_response));
                         listener(msg);
