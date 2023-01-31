@@ -400,13 +400,6 @@ impl DealerEngine {
                         listener(msg);
                         return;
                     }
-                    if swap_request.from != Currency::BTC && swap_request.to != Currency::BTC {
-                        swap_response.success = false;
-                        swap_response.error = Some(SwapResponseError::BTCNotFromTo);
-                        let msg = Message::Api(Api::SwapResponse(swap_response));
-                        listener(msg);
-                        return;
-                    }
                     let time_now = SystemTime::now();
                     let invalidated_quotes = time_now
                         .sub(Duration::from_millis(QUOTE_TTL_MS))
