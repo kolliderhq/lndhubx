@@ -1,9 +1,9 @@
 use crate::ledger::Ledger;
 
-use rust_decimal_macros::*;
 use rust_decimal::prelude::*;
+use rust_decimal_macros::*;
 
-use core_types::{Currency, Account};
+use core_types::{Account, Currency};
 use std::collections::HashMap;
 
 #[derive(Debug)]

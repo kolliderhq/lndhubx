@@ -4,7 +4,6 @@ pub mod slack;
 pub mod xlogging;
 pub mod xzmq;
 
-
 pub mod time {
     use serde::Serializer;
     use std::time::SystemTime;

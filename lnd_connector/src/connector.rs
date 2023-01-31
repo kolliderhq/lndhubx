@@ -167,7 +167,7 @@ impl LndConnector {
 
         let key_send_request = if let Some((dest, key)) = key_send {
             // If we do key send we have to supply payment hash.
-            let sha256_hash_string =  sha256::digest(&key);
+            let sha256_hash_string = sha256::digest(&key);
             let dest = hex::decode(dest).expect("Decoding keysend dest failed");
             let mut custom_records: HashMap<u64, Vec<u8>> = HashMap::new();
             let sha256_hash = hex::decode(sha256_hash_string).expect("Decoding keysend preimage failed");
@@ -175,9 +175,9 @@ impl LndConnector {
             let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee.to_i64().unwrap());
             let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
             let key_send_request = tonic_openssl_lnd::lnrpc::SendRequest {
-                dest: dest,
+                dest,
                 amt: amount_in_sats.to_i64().unwrap(),
-                payment_hash: sha256_hash.clone(),
+                payment_hash: sha256_hash,
                 dest_features: vec![tonic_openssl_lnd::lnrpc::FeatureBit::TlvOnionReq as i32],
                 fee_limit: Some(fee_limit),
                 dest_custom_records: custom_records,
@@ -203,7 +203,7 @@ impl LndConnector {
         };
 
         if send_request.is_none() {
-            return Err(LndConnectorError::FailedToSendPayment)
+            return Err(LndConnectorError::FailedToSendPayment);
         }
 
         if let Ok(resp) = self.ln_client.send_payment_sync(send_request.unwrap()).await {

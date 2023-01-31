@@ -38,7 +38,7 @@ impl fmt::Display for AccountType {
             Self::External => "External",
         };
 
-        write!(f, "{}", sign)
+        write!(f, "{sign}")
     }
 }
 
@@ -67,15 +67,15 @@ impl fmt::Display for AccountClass {
             Self::Fees => "Fee",
         };
 
-        write!(f, "{}", sign)
+        write!(f, "{sign}")
     }
 }
 
 impl FromStr for AccountClass {
     type Err = String;
 
-    fn from_str(accountType: &str) -> Result<AccountClass, Self::Err> {
-        match accountType {
+    fn from_str(account_type: &str) -> Result<AccountClass, Self::Err> {
+        match account_type {
             "Cash" => Ok(AccountClass::Cash),
             "Fees" => Ok(AccountClass::Fees),
             _ => Err("unknown account class".to_string()),
@@ -127,7 +127,7 @@ impl fmt::Display for Currency {
             Self::EUR => "EUR",
         };
 
-        write!(f, "{}", sign)
+        write!(f, "{sign}")
     }
 }
 
@@ -244,7 +244,7 @@ impl ConversionInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LndNodeInfo {
     pub identity_pubkey: String,
     pub uris: Vec<String>,
@@ -254,27 +254,13 @@ pub struct LndNodeInfo {
     pub testnet: bool,
 }
 
-impl Default for LndNodeInfo {
-    fn default() -> Self {
-        Self {
-            identity_pubkey: String::from(""),
-            uris: vec![],
-            num_active_channels: 0,
-            num_pending_channels: 0,
-            num_peers: 0,
-            testnet: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Money {
     pub value: Decimal,
     pub currency: Currency,
 }
 
 impl Money {
-
     pub fn new(currency: Currency, value: Option<Decimal>) -> Self {
         Self {
             currency,
@@ -287,16 +273,16 @@ impl Money {
     }
 
     pub fn mult(&self, value: Decimal) -> Decimal {
-        return self.value * value;
+        self.value * value
     }
 
     pub fn div(&self, value: Decimal) -> Decimal {
-        return self.value / value;
+        self.value / value
     }
 
     pub fn try_sats(&self) -> Result<Decimal, String> {
         if self.currency == Currency::BTC {
-           Ok(self.value * SATS_IN_BITCOIN)
+            Ok(self.value * SATS_IN_BITCOIN)
         } else {
             Err("Is not Bitcoin.".to_string())
         }
@@ -304,7 +290,7 @@ impl Money {
     pub fn from_sats(value: Decimal) -> Self {
         Self {
             currency: Currency::BTC,
-            value: value / SATS_IN_BITCOIN
+            value: value / SATS_IN_BITCOIN,
         }
     }
 
@@ -318,7 +304,7 @@ impl Money {
         }
         let exchanged_money = Money {
             currency: c,
-            value: self.value * r
+            value: self.value * r,
         };
         Ok(exchanged_money)
     }
@@ -329,7 +315,6 @@ impl Money {
             value,
         }
     }
-
 }
 
 impl FromStr for Money {
@@ -347,7 +332,7 @@ impl FromStr for Money {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Rate {
     pub value: Decimal,
     pub quote: Currency,
@@ -355,13 +340,8 @@ pub struct Rate {
 }
 
 impl Rate {
-
     pub fn new(base: Currency, quote: Currency, value: Decimal) -> Self {
-        Self {
-            quote,
-            base,
-            value,
-        }
+        Self { quote, base, value }
     }
 
     pub fn set(&mut self, value: Decimal) {
@@ -369,10 +349,10 @@ impl Rate {
     }
 
     pub fn get_inv(&self) -> Rate {
-        return Rate {
+        Rate {
             base: self.quote,
             quote: self.base,
-            value: Decimal::ONE / self.value
+            value: Decimal::ONE / self.value,
         }
     }
 }
@@ -382,11 +362,10 @@ impl Default for Rate {
         Self {
             value: Decimal::MIN,
             quote: Currency::BTC,
-            base: Currency:: BTC,
+            base: Currency::BTC,
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

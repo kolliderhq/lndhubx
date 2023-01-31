@@ -24,7 +24,7 @@ tokio = { version = "1.17.0", features = ["full"] }
 influxdb2 = "0.1.1"
 futures = "0.3.21"
 
-nostr_rust = { version = "*" }
+nostr-sdk = { version = "0.16", features = ["blocking"] }
 
 [dependencies.msgs]
 path = "../msgs"

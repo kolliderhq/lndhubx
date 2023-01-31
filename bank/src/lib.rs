@@ -1,8 +1,8 @@
 extern crate core;
 
+pub mod accountant;
 pub mod bank_engine;
 pub mod ledger;
-pub mod accountant;
 
 use bank_engine::*;
 use futures::prelude::*;
@@ -66,7 +66,7 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
     if let Ok(data_point) = builder.build() {
         let points = vec![data_point];
         if let Err(err) = client.write(bucket, stream::iter(points)).await {
-            eprintln!("Failed to write point to Influx. Err: {}", err);
+            eprintln!("Failed to write point to Influx. Err: {err}");
         }
     }
 }
@@ -132,7 +132,7 @@ pub async fn start(
         }
         ServiceIdentity::Loopback => {
             if let Err(err) = priority_tx.send(msg) {
-                panic!("Failed to send priority message: {:?}", err);
+                panic!("Failed to send priority message: {err:?}");
             }
         }
         ServiceIdentity::Nostr => {
@@ -195,7 +195,6 @@ pub async fn start(
                 .into_iter()
                 .filter(|t| t.is_finished())
                 .collect::<FuturesUnordered<tokio::task::JoinHandle<()>>>();
-
         }
 
         if reconciliation_interval.elapsed().as_secs() > 3 {
@@ -207,6 +206,5 @@ pub async fn start(
                 panic!("Reconciliation error! Shutting down.");
             }
         }
-
     }
 }

@@ -1,57 +1,33 @@
-use std::{
-    str::FromStr,
-    sync::{Arc, Mutex},
-    thread,
-};
+use std::collections::HashMap;
+use std::thread;
 
-use nostr_rust::{
-    events::extract_events_ws, nostr_client::Client, req::ReqFilter, utils::parse_content_tags, bech32::{ToBech32Kind, from_hb_to_hex}, 
-    Identity as NostrIdentity, Message as NostrMessage,
-};
-
+use core_types::nostr::NostrProfile;
+use msgs::{nostr::*, *};
+use nostr_sdk::blocking::Client;
+use nostr_sdk::prelude::{FromPkStr, FromSkStr, Keys, Kind, SubscriptionFilter};
+use serde::{Deserialize, Serialize};
 use utils::xzmq::SocketContext;
 
-use core_types::{nostr::NostrProfile, *};
-use crossbeam_channel::bounded;
-use msgs::{*, nostr::{*}};
-use std::collections::HashMap;
+fn get_user_profile(client: Client, pubkey: String) -> Option<NostrProfile> {
+    let keys = Keys::from_pk_str(&pubkey).unwrap();
 
-use serde::{Deserialize, Serialize};
+    let subscription = SubscriptionFilter::new()
+        .author(keys.public_key())
+        .kind(Kind::Metadata)
+        .limit(1);
+    let events = client.get_events_of(vec![subscription]).unwrap();
 
-fn get_user_profile(client: Arc<Mutex<Client>>, pubkey: String) -> Option<NostrProfile> {
-    let hex = from_hb_to_hex(ToBech32Kind::PublicKey, &pubkey).unwrap();
-    let subscription_id = client
-        .lock()
-        .unwrap()
-        .subscribe(vec![ReqFilter {
-            ids: None,
-            authors: Some(vec![hex]),
-            kinds: Some(vec![0]),
-            e: None,
-            p: None,
-            since: None,
-            until: None,
-            limit: Some(1),
-        }])
-        .unwrap();
-
-    client.lock().unwrap().unsubscribe(&subscription_id).unwrap();
-    let events = client.lock().unwrap().next_data().unwrap();
-
-    for (_relay_url, message) in events.iter() {
-        let events = extract_events_ws(message);
-        for event in events {
-            let content_str = event.content.clone();
-            let nostr_profile = serde_json::from_str::<NostrProfile>(&content_str).unwrap();
-            return Some(nostr_profile);
-        }
+    if let Some(event) = events.first() {
+        let nostr_profile = serde_json::from_str::<NostrProfile>(&event.content).unwrap();
+        Some(nostr_profile)
+    } else {
+        None
     }
-    return None;
 }
 
-fn send_nostr_private_msg(client: Arc<Mutex<Client>>, identity: &NostrIdentity, pubkey: &String, text: &String) {
-    let hex = from_hb_to_hex(ToBech32Kind::PublicKey, &pubkey).unwrap();
-    client.lock().unwrap().send_private_message(identity, pubkey, text, 0).unwrap();
+fn send_nostr_private_msg(client: Client, pubkey: &str, text: &str) {
+    let keys = Keys::from_pk_str(pubkey).unwrap();
+    client.send_direct_msg(keys.public_key(), text).unwrap();
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -70,19 +46,20 @@ fn main() {
 
     let mut nostr_profile_cache: HashMap<String, NostrProfile> = HashMap::new();
 
-    let my_identity =
-        NostrIdentity::from_str(&settings.nostr_private_key).unwrap();
+    let keys = Keys::from_sk_str(&settings.nostr_private_key).unwrap();
+    let nostr_client = Client::new(&keys);
 
-    let nostr_client = Arc::new(Mutex::new(
-        Client::new(vec![
-            "wss://relay.nostr.info",
+    nostr_client
+        .add_relays(vec![
+            ("wss://relay.nostr.info", None),
             // "wss://nostr-pub.wellorder.net",
             // "wss://relay.damus.io",
             // "wss://nostr.zebedee.cloud",
             // "wss://nostr.bitcoiner.social",
         ])
-        .unwrap(),
-    ));
+        .unwrap();
+
+    nostr_client.connect();
 
     loop {
         thread::sleep(std::time::Duration::from_secs(1));
@@ -114,7 +91,7 @@ fn main() {
                         }
                     }
                     Message::Nostr(Nostr::NostrPrivateMessage(req)) => {
-                        send_nostr_private_msg(nostr_client.clone(), &my_identity, &req.pubkey, &req.text);
+                        send_nostr_private_msg(nostr_client.clone(), &req.pubkey, &req.text);
                     }
                     _ => {}
                 }
@@ -123,6 +100,4 @@ fn main() {
 
         dbg!("cycle");
     }
-
-    println!("Hello, world!");
 }

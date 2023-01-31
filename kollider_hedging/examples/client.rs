@@ -32,8 +32,8 @@ fn main() {
         [Currency::BTC, Currency::USD]
             .iter()
             .for_each(|currency| match client.get_balance(*currency) {
-                Ok(balance) => println!("Your {} balance is {}", currency, balance),
-                Err(err) => println!("Your {} balance: {:?}", currency, err),
+                Ok(balance) => println!("Your {currency} balance is {balance}"),
+                Err(err) => println!("Your {currency} balance: {err:?}"),
             });
         if should_buy {
             if client.buy(1, Currency::USD).is_err() {
@@ -54,7 +54,7 @@ fn main() {
                     println!("Disconnected at {}", disconnection.timestamp)
                 }
                 Message::KolliderApiResponse(KolliderApiResponse::TradableSymbols(symbols)) => {
-                    println!("TradableSymbols: {:?}", symbols);
+                    println!("TradableSymbols: {symbols:?}");
                 }
                 _ => {}
             }

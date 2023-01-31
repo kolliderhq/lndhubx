@@ -56,7 +56,7 @@ impl std::fmt::Display for ApiRole {
             Self::Transfer => "Transfer",
         };
 
-        write!(f, "{}", output)
+        write!(f, "{output}")
     }
 }
 

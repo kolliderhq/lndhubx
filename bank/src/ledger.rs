@@ -44,7 +44,7 @@ impl UserAccount {
             return accounts[0].1.clone();
         }
 
-        let account_type =  if let Some(at) = account_type {
+        let account_type = if let Some(at) = account_type {
             at
         } else {
             AccountType::Internal

@@ -35,7 +35,7 @@ pub enum Message {
     KolliderApiResponse(KolliderApiResponse),
     Bank(Bank),
     Cli(Cli),
-    Nostr(Nostr)
+    Nostr(Nostr),
 }
 
 #[cfg(test)]

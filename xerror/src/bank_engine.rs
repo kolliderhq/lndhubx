@@ -16,7 +16,7 @@ impl std::fmt::Display for BankError {
             BankError::FailedTransaction => "FailedTransaction",
             BankError::SwapError => "SwapError",
         };
-        write!(f, "{}", output)
+        write!(f, "{output}")
     }
 }
 

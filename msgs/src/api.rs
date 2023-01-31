@@ -1,4 +1,4 @@
-use core_types::{*, nostr::NostrProfile};
+use core_types::{nostr::NostrProfile, *};
 use rust_decimal::prelude::*;
 use std::collections::HashMap;
 
@@ -60,7 +60,6 @@ pub enum NostrResponseError {
     ProfileNotFound,
     ErrorSendingPrivateMessage,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueryRouteError {
@@ -170,7 +169,7 @@ impl PaymentResponse {
             currency,
             fees: None,
             rate: None,
-            payment_preimage: payment_preimage,
+            payment_preimage,
             description: None,
             destination: None,
         }
@@ -336,14 +335,14 @@ pub struct QueryRouteResponse {
 pub struct NostrProfileRequest {
     pub req_id: RequestId,
     pub pubkey: Option<String>,
-    pub lightning_address: Option<String>
+    pub lightning_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrProfileResponse {
     pub req_id: RequestId,
     pub profile: Option<NostrProfile>,
-    pub error: Option<NostrResponseError>
+    pub error: Option<NostrResponseError>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,5 +370,5 @@ pub enum Api {
     QueryRouteRequest(QueryRouteRequest),
     QueryRouteResponse(QueryRouteResponse),
     NostrProfileRequest(NostrProfileRequest),
-    NostrProfileResponse(NostrProfileResponse)
+    NostrProfileResponse(NostrProfileResponse),
 }
