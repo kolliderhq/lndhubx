@@ -740,7 +740,7 @@ impl BankEngine {
         };
 
         let fees = Money::new(payment_request.currency, Some(dec!(0)));
-        let amount = payment_request.amount.unwrap();
+        let amount = payment_request.amount.unwrap_or(None);
 
         let mut payment_response = PaymentResponse {
             amount: Some(amount),
