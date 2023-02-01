@@ -34,7 +34,7 @@ pub enum PayLnurlWithdrawalError {
     RequestNotFound,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SwapResponseError {
     Invalid,
     CurrencyNotAvailable,

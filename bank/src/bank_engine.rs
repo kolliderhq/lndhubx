@@ -2245,6 +2245,14 @@ impl BankEngine {
                         (outbound_account, inbound_account)
                     };
 
+                    if outbound_account.account_id == inbound_account.account_id {
+                        swap_response.success = false;
+                        swap_response.error = Some(SwapResponseError::Invalid);
+                        let msg = Message::Api(Api::SwapResponse(swap_response));
+                        listener(msg, ServiceIdentity::Api);
+                        return;
+                    }
+
                     let (mut outbound_dealer_account, mut inbound_dealer_account) = {
                         let outbound_dealer_account = self
                             .ledger
@@ -2275,7 +2283,7 @@ impl BankEngine {
                         &mut outbound_account,
                         uid,
                         &mut inbound_dealer_account,
-                        BANK_UID,
+                        DEALER_UID,
                         msg.amount,
                     ) {
                         txid
@@ -2294,7 +2302,7 @@ impl BankEngine {
 
                     let inbound_txid = if let Ok(txid) = self.make_tx(
                         &mut outbound_dealer_account,
-                        BANK_UID,
+                        DEALER_UID,
                         &mut inbound_account,
                         uid,
                         inbound_amount,
@@ -2324,8 +2332,8 @@ impl BankEngine {
                     self.update_account(&outbound_account, uid);
                     self.update_account(&inbound_account, uid);
 
-                    self.update_account(&outbound_dealer_account, uid);
-                    self.update_account(&inbound_dealer_account, uid);
+                    self.update_account(&outbound_dealer_account, DEALER_UID);
+                    self.update_account(&inbound_dealer_account, DEALER_UID);
 
                     let msg = Message::Api(Api::SwapResponse(swap_response));
                     listener(msg, ServiceIdentity::Api);
