@@ -90,6 +90,7 @@ pub enum Currency {
     GBP,
     EUR,
     BTC,
+    KKP,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
@@ -97,6 +98,7 @@ pub enum Denom {
     Sats(u64),
     MilliCents(u64),
     MilliPence(u64),
+    Karma(u64),
 }
 
 impl Denom {
@@ -106,6 +108,7 @@ impl Denom {
             Currency::USD => Denom::MilliCents(100000),
             Currency::GBP => Denom::MilliPence(100000),
             Currency::EUR => Denom::MilliCents(100000),
+            Currency::KKP => Denom::Karma(1),
         }
     }
 
@@ -114,6 +117,7 @@ impl Denom {
             Self::Sats(v) => *v,
             Self::MilliCents(v) => *v,
             Self::MilliPence(v) => *v,
+            Self::Karma(v) => *v,
         }
     }
 }
@@ -125,6 +129,7 @@ impl fmt::Display for Currency {
             Self::USD => "USD",
             Self::GBP => "GBP",
             Self::EUR => "EUR",
+            Self::KKP => "KKP",
         };
 
         write!(f, "{sign}")
@@ -141,6 +146,7 @@ impl FromStr for Currency {
             "eur" => Ok(Currency::EUR),
             "gbp" => Ok(Currency::GBP),
             "usd" => Ok(Currency::USD),
+            "kkp" => Ok(Currency::KKP),
             _ => Err("unknown currency".to_string()),
         }
     }
@@ -152,7 +158,7 @@ impl From<Currency> for Symbol {
             Currency::USD => String::from("BTCUSD.PERP"),
             Currency::EUR => String::from("BTCEUR.PERP"),
             Currency::GBP => String::from("BTCGBP.PERP"),
-            Currency::BTC => panic!("Incorrect usage"),
+            Currency::BTC | Currency::KKP => panic!("Incorrect usage"),
         }
     }
 }

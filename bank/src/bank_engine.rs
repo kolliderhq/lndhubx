@@ -1065,6 +1065,18 @@ impl BankEngine {
                         slog::error!(self.logger, "Couldn't find payment request. This should never happen.");
                     }
                 }
+                Dealer::KarmaBalance(KarmaBalance { karma }) => {
+                    let mut dealer_karma_account = self
+                        .ledger
+                        .dealer_accounts
+                        .get_default_account(Currency::KKP, Some(AccountType::Internal));
+                    dealer_karma_account.balance = -karma;
+                    self.ledger
+                        .dealer_accounts
+                        .accounts
+                        .insert(dealer_karma_account.account_id, dealer_karma_account.clone());
+                    self.update_account(&dealer_karma_account, DEALER_UID);
+                }
                 _ => {}
             },
 

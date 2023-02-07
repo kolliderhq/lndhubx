@@ -283,7 +283,7 @@ impl DealerEngine {
             let currency = account.currency;
             let exposure = account.balance;
 
-            if currency == Currency::BTC {
+            if currency == Currency::BTC || currency == Currency::KKP {
                 continue;
             }
 
@@ -701,6 +701,11 @@ impl DealerEngine {
                     }
                     KolliderApiResponse::FundingPayment(funding_payment) => {
                         self.update_funding_profit(funding_payment.amount);
+                    }
+                    KolliderApiResponse::Balances(balances) => {
+                        let karma = balances.cash.get("KKP").cloned().unwrap_or_default();
+                        let msg = Message::Dealer(Dealer::KarmaBalance(KarmaBalance { karma }));
+                        listener(msg)
                     }
                     _ => {
                         slog::warn!(self.logger, "Handling of KolliderApiResponse {:?} not implemented", msg);

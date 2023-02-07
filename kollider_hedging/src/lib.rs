@@ -476,6 +476,8 @@ fn process_incoming_message(
         KolliderApiResponse::Balances(balances) => {
             get_locked_state(shared_state).balances = Some(balances);
             shared_state_changed.notify_one();
+            let msg = Message::KolliderApiResponse(response);
+            send_to_callback(callback, msg);
         }
         KolliderApiResponse::MarkPrices(mark_price) => {
             get_locked_state(shared_state)

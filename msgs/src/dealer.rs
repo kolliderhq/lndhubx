@@ -87,6 +87,11 @@ pub struct FiatDepositResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KarmaBalance {
+    pub karma: Decimal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Dealer {
     BankStateRequest(BankStateRequest),
     BankStateResponse(BankStateResponse),
@@ -99,4 +104,5 @@ pub enum Dealer {
     CreateInvoiceResponse(CreateInvoiceResponse),
     FiatDepositRequest(FiatDepositRequest),
     FiatDepositResponse(FiatDepositResponse),
+    KarmaBalance(KarmaBalance),
 }
