@@ -941,8 +941,8 @@ impl DealerEngine {
                         Some(to_target_rate) => {
                             let final_rate = Rate {
                                 value: to_btc_rate.value * to_target_rate.value,
-                                quote: amount.currency,
-                                base: destination_currency,
+                                base: amount.currency,
+                                quote: destination_currency,
                             };
                             (Some(final_rate), second_fee)
                         }
@@ -2203,5 +2203,93 @@ mod tests {
 
         assert!(final_btc_balance.value > dec!(0));
         assert!(btc_balance.value > final_btc_balance.value);
+    }
+
+    #[test]
+    fn same_currency_swap() {
+        let mut dealer_engine = initialise_dealer_engine();
+        let mut out_msg = VecDeque::new();
+        let uid = 1003;
+        let btc_balance = Money {
+            currency: Currency::BTC,
+            value: dec!(0.0001),
+        };
+        let swap_request = SwapRequest {
+            req_id: Uuid::new_v4(),
+            uid,
+            amount: btc_balance,
+            from: Currency::BTC,
+            to: Currency::BTC,
+            quote_id: None,
+        };
+        dealer_engine.process_msg(Message::Api(Api::SwapRequest(swap_request)), &mut |msg| {
+            out_msg.push_back(msg);
+        });
+        while let Some(msg) = out_msg.pop_front() {
+            if let Message::Api(Api::SwapResponse(swap_response)) = msg {
+                assert_eq!(swap_response.uid, uid);
+                assert_eq!(swap_response.from, Currency::BTC);
+                assert_eq!(swap_response.to, Currency::BTC);
+                assert!(swap_response.rate.is_none());
+                assert!(!swap_response.success);
+                assert_eq!(swap_response.error, Some(SwapResponseError::Invalid));
+                break;
+            }
+        }
+        let usd_balance = Money {
+            currency: Currency::USD,
+            value: dec!(1.0),
+        };
+        let swap_request = SwapRequest {
+            req_id: Uuid::new_v4(),
+            uid,
+            amount: usd_balance,
+            from: Currency::USD,
+            to: Currency::USD,
+            quote_id: None,
+        };
+        dealer_engine.process_msg(Message::Api(Api::SwapRequest(swap_request)), &mut |msg| {
+            out_msg.push_back(msg);
+        });
+
+        while let Some(msg) = out_msg.pop_front() {
+            if let Message::Api(Api::SwapResponse(swap_response)) = msg {
+                assert_eq!(swap_response.uid, uid);
+                assert_eq!(swap_response.from, Currency::USD);
+                assert_eq!(swap_response.to, Currency::USD);
+                assert!(swap_response.rate.is_none());
+                assert!(!swap_response.success);
+                assert_eq!(swap_response.error, Some(SwapResponseError::Invalid));
+                break;
+            }
+        }
+
+        let eur_balance = Money {
+            currency: Currency::EUR,
+            value: dec!(1.0),
+        };
+        let swap_request = SwapRequest {
+            req_id: Uuid::new_v4(),
+            uid,
+            amount: eur_balance,
+            from: Currency::EUR,
+            to: Currency::EUR,
+            quote_id: None,
+        };
+        dealer_engine.process_msg(Message::Api(Api::SwapRequest(swap_request)), &mut |msg| {
+            out_msg.push_back(msg);
+        });
+
+        while let Some(msg) = out_msg.pop_front() {
+            if let Message::Api(Api::SwapResponse(swap_response)) = msg {
+                assert_eq!(swap_response.uid, uid);
+                assert_eq!(swap_response.from, Currency::EUR);
+                assert_eq!(swap_response.to, Currency::EUR);
+                assert!(swap_response.rate.is_none());
+                assert!(!swap_response.success);
+                assert_eq!(swap_response.error, Some(SwapResponseError::Invalid));
+                break;
+            }
+        }
     }
 }
