@@ -57,6 +57,7 @@ pub enum HealthStatus {
 pub struct DealerHealth {
     pub status: HealthStatus,
     pub available_currencies: Vec<Currency>,
+    pub rates: HashMap<(Currency, Currency), Rate>,
     pub timestamp: u64,
 }
 

@@ -12,6 +12,7 @@ pub mod kollider_client;
 pub mod nostr;
 
 pub const SATS_IN_BITCOIN: Decimal = dec!(100000000.0);
+pub const RATE_DP: u32 = 16;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TxState {
@@ -306,6 +307,7 @@ impl Money {
         // We have to flip the rate if currencies not align.
         if self.currency != rate.base {
             r = dec!(1) / r;
+            r = r.round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
             c = rate.base;
         }
         let exchanged_money = Money {

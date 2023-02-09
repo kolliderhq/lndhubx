@@ -3,6 +3,7 @@ use std::time::SystemTime;
 
 use diesel::prelude::*;
 use diesel::result::Error as DieselError;
+use diesel::sql_types::Numeric;
 use serde::{Deserialize, Serialize};
 
 use bigdecimal::BigDecimal;
@@ -84,10 +85,37 @@ impl Transaction {
             .load(conn)
     }
 
+    pub fn get_swap_totals(conn: &PgConnection) -> QueryResult<Vec<SwapTotals>> {
+        let query_string = r#"select
+                                        sum(inbound_amount) as total,
+                                        inbound_currency,
+                                        inbound_uid
+                                    from
+                                        transactions
+                                    where
+                                        tx_type = 'Internal' and
+                                        outbound_uid = 23193913 and
+                                        inbound_uid != 23193913 and
+                                        inbound_uid != 52172712
+                                    group by
+                                        inbound_currency,
+                                        inbound_uid"#;
+        diesel::sql_query(query_string).load::<SwapTotals>(conn)
+    }
+
     pub fn insert(&self, conn: &diesel::PgConnection) -> Result<String, DieselError> {
         diesel::insert_into(transactions::table)
             .values(self)
             .returning(transactions::txid)
             .get_result(conn)
     }
+}
+
+#[derive(QueryableByName, Debug)]
+#[table_name = "transactions"]
+pub struct SwapTotals {
+    #[sql_type = "Numeric"]
+    pub total: BigDecimal,
+    pub inbound_currency: String,
+    pub inbound_uid: i32,
 }

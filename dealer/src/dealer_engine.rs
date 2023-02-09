@@ -246,6 +246,17 @@ impl DealerEngine {
             .collect::<HashSet<Currency>>();
 
         let mut available_currencies = available_currencies.into_iter().collect::<Vec<_>>();
+        let rates = available_currencies
+            .iter()
+            .filter_map(|currency| {
+                let money = Money {
+                    value: dec!(0.00000001),
+                    currency: Currency::BTC,
+                };
+                let (rate, _fees) = self.get_rate(money, *currency);
+                rate.map(|rate| ((Currency::BTC, *currency), rate))
+            })
+            .collect();
         available_currencies.push(Currency::BTC);
 
         let status = if is_authenticated {
@@ -257,6 +268,7 @@ impl DealerEngine {
         let dealer_health = DealerHealth {
             status,
             available_currencies,
+            rates,
             timestamp: time_now(),
         };
 
@@ -944,8 +956,10 @@ impl DealerEngine {
                     let (second_rate, second_fee) = self.get_btc_cross_rate(converted_money, second_conversion, true);
                     match second_rate {
                         Some(to_target_rate) => {
+                            let rounded_rate = (to_btc_rate.value * to_target_rate.value)
+                                .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
                             let final_rate = Rate {
-                                value: to_btc_rate.value * to_target_rate.value,
+                                value: rounded_rate,
                                 base: amount.currency,
                                 quote: destination_currency,
                             };
@@ -1006,7 +1020,9 @@ impl DealerEngine {
                         None => (None, None),
                         Some((_level_vol, price)) => {
                             if conversion_info.is_linear() {
-                                let user_rate = self.get_linear_rate(*price, charge_spread);
+                                let user_rate = self
+                                    .get_linear_rate(*price, charge_spread)
+                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
                                 // Fees are paid in the target currency.
                                 let fees = Money {
                                     value: (price - user_rate) / price * value_in_fiat,
@@ -1020,7 +1036,9 @@ impl DealerEngine {
                                 (Some(rate), Some(fees))
                             } else {
                                 let no_fee_inverse_rate = Decimal::ONE / price;
-                                let user_inverse_rate = self.get_inverse_rate(*price, charge_spread);
+                                let user_inverse_rate = self
+                                    .get_inverse_rate(*price, charge_spread)
+                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
                                 let rate = Rate {
                                     base: conversion_info.from,
                                     quote: conversion_info.to,

@@ -45,6 +45,8 @@ pub fn reconcile_ledger(ledger: &Ledger) -> Result<(), ReconcilationError> {
         tally += acc.balance
     });
 
+    // exclude karma from reconciliation
+    user_accounts_by_currency.remove(&Currency::KKP);
     user_accounts_by_currency.iter().for_each(|(curr, balance)| {
         if *balance != dec!(0) {
             error.net_zero.push((*curr, *balance));
