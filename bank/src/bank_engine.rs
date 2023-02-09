@@ -740,7 +740,13 @@ impl BankEngine {
         };
 
         let fees = Money::new(payment_request.currency, Some(dec!(0)));
-        let amount = payment_request.amount.unwrap();
+        let amount = match payment_request.amount {
+            Some(amount) => amount,
+            None => {
+                slog::error!(self.logger, "Amount not specified.");
+                return;
+            }
+        };
 
         let mut payment_response = PaymentResponse {
             amount: Some(amount),
@@ -2186,6 +2192,7 @@ impl BankEngine {
                     };
                     // If there is an owner we make an internal tx.
                     msg.recipient = Some(owner_username.username);
+                    msg.amount = Some(amount);
                     self.make_internal_tx(msg, listener);
                 }
 
