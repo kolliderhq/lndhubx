@@ -1077,7 +1077,9 @@ impl DealerEngine {
                         None => (None, None),
                         Some((_level_vol, price)) => {
                             if conversion_info.is_linear() {
-                                let user_rate = self.get_linear_rate(*price, true);
+                                let user_rate = self
+                                    .get_linear_rate(*price, true)
+                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
                                 // Fees are paid in the target currency.
                                 let fees = Money {
                                     value: (price - user_rate) / price * value_in_fiat,
@@ -1091,7 +1093,9 @@ impl DealerEngine {
                                 (Some(rate), Some(fees))
                             } else {
                                 let no_fee_inverse_rate = Decimal::ONE / price;
-                                let user_inverse_rate = self.get_inverse_rate(*price, true);
+                                let user_inverse_rate = self
+                                    .get_inverse_rate(*price, true)
+                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
                                 let rate = Rate {
                                     base: conversion_info.from,
                                     quote: conversion_info.to,
