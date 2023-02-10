@@ -62,6 +62,8 @@ pub struct BankEngineSettings {
     pub bank_cli_resp_address: String,
     pub withdrawal_request_rate_limiter_settings: RateLimiterSettings,
     pub deposit_request_rate_limiter_settings: RateLimiterSettings,
+    #[serde(default)]
+    pub normalize_account_balances: bool,
 }
 
 impl Default for Ledger {
@@ -278,6 +280,38 @@ impl BankEngine {
         da
     }
 
+    pub fn normalize_accounts(&mut self) {
+        for (_bank_account_id, bank_account) in self.ledger.bank_liabilities.accounts.iter_mut() {
+            bank_account.normalize();
+        }
+
+        for (_dealer_account_id, dealer_account) in self.ledger.dealer_accounts.accounts.iter_mut() {
+            dealer_account.normalize();
+        }
+
+        for (_uid, user_account) in self.ledger.user_accounts.iter_mut() {
+            for (_account_id, account) in user_account.accounts.iter_mut() {
+                account.normalize();
+            }
+        }
+    }
+
+    pub fn store_accounts(&mut self) {
+        for (_bank_account_id, bank_account) in self.ledger.bank_liabilities.accounts.clone() {
+            self.update_account(&bank_account, BANK_UID);
+        }
+
+        for (_dealer_account_id, dealer_account) in self.ledger.dealer_accounts.accounts.clone() {
+            self.update_account(&dealer_account, DEALER_UID);
+        }
+
+        for (uid, user_account) in self.ledger.user_accounts.clone() {
+            for (_account_id, account) in user_account.accounts.iter() {
+                self.update_account(account, uid);
+            }
+        }
+    }
+
     pub fn init_accounts(&mut self) {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
@@ -295,16 +329,10 @@ impl BankEngine {
             }
         };
 
-        let mut bank_liabilties = self.fetch_bank_liabilities(&c);
-        for (_bank_account_id, bank_account) in bank_liabilties.iter_mut() {
-            bank_account.normalize();
-        }
+        let bank_liabilties = self.fetch_bank_liabilities(&c);
         self.ledger.bank_liabilities.accounts = bank_liabilties;
 
-        let mut dealer_accounts = self.fetch_dealer_accounts(&c);
-        for (_dealer_account_id, dealer_account) in dealer_accounts.iter_mut() {
-            dealer_account.normalize();
-        }
+        let dealer_accounts = self.fetch_dealer_accounts(&c);
         self.ledger.dealer_accounts.accounts = dealer_accounts;
 
         let accounts = match accounts::Account::get_non_internal_users_accounts(&c) {
@@ -357,14 +385,13 @@ impl BankEngine {
             };
 
             let account_id = account.account_id;
-            let mut acc = Account {
+            let acc = Account {
                 currency,
                 balance,
                 account_id,
                 account_type,
                 account_class,
             };
-            acc.normalize();
 
             user_account.accounts.insert(account.account_id, acc);
         }
