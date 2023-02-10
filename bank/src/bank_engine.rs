@@ -295,10 +295,16 @@ impl BankEngine {
             }
         };
 
-        let bank_liabilties = self.fetch_bank_liabilities(&c);
+        let mut bank_liabilties = self.fetch_bank_liabilities(&c);
+        for (_bank_account_id, bank_account) in bank_liabilties.iter_mut() {
+            bank_account.normalize();
+        }
         self.ledger.bank_liabilities.accounts = bank_liabilties;
 
-        let dealer_accounts = self.fetch_dealer_accounts(&c);
+        let mut dealer_accounts = self.fetch_dealer_accounts(&c);
+        for (_dealer_account_id, dealer_account) in dealer_accounts.iter_mut() {
+            dealer_account.normalize();
+        }
         self.ledger.dealer_accounts.accounts = dealer_accounts;
 
         let accounts = match accounts::Account::get_non_internal_users_accounts(&c) {
@@ -351,13 +357,14 @@ impl BankEngine {
             };
 
             let account_id = account.account_id;
-            let acc = Account {
+            let mut acc = Account {
                 currency,
                 balance,
                 account_id,
                 account_type,
                 account_class,
             };
+            acc.normalize();
 
             user_account.accounts.insert(account.account_id, acc);
         }
@@ -457,11 +464,11 @@ impl BankEngine {
         outbound_username: Option<String>,
         inbound_username: Option<String>,
     ) -> Result<String, BankError> {
-        if amount.value <= dec!(0) {
+        if amount.value() <= dec!(0) {
             return Err(BankError::FailedTransaction);
         }
 
-        assert!(amount.currency == outbound_account.currency);
+        assert!(amount.currency() == outbound_account.currency);
 
         let conn = match &self.conn_pool {
             Some(conn) => conn,
@@ -495,16 +502,16 @@ impl BankEngine {
             None => String::from("Unknown"),
         };
 
-        let fees = fees.unwrap_or_else(|| Money::new(inbound_account.currency, None));
+        let fees = fees.unwrap_or_else(|| Money::zero(inbound_account.currency));
 
-        let outbound_amount = amount.value;
-        let inbound_amount = amount.exchange(&rate).unwrap().value;
+        let outbound_amount = amount.value();
+        let inbound_amount = amount.exchange(&rate).unwrap().value();
 
         let outbound_amount_str = outbound_amount.to_string();
         let inbound_amount_str = inbound_amount.to_string();
 
         let rate_str = rate.value.to_string();
-        let fee_str = fees.value.to_string();
+        let fee_str = fees.value().to_string();
 
         let outbound_amount_bigdec = match BigDecimal::from_str(&outbound_amount_str) {
             Ok(d) => d,
@@ -591,7 +598,7 @@ impl BankEngine {
         inbound_uid: u64,
         amount: Money,
     ) -> Result<String, BankError> {
-        if amount.value <= dec!(0) {
+        if amount.value() <= dec!(0) {
             return Err(BankError::FailedTransaction);
         }
 
@@ -622,9 +629,9 @@ impl BankEngine {
             value: Decimal::ONE,
         };
 
-        let fees = Money::new(inbound_account.currency, None);
+        let fees = Money::zero(inbound_account.currency);
 
-        let outbound_amount = amount.value;
+        let outbound_amount = amount.value();
         let inbound_amount = outbound_amount;
 
         outbound_account.balance -= outbound_amount;
@@ -633,7 +640,7 @@ impl BankEngine {
         let outbound_amount_str = outbound_amount.to_string();
         let inbound_amount_str = inbound_amount.to_string();
         let rate_str = rate.value.to_string();
-        let fee_str = fees.value.to_string();
+        let fee_str = fees.value().to_string();
 
         let outbound_amount_bigdec = match BigDecimal::from_str(&outbound_amount_str) {
             Ok(d) => d,
@@ -739,7 +746,7 @@ impl BankEngine {
             }
         };
 
-        let fees = Money::new(payment_request.currency, Some(dec!(0)));
+        let fees = Money::zero(payment_request.currency);
         let amount = payment_request.amount.unwrap();
 
         let mut payment_response = PaymentResponse {
@@ -812,7 +819,7 @@ impl BankEngine {
             user_account.get_default_account(payment_request.currency, None)
         };
 
-        if outbound_account.balance < outbound_amount.value {
+        if outbound_account.balance < outbound_amount.value() {
             payment_response.error = Some(PaymentResponseError::InsufficientFunds);
             let msg = Message::Api(Api::PaymentResponse(payment_response));
             listener(msg, ServiceIdentity::Api);
@@ -1048,7 +1055,7 @@ impl BankEngine {
                                 if let Ok(pk) = NostrPublicKey::get_by_uid(&c, invoice.uid) {
                                     let text = format!(
                                         "💸 You just got paid {} {} into your Kollider Wallet! 💰",
-                                        fiat_value.value.round_dp_with_strategy(2, RoundingStrategy::ToZero),
+                                        fiat_value.value().round_dp_with_strategy(2, RoundingStrategy::ToZero),
                                         currency
                                     );
                                     let nostr_private_msg = msgs::nostr::NostrPrivateMessage {
@@ -1455,7 +1462,7 @@ impl BankEngine {
                             return;
                         }
                     };
-                    let amount_in_btc = msg.amount.div(rate.value);
+                    let amount_in_btc = msg.amount.value() / rate.value;
                     let money = Money::from_btc(amount_in_btc);
                     let amount_in_sats = money
                         .try_sats()
@@ -1645,7 +1652,7 @@ impl BankEngine {
                     };
 
                     if let Some(ref amount) = msg.amount {
-                        if amount.value <= dec!(0) {
+                        if amount.value() <= dec!(0) {
                             let payment_response = PaymentResponse::error(
                                 PaymentResponseError::InvalidAmount,
                                 msg.req_id,
@@ -1899,7 +1906,7 @@ impl BankEngine {
                     let outbound_balance = outbound_account.balance;
 
                     // Worst case amount user will have to pay for this transaction in Bitcoin.
-                    let max_fee_in_btc = (amount_in_btc.value * self.ln_network_fee_margin)
+                    let max_fee_in_btc = (amount_in_btc.value() * self.ln_network_fee_margin)
                         .round_dp_with_strategy(SATS_DECIMALS, RoundingStrategy::AwayFromZero);
 
                     let settings = self.lnd_connector_settings.clone();
@@ -1922,13 +1929,13 @@ impl BankEngine {
                     let estimated_fee_in_btc = Money::from_btc(estimated_fee);
 
                     let outbound_amount_in_btc_plus_max_fees =
-                        Money::from_btc(amount_in_btc.value + estimated_fee_in_btc.value);
+                        Money::from_btc(amount_in_btc.value() + estimated_fee_in_btc.value());
                     // Worst case amount user will have to pay for this transaction in outbound Currency.
                     let outbound_amount_in_outbound_currency_plus_max_fee =
                         outbound_amount_in_btc_plus_max_fees.exchange(&rate).unwrap();
 
                     // Checking whether user has enough funds on their outbound currency account.
-                    if outbound_balance < outbound_amount_in_outbound_currency_plus_max_fee.value {
+                    if outbound_balance < outbound_amount_in_outbound_currency_plus_max_fee.value() {
                         payment_response.error = Some(PaymentResponseError::InsufficientFundsForFees);
                         let msg = Message::Api(Api::PaymentResponse(payment_response));
                         listener(msg, ServiceIdentity::Api);
@@ -2265,7 +2272,7 @@ impl BankEngine {
                         (outbound_dealer_account, inbound_dealer_account)
                     };
 
-                    if outbound_account.balance < swap_amount.value {
+                    if outbound_account.balance < swap_amount.value() {
                         slog::info!(
                             self.logger,
                             "User: {} has not enough available balance. Available: {}",
@@ -2434,7 +2441,7 @@ impl BankEngine {
                         error: None,
                     };
 
-                    if msg.amount.value <= dec!(0) {
+                    if msg.amount.value() <= dec!(0) {
                         response.error = Some(CreateLnurlWithdrawalError::InvalidAmount);
                         let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
                         listener(msg, ServiceIdentity::Api);
@@ -2461,7 +2468,7 @@ impl BankEngine {
                         return;
                     }
 
-                    if outbound_account.balance < msg.amount.value {
+                    if outbound_account.balance < msg.amount.value() {
                         response.error = Some(CreateLnurlWithdrawalError::InsufficientFunds);
                         let msg = Message::Api(Api::CreateLnurlWithdrawalResponse(response));
                         listener(msg, ServiceIdentity::Api);
@@ -2580,7 +2587,7 @@ impl BankEngine {
 
                     let amount_in_btc = Money::from_sats(amount_in_sats);
 
-                    let max_fee_in_btc = (amount_in_btc.value * self.ln_network_fee_margin)
+                    let max_fee_in_btc = (amount_in_btc.value() * self.ln_network_fee_margin)
                         .round_dp_with_strategy(SATS_DECIMALS, RoundingStrategy::AwayFromZero);
 
                     let max_fee_in_btc = Money::from_btc(max_fee_in_btc);
@@ -2631,7 +2638,7 @@ impl BankEngine {
                 Bank::PaymentResult(res) => {
                     slog::warn!(self.logger, "Received payment result: {:?}", res);
 
-                    if res.amount.value <= dec!(0) {
+                    if res.amount.value() <= dec!(0) {
                         panic!("Amount is smaller than zero.");
                     }
 
@@ -2681,9 +2688,9 @@ impl BankEngine {
                         let payment_amount = payment_response.amount.unwrap();
 
                         let excess_fees_in_btc =
-                            res.amount.value - (payment_amount.value + fees_payed_in_btc.unwrap().value);
+                            res.amount.value() - (payment_amount.value() + fees_payed_in_btc.unwrap().value());
 
-                        let excess_fees = Money::new(Currency::BTC, Some(excess_fees_in_btc));
+                        let excess_fees = Money::new(Currency::BTC, excess_fees_in_btc);
 
                         assert!(excess_fees_in_btc >= dec!(0));
 
@@ -3297,7 +3304,7 @@ impl BankEngine {
             return Err(BankError::FailedTransaction);
         }
 
-        let amount = Money::new(currency, Some(amount));
+        let amount = Money::new(currency, amount);
 
         self.make_tx(
             &mut outbound_account,

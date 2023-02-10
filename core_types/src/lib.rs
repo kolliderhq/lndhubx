@@ -92,6 +92,17 @@ pub enum Currency {
     BTC,
 }
 
+impl Currency {
+    pub fn dp(&self) -> u32 {
+        match self {
+            Currency::BTC => 12,
+            Currency::USD => 6,
+            Currency::EUR => 6,
+            Currency::GBP => 6,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum Denom {
     Sats(u64),
@@ -182,6 +193,10 @@ impl Account {
             account_id: Uuid::new_v4(),
         }
     }
+
+    pub fn normalize(&mut self) {
+        self.balance = Money::normalized_value(self.balance, self.currency);
+    }
 }
 
 pub type DbPool = r2d2::Pool<ConnectionManager<PgConnection>>;
@@ -256,28 +271,43 @@ pub struct LndNodeInfo {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Money {
-    pub value: Decimal,
-    pub currency: Currency,
+    value: Decimal,
+    currency: Currency,
 }
 
 impl Money {
-    pub fn new(currency: Currency, value: Option<Decimal>) -> Self {
-        Self {
-            currency,
-            value: value.unwrap_or(dec!(0)),
-        }
+    pub fn new(currency: Currency, value: Decimal) -> Self {
+        let value = value
+            .round_dp_with_strategy(currency.dp(), RoundingStrategy::ToZero)
+            .normalize();
+        Self { currency, value }
+    }
+
+    pub fn zero(currency: Currency) -> Self {
+        Self::new(currency, Decimal::ZERO)
+    }
+
+    pub fn value(&self) -> Decimal {
+        self.value
+    }
+
+    pub fn currency(&self) -> Currency {
+        self.currency
     }
 
     pub fn set(&mut self, value: Decimal) {
         self.value = value;
+        self.normalize();
     }
 
-    pub fn mult(&self, value: Decimal) -> Decimal {
-        self.value * value
+    pub fn mult(&mut self, value: Decimal) {
+        self.value *= value;
+        self.normalize();
     }
 
-    pub fn div(&self, value: Decimal) -> Decimal {
-        self.value / value
+    pub fn div(&mut self, value: Decimal) {
+        self.value /= value;
+        self.normalize();
     }
 
     pub fn try_sats(&self) -> Result<Decimal, String> {
@@ -287,11 +317,11 @@ impl Money {
             Err("Is not Bitcoin.".to_string())
         }
     }
+
     pub fn from_sats(value: Decimal) -> Self {
-        Self {
-            currency: Currency::BTC,
-            value: value / SATS_IN_BITCOIN,
-        }
+        let currency = Currency::BTC;
+        let value = Self::normalized_value(value / SATS_IN_BITCOIN, currency);
+        Self { currency, value }
     }
 
     pub fn exchange(&self, rate: &Rate) -> Result<Money, String> {
@@ -302,18 +332,26 @@ impl Money {
             r = dec!(1) / r;
             c = rate.base;
         }
-        let exchanged_money = Money {
+        let mut exchanged_money = Money {
             currency: c,
             value: self.value * r,
         };
+        exchanged_money.normalize();
         Ok(exchanged_money)
     }
 
     pub fn from_btc(value: Decimal) -> Self {
-        Self {
-            currency: Currency::BTC,
-            value,
-        }
+        let currency = Currency::BTC;
+        let value = Self::normalized_value(value, currency);
+        Self { currency, value }
+    }
+
+    fn normalize(&mut self) {
+        self.value = Self::normalized_value(self.value, self.currency);
+    }
+
+    fn normalized_value(value: Decimal, currency: Currency) -> Decimal {
+        value.round_dp_with_strategy(currency.dp(), RoundingStrategy::ToZero)
     }
 }
 
@@ -323,10 +361,10 @@ impl FromStr for Money {
     fn from_str(currency: &str) -> Result<Money, Self::Err> {
         let currency = currency.to_lowercase();
         match &currency[..] {
-            "btc" => Ok(Money::new(Currency::BTC, None)),
-            "eur" => Ok(Money::new(Currency::EUR, None)),
-            "gbp" => Ok(Money::new(Currency::GBP, None)),
-            "usd" => Ok(Money::new(Currency::USD, None)),
+            "btc" => Ok(Money::zero(Currency::BTC)),
+            "eur" => Ok(Money::zero(Currency::EUR)),
+            "gbp" => Ok(Money::zero(Currency::GBP)),
+            "usd" => Ok(Money::zero(Currency::USD)),
             _ => Err("unknown money".to_string()),
         }
     }

@@ -45,7 +45,7 @@ pub async fn create_lnurl_withdrawal(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    let money = Money::new(query.currency, Some(query.amount));
+    let money = Money::new(query.currency, query.amount);
 
     let request = CreateLnurlWithdrawalRequest {
         uid,
@@ -220,7 +220,7 @@ pub async fn pay_address(
 
     let amount = Decimal::new(query.amount as i64, 0) / dec!(100000000000);
 
-    let money = Money::new(Currency::BTC, Some(amount));
+    let money = Money::new(Currency::BTC, amount);
 
     let user = match User::get_by_username(&conn, username.clone()) {
         Ok(u) => u,
