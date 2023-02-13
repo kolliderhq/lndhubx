@@ -55,16 +55,16 @@ async fn insert_dealer_state(dealer: &DealerEngine, client: &Client, bucket: &st
 }
 
 async fn store_quotes(dealer: &DealerEngine, client: &Client, bucket: &str) {
-    let some_sats = Money::new(Currency::BTC, Some(dec!(0.000005000)));
+    let some_sats = Money::new(Currency::BTC, dec!(0.000005000));
     let (btc_usd_rate, _btc_usd_fee) = dealer.get_rate(some_sats, Currency::USD);
 
     let (btc_eur_rate, _btc_eur_fee) = dealer.get_rate(some_sats, Currency::EUR);
 
-    let one_usd = Money::new(Currency::USD, Some(dec!(1.0)));
+    let one_usd = Money::new(Currency::USD, dec!(1.0));
     let (usd_btc_rate, _usd_btc_fee) = dealer.get_rate(one_usd, Currency::BTC);
     let (usd_eur_rate, _usd_eur_fee) = dealer.get_rate(one_usd, Currency::EUR);
 
-    let one_eur = Money::new(Currency::EUR, Some(dec!(1.0)));
+    let one_eur = Money::new(Currency::EUR, dec!(1.0));
     let (eur_btc_rate, _eur_btc_fee) = dealer.get_rate(one_eur, Currency::BTC);
     let (eur_usd_rate, _eur_usd_fee) = dealer.get_rate(one_eur, Currency::USD);
 
