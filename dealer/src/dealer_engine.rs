@@ -934,16 +934,16 @@ impl DealerEngine {
             let (first_rate, _first_fees) = self.get_btc_cross_rate(amount, first_conversion, false);
             match first_rate {
                 Some(to_btc_rate) => {
-                    let converted_money = Money::new(Currency::BTC, amount.value() * to_btc_rate.value);
+                    let converted_money = Money::new(Currency::BTC, amount.value() * to_btc_rate.value());
                     let second_conversion = ConversionInfo::new(Currency::BTC, destination_currency);
                     let (second_rate, second_fee) = self.get_btc_cross_rate(converted_money, second_conversion, true);
                     match second_rate {
                         Some(to_target_rate) => {
-                            let final_rate = Rate {
-                                value: to_btc_rate.value * to_target_rate.value,
-                                base: amount.currency(),
-                                quote: destination_currency,
-                            };
+                            let final_rate = Rate::new(
+                                amount.currency(),
+                                destination_currency,
+                                to_btc_rate.value() * to_target_rate.value(),
+                            );
                             (Some(final_rate), second_fee)
                         }
                         None => (None, None),
@@ -1006,20 +1006,12 @@ impl DealerEngine {
                                 let value = (price - user_rate) / price * value_in_fiat;
                                 let currency = conversion_info.to;
                                 let fees = Money::new(currency, value);
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_rate,
-                                };
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_rate);
                                 (Some(rate), Some(fees))
                             } else {
                                 let no_fee_inverse_rate = Decimal::ONE / price;
                                 let user_inverse_rate = self.get_inverse_rate(*price, charge_spread);
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_inverse_rate,
-                                };
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_inverse_rate);
                                 // Fees are paid in the target currency.
                                 let value = (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
                                     * (value_in_fiat / price);
@@ -1057,20 +1049,12 @@ impl DealerEngine {
                                 let value = (price - user_rate) / price * value_in_fiat;
                                 let currency = conversion_info.to;
                                 let fees = Money::new(currency, value);
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_rate,
-                                };
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_rate);
                                 (Some(rate), Some(fees))
                             } else {
                                 let no_fee_inverse_rate = Decimal::ONE / price;
                                 let user_inverse_rate = self.get_inverse_rate(*price, true);
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_inverse_rate,
-                                };
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_inverse_rate);
                                 // Fees are paid in the target currency.
                                 let value = (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
                                     * (value_in_fiat / price);
@@ -1172,12 +1156,12 @@ fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, is_linear: bool) ->
     match (rate1, rate2) {
         (Some(r1), Some(r2)) => {
             if is_linear {
-                if r1.value > r2.value {
+                if r1.value() > r2.value() {
                     Some(r1)
                 } else {
                     Some(r2)
                 }
-            } else if r1.value < r2.value {
+            } else if r1.value() < r2.value() {
                 Some(r1)
             } else {
                 Some(r2)
@@ -1191,7 +1175,7 @@ fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, is_linear: bool) ->
 
 #[cfg(test)]
 mod tests {
-    use core_types::Money;
+    use core_types::{Money, Rate};
     use msgs::kollider_client::Channel;
 
     struct MockWsClient {
@@ -1484,7 +1468,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(29850.0)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(29850.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -1507,8 +1491,8 @@ mod tests {
                 assert_eq!(quote_response.from, Currency::USD);
                 assert_eq!(quote_response.to, Currency::BTC);
                 assert_eq!(
-                    quote_response.rate.map(|rate| rate.value),
-                    Some(dec!(1) / dec!(40200.0))
+                    quote_response.rate.map(|rate| rate.value()),
+                    Some(Rate::normalized_value(dec!(1) / dec!(40200.0)))
                 );
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
@@ -1538,7 +1522,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -1560,7 +1544,10 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::USD);
                 assert_eq!(quote_response.to, Currency::BTC);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(1) / dec!(52260)));
+                assert_eq!(
+                    quote_response.rate.map(|rate| rate.value()),
+                    Some(Rate::normalized_value(dec!(1) / dec!(52260)))
+                );
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -1696,7 +1683,7 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::BTC);
                 assert_eq!(swap_response.to, Currency::USD);
-                assert_eq!(swap_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(swap_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(swap_response.error.is_none());
                 break;
             }
@@ -1718,7 +1705,10 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::USD);
                 assert_eq!(swap_response.to, Currency::BTC);
-                assert_eq!(swap_response.rate.map(|rate| rate.value), Some(dec!(1) / dec!(52260)));
+                assert_eq!(
+                    swap_response.rate.map(|rate| rate.value()),
+                    Some(Rate::normalized_value(dec!(1) / dec!(52260)))
+                );
                 assert!(swap_response.error.is_none());
                 break;
             }
@@ -1747,7 +1737,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1851,7 +1841,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1905,7 +1895,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -2004,7 +1994,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -2072,8 +2062,8 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::BTC);
                 assert_eq!(swap_response.to, Currency::USD);
-                let swap_rate = swap_response.rate.map(|rate| rate.value);
-                assert_eq!(swap_response.rate.map(|rate| rate.value), Some(dec!(29850.0)));
+                let swap_rate = swap_response.rate.map(|rate| rate.value());
+                assert_eq!(swap_response.rate.map(|rate| rate.value()), Some(dec!(29850.0)));
                 btc_usd_rate = swap_rate.expect("Valid rate expected");
                 assert!(swap_response.error.is_none());
                 break;
@@ -2098,7 +2088,7 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::USD);
                 assert_eq!(swap_response.to, Currency::EUR);
-                let swap_rate = swap_response.rate.map(|rate| rate.value);
+                let swap_rate = swap_response.rate.map(|rate| rate.value());
                 assert_eq!(swap_rate, Some(expected_usd_eur_rate));
                 usd_eur_rate = swap_rate.expect("Valid rate expected");
                 assert!(swap_response.error.is_none());
@@ -2124,8 +2114,8 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::EUR);
                 assert_eq!(swap_response.to, Currency::BTC);
-                let swap_rate = swap_response.rate.map(|rate| rate.value);
-                assert_eq!(swap_rate, Some(dec!(1.0) / dec!(36180)));
+                let swap_rate = swap_response.rate.map(|rate| rate.value());
+                assert_eq!(swap_rate, Some(Rate::normalized_value(dec!(1.0) / dec!(36180))));
                 eur_btc_rate = swap_rate.expect("Valid rate expected");
                 assert!(swap_response.error.is_none());
                 break;

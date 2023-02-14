@@ -513,11 +513,7 @@ impl BankEngine {
             }
         };
 
-        let rate = rate.unwrap_or_else(|| Rate {
-            base: outbound_account.currency,
-            quote: inbound_account.currency,
-            value: dec!(1),
-        });
+        let rate = rate.unwrap_or_else(|| Rate::new(outbound_account.currency, inbound_account.currency, dec!(1)));
 
         let outbound_username = match outbound_username {
             Some(ou) => ou,
@@ -537,7 +533,7 @@ impl BankEngine {
         let outbound_amount_str = outbound_amount.to_string();
         let inbound_amount_str = inbound_amount.to_string();
 
-        let rate_str = rate.value.to_string();
+        let rate_str = rate.value().to_string();
         let fee_str = fees.value().to_string();
 
         let outbound_amount_bigdec = match BigDecimal::from_str(&outbound_amount_str) {
@@ -650,11 +646,7 @@ impl BankEngine {
             }
         };
 
-        let rate = Rate {
-            base: outbound_account.currency,
-            quote: inbound_account.currency,
-            value: Decimal::ONE,
-        };
+        let rate = Rate::new(outbound_account.currency, inbound_account.currency, Decimal::ONE);
 
         let fees = Money::zero(inbound_account.currency);
 
@@ -666,7 +658,7 @@ impl BankEngine {
 
         let outbound_amount_str = outbound_amount.to_string();
         let inbound_amount_str = inbound_amount.to_string();
-        let rate_str = rate.value.to_string();
+        let rate_str = rate.value().to_string();
         let fee_str = fees.value().to_string();
 
         let outbound_amount_bigdec = match BigDecimal::from_str(&outbound_amount_str) {
@@ -766,11 +758,7 @@ impl BankEngine {
         let rate = if let Some(r) = payment_request.rate {
             r
         } else {
-            Rate {
-                base: payment_request.currency,
-                quote: payment_request.currency,
-                value: dec!(1),
-            }
+            Rate::new(payment_request.currency, payment_request.currency, dec!(1))
         };
 
         let fees = Money::zero(payment_request.currency);
@@ -1489,7 +1477,7 @@ impl BankEngine {
                             return;
                         }
                     };
-                    let amount_in_btc = msg.amount.value() / rate.value;
+                    let amount_in_btc = msg.amount.value() / rate.value();
                     let money = Money::from_btc(amount_in_btc);
                     let amount_in_sats = money
                         .try_sats()
@@ -1835,11 +1823,7 @@ impl BankEngine {
                     }
 
                     if msg.currency == Currency::BTC {
-                        msg.rate = Some(Rate {
-                            base: Currency::BTC,
-                            quote: Currency::BTC,
-                            value: dec!(1),
-                        });
+                        msg.rate = Some(Rate::new(Currency::BTC, Currency::BTC, dec!(1)));
                     }
 
                     let invoice = if let Ok(invoice) =
@@ -1884,11 +1868,7 @@ impl BankEngine {
                     let rate = if let Some(r) = msg.rate {
                         r
                     } else {
-                        Rate {
-                            base: Currency::BTC,
-                            quote: Currency::BTC,
-                            value: dec!(1),
-                        }
+                        Rate::new(Currency::BTC, Currency::BTC, dec!(1))
                     };
 
                     // Preparing a generic response.
