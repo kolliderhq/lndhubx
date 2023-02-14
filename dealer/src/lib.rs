@@ -81,7 +81,7 @@ async fn store_quotes(dealer: &DealerEngine, client: &Client, bucket: &str) {
         influxdb2::models::DataPoint::builder("swap_rates"),
         |builder, (field_name, value)| {
             if let Some(rate) = value {
-                match rate.value.to_f64() {
+                match rate.value().to_f64() {
                     Some(converted) => builder.field(field_name, converted),
                     None => builder,
                 }
