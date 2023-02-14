@@ -118,6 +118,20 @@ pub async fn start(
     .await;
     bank_engine.init_accounts();
 
+    if settings.normalize_account_balances {
+        slog::warn!(&bank_engine.logger, "Performing balances normalization");
+        bank_engine.normalize_accounts();
+        bank_engine.store_accounts();
+    }
+
+    if let Err(error) = reconcile_ledger(&bank_engine.ledger) {
+        slog::warn!(&bank_engine.logger, "Reconciliation error at start-up: {:?}", error);
+        // Giving logger to send out log.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        panic!("Reconciliation error at start up! Shutting down.");
+    }
+    slog::info!(&bank_engine.logger, "Accounts start-up reconciliation successful");
+
     let mut state_insertion_interval = Instant::now();
     let mut reconciliation_interval = Instant::now();
 

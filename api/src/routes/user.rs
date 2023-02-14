@@ -110,7 +110,7 @@ pub async fn pay_invoice(
         None => Currency::BTC,
     };
 
-    let money = pay_invoice_data.amount.map(|a| Money::new(currency, Some(a)));
+    let money = pay_invoice_data.amount.map(|a| Money::new(currency, a));
 
     let payment_request = PaymentRequest {
         currency,
@@ -192,7 +192,7 @@ pub async fn add_invoice(
         None => Currency::BTC,
     };
 
-    let amount = Money::new(currency, Some(query.amount));
+    let amount = Money::new(currency, query.amount);
 
     let invoice_request = InvoiceRequest {
         req_id,
@@ -248,7 +248,7 @@ pub async fn swap(auth_data: AuthData, web_sender: WebSender, data: Json<SwapDat
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    let money = Money::new(data.from_currency, Some(data.amount));
+    let money = Money::new(data.from_currency, data.amount);
 
     let swap_request = SwapRequest {
         req_id,
@@ -319,7 +319,7 @@ pub async fn quote(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    let money = Money::new(query.from_currency, Some(query.amount));
+    let money = Money::new(query.from_currency, query.amount);
 
     let quote_request = QuoteRequest {
         req_id,
@@ -596,7 +596,7 @@ pub async fn keysend(
     let a = Decimal::new(data.amount as i64, 0);
 
     let currency = Currency::BTC;
-    let money = Money::new(currency, Some(a));
+    let money = Money::new(currency, a);
 
     let payment_request = PaymentRequest {
         currency,
