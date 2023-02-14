@@ -574,7 +574,7 @@ impl DealerEngine {
                         self.reset_state();
                     }
                     KolliderApiResponse::Reconnected(reconnection) => {
-                        slog::info!(
+                        slog::warn!(
                             self.logger,
                             "Re-connected to the Kollider exchange at {}",
                             reconnection.timestamp
