@@ -249,10 +249,7 @@ impl DealerEngine {
         let rates = available_currencies
             .iter()
             .filter_map(|currency| {
-                let money = Money {
-                    value: dec!(0.00000001),
-                    currency: Currency::BTC,
-                };
+                let money = Money::new(Currency::BTC, dec!(0.00000001));
                 let (rate, _fees) = self.get_rate(money, *currency);
                 rate.map(|rate| ((Currency::BTC, *currency), rate))
             })
@@ -586,7 +583,7 @@ impl DealerEngine {
                         self.reset_state();
                     }
                     KolliderApiResponse::Reconnected(reconnection) => {
-                        slog::info!(
+                        slog::warn!(
                             self.logger,
                             "Re-connected to the Kollider exchange at {}",
                             reconnection.timestamp
@@ -943,26 +940,24 @@ impl DealerEngine {
     }
 
     pub fn get_rate(&self, amount: Money, destination_currency: Currency) -> (Option<Rate>, Option<Money>) {
-        if amount.currency == Currency::BTC || destination_currency == Currency::BTC {
-            let conversion = ConversionInfo::new(amount.currency, destination_currency);
+        if amount.currency() == Currency::BTC || destination_currency == Currency::BTC {
+            let conversion = ConversionInfo::new(amount.currency(), destination_currency);
             self.get_btc_cross_rate(amount, conversion, true)
         } else {
-            let first_conversion = ConversionInfo::new(amount.currency, Currency::BTC);
+            let first_conversion = ConversionInfo::new(amount.currency(), Currency::BTC);
             let (first_rate, _first_fees) = self.get_btc_cross_rate(amount, first_conversion, false);
             match first_rate {
                 Some(to_btc_rate) => {
-                    let converted_money = Money::new(Currency::BTC, Some(amount.value * to_btc_rate.value));
+                    let converted_money = Money::new(Currency::BTC, amount.value() * to_btc_rate.value());
                     let second_conversion = ConversionInfo::new(Currency::BTC, destination_currency);
                     let (second_rate, second_fee) = self.get_btc_cross_rate(converted_money, second_conversion, true);
                     match second_rate {
                         Some(to_target_rate) => {
-                            let rounded_rate = (to_btc_rate.value * to_target_rate.value)
-                                .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
-                            let final_rate = Rate {
-                                value: rounded_rate,
-                                base: amount.currency,
-                                quote: destination_currency,
-                            };
+                            let final_rate = Rate::new(
+                                amount.currency(),
+                                destination_currency,
+                                to_btc_rate.value() * to_target_rate.value(),
+                            );
                             (Some(final_rate), second_fee)
                         }
                         None => (None, None),
@@ -1013,43 +1008,29 @@ impl DealerEngine {
                     dec!(1.0)
                 };
 
-                let value_in_fiat = amount.value * best_price;
+                let value_in_fiat = amount.value() * best_price;
 
                 if let Some(lookup_quantity) = value_in_fiat.to_u64() {
                     match quotes.range(lookup_quantity..u64::MAX).next() {
                         None => (None, None),
                         Some((_level_vol, price)) => {
                             if conversion_info.is_linear() {
-                                let user_rate = self
-                                    .get_linear_rate(*price, charge_spread)
-                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
+                                let user_rate = self.get_linear_rate(*price, charge_spread);
                                 // Fees are paid in the target currency.
-                                let fees = Money {
-                                    value: (price - user_rate) / price * value_in_fiat,
-                                    currency: conversion_info.to,
-                                };
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_rate,
-                                };
+                                let value = (price - user_rate) / price * value_in_fiat;
+                                let currency = conversion_info.to;
+                                let fees = Money::new(currency, value);
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_rate);
                                 (Some(rate), Some(fees))
                             } else {
                                 let no_fee_inverse_rate = Decimal::ONE / price;
-                                let user_inverse_rate = self
-                                    .get_inverse_rate(*price, charge_spread)
-                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_inverse_rate,
-                                };
+                                let user_inverse_rate = self.get_inverse_rate(*price, charge_spread);
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_inverse_rate);
                                 // Fees are paid in the target currency.
-                                let fees = Money {
-                                    value: (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
-                                        * (value_in_fiat / price),
-                                    currency: conversion_info.to,
-                                };
+                                let value = (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
+                                    * (value_in_fiat / price);
+                                let currency = conversion_info.to;
+                                let fees = Money::new(currency, value);
                                 (Some(rate), Some(fees))
                             }
                         }
@@ -1070,43 +1051,29 @@ impl DealerEngine {
         match maybe_quotes {
             None => (None, None),
             Some(quotes) => {
-                let value_in_fiat = amount.value.round_dp_with_strategy(0, RoundingStrategy::AwayFromZero);
+                let value_in_fiat = amount.value().round_dp_with_strategy(0, RoundingStrategy::AwayFromZero);
 
                 if let Some(lookup_quantity) = value_in_fiat.to_u64() {
                     match quotes.range(lookup_quantity..u64::MAX).next() {
                         None => (None, None),
                         Some((_level_vol, price)) => {
                             if conversion_info.is_linear() {
-                                let user_rate = self
-                                    .get_linear_rate(*price, true)
-                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
+                                let user_rate = self.get_linear_rate(*price, true);
                                 // Fees are paid in the target currency.
-                                let fees = Money {
-                                    value: (price - user_rate) / price * value_in_fiat,
-                                    currency: conversion_info.to,
-                                };
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_rate,
-                                };
+                                let value = (price - user_rate) / price * value_in_fiat;
+                                let currency = conversion_info.to;
+                                let fees = Money::new(currency, value);
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_rate);
                                 (Some(rate), Some(fees))
                             } else {
                                 let no_fee_inverse_rate = Decimal::ONE / price;
-                                let user_inverse_rate = self
-                                    .get_inverse_rate(*price, true)
-                                    .round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
-                                let rate = Rate {
-                                    base: conversion_info.from,
-                                    quote: conversion_info.to,
-                                    value: user_inverse_rate,
-                                };
+                                let user_inverse_rate = self.get_inverse_rate(*price, true);
+                                let rate = Rate::new(conversion_info.from, conversion_info.to, user_inverse_rate);
                                 // Fees are paid in the target currency.
-                                let fees = Money {
-                                    value: (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
-                                        * (value_in_fiat / price),
-                                    currency: conversion_info.to,
-                                };
+                                let value = (no_fee_inverse_rate - user_inverse_rate) / no_fee_inverse_rate
+                                    * (value_in_fiat / price);
+                                let currency = conversion_info.to;
+                                let fees = Money::new(currency, value);
                                 (Some(rate), Some(fees))
                             }
                         }
@@ -1191,7 +1158,7 @@ impl DealerEngine {
 fn validate_quote(quote: &QuoteResponse, swap_request: &SwapRequest) -> Result<(), ()> {
     if quote.from != swap_request.from
         || quote.to != swap_request.to
-        || quote.amount.value != swap_request.amount.value
+        || quote.amount.value() != swap_request.amount.value()
         || quote.uid != swap_request.uid
     {
         return Err(());
@@ -1203,12 +1170,12 @@ fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, is_linear: bool) ->
     match (rate1, rate2) {
         (Some(r1), Some(r2)) => {
             if is_linear {
-                if r1.value > r2.value {
+                if r1.value() > r2.value() {
                     Some(r1)
                 } else {
                     Some(r2)
                 }
-            } else if r1.value < r2.value {
+            } else if r1.value() < r2.value() {
                 Some(r1)
             } else {
                 Some(r2)
@@ -1222,7 +1189,7 @@ fn get_better_rate(rate1: Option<Rate>, rate2: Option<Rate>, is_linear: bool) ->
 
 #[cfg(test)]
 mod tests {
-    use core_types::Money;
+    use core_types::{Money, Rate};
     use msgs::kollider_client::Channel;
 
     struct MockWsClient {
@@ -1499,10 +1466,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0001),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0001));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1518,16 +1482,13 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(29850.0)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(29850.0)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::USD,
-            value: dec!(9.0),
-        };
+        let money = Money::new(Currency::USD, dec!(9.0));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1544,8 +1505,8 @@ mod tests {
                 assert_eq!(quote_response.from, Currency::USD);
                 assert_eq!(quote_response.to, Currency::BTC);
                 assert_eq!(
-                    quote_response.rate.map(|rate| rate.value),
-                    Some(dec!(1) / dec!(40200.0))
+                    quote_response.rate.map(|rate| rate.value()),
+                    Some(Rate::normalized_value(dec!(1) / dec!(40200.0)))
                 );
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
@@ -1559,10 +1520,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1578,16 +1536,13 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::USD,
-            value: dec!(3500),
-        };
+        let money = Money::new(Currency::USD, dec!(3500));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1603,7 +1558,10 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::USD);
                 assert_eq!(quote_response.to, Currency::BTC);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(1) / dec!(52260)));
+                assert_eq!(
+                    quote_response.rate.map(|rate| rate.value()),
+                    Some(Rate::normalized_value(dec!(1) / dec!(52260)))
+                );
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 break;
@@ -1616,10 +1574,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::USD,
-            value: dec!(100000.0),
-        };
+        let money = Money::new(Currency::USD, dec!(100000.0));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1642,10 +1597,7 @@ mod tests {
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(10.0),
-        };
+        let money = Money::new(Currency::BTC, dec!(10.0));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1675,10 +1627,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::GBP,
-            value: dec!(10.0),
-        };
+        let money = Money::new(Currency::GBP, dec!(10.0));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1701,10 +1650,7 @@ mod tests {
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.001),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.001));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1734,10 +1680,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1754,15 +1697,12 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::BTC);
                 assert_eq!(swap_response.to, Currency::USD);
-                assert_eq!(swap_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(swap_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(swap_response.error.is_none());
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::USD,
-            value: dec!(3500),
-        };
+        let money = Money::new(Currency::USD, dec!(3500.0));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1779,7 +1719,10 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::USD);
                 assert_eq!(swap_response.to, Currency::BTC);
-                assert_eq!(swap_response.rate.map(|rate| rate.value), Some(dec!(1) / dec!(52260)));
+                assert_eq!(
+                    swap_response.rate.map(|rate| rate.value()),
+                    Some(Rate::normalized_value(dec!(1) / dec!(52260)))
+                );
                 assert!(swap_response.error.is_none());
                 break;
             }
@@ -1791,10 +1734,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1811,7 +1751,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1847,10 +1787,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1872,10 +1809,7 @@ mod tests {
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::USD,
-            value: dec!(3500),
-        };
+        let money = Money::new(Currency::USD, dec!(3500.0));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1904,10 +1838,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1924,7 +1855,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -1961,10 +1892,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -1981,7 +1909,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -2011,10 +1939,7 @@ mod tests {
                 break;
             }
         }
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.555),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.555));
         // modified amount
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
@@ -2066,10 +1991,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let money = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0875),
-        };
+        let money = Money::new(Currency::BTC, dec!(0.0875));
         let quote_request = QuoteRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -2086,7 +2008,7 @@ mod tests {
                 assert_eq!(quote_response.uid, uid);
                 assert_eq!(quote_response.from, Currency::BTC);
                 assert_eq!(quote_response.to, Currency::USD);
-                assert_eq!(quote_response.rate.map(|rate| rate.value), Some(dec!(23217.33)));
+                assert_eq!(quote_response.rate.map(|rate| rate.value()), Some(dec!(23217.33)));
                 assert!(quote_response.quote_id.is_some());
                 assert!(quote_response.error.is_none());
                 quote = Some(quote_response);
@@ -2136,10 +2058,7 @@ mod tests {
         let mut out_msg = VecDeque::new();
         let uid = 1003;
         let initial_btc_balance = dec!(0.0001);
-        let btc_balance = Money {
-            currency: Currency::BTC,
-            value: initial_btc_balance,
-        };
+        let btc_balance = Money::new(Currency::BTC, initial_btc_balance);
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -2157,17 +2076,14 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::BTC);
                 assert_eq!(swap_response.to, Currency::USD);
-                let swap_rate = swap_response.rate.map(|rate| rate.value);
-                assert_eq!(swap_response.rate.map(|rate| rate.value), Some(dec!(29850.0)));
+                let swap_rate = swap_response.rate.map(|rate| rate.value());
+                assert_eq!(swap_response.rate.map(|rate| rate.value()), Some(dec!(29850.0)));
                 btc_usd_rate = swap_rate.expect("Valid rate expected");
                 assert!(swap_response.error.is_none());
                 break;
             }
         }
-        let usd_balance = Money {
-            currency: Currency::USD,
-            value: btc_balance.value * btc_usd_rate,
-        };
+        let usd_balance = Money::new(Currency::USD, btc_balance.value() * btc_usd_rate);
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -2186,7 +2102,7 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::USD);
                 assert_eq!(swap_response.to, Currency::EUR);
-                let swap_rate = swap_response.rate.map(|rate| rate.value);
+                let swap_rate = swap_response.rate.map(|rate| rate.value());
                 assert_eq!(swap_rate, Some(expected_usd_eur_rate));
                 usd_eur_rate = swap_rate.expect("Valid rate expected");
                 assert!(swap_response.error.is_none());
@@ -2194,10 +2110,7 @@ mod tests {
             }
         }
 
-        let eur_balance = Money {
-            currency: Currency::EUR,
-            value: usd_balance.value * usd_eur_rate,
-        };
+        let eur_balance = Money::new(Currency::EUR, usd_balance.value() * usd_eur_rate);
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -2215,21 +2128,18 @@ mod tests {
                 assert_eq!(swap_response.uid, uid);
                 assert_eq!(swap_response.from, Currency::EUR);
                 assert_eq!(swap_response.to, Currency::BTC);
-                let swap_rate = swap_response.rate.map(|rate| rate.value);
-                assert_eq!(swap_rate, Some(dec!(1.0) / dec!(36180)));
+                let swap_rate = swap_response.rate.map(|rate| rate.value());
+                assert_eq!(swap_rate, Some(Rate::normalized_value(dec!(1.0) / dec!(36180))));
                 eur_btc_rate = swap_rate.expect("Valid rate expected");
                 assert!(swap_response.error.is_none());
                 break;
             }
         }
 
-        let final_btc_balance = Money {
-            currency: Currency::BTC,
-            value: eur_balance.value * eur_btc_rate,
-        };
+        let final_btc_balance = Money::new(Currency::BTC, eur_balance.value() * eur_btc_rate);
 
-        assert!(final_btc_balance.value > dec!(0));
-        assert!(btc_balance.value > final_btc_balance.value);
+        assert!(final_btc_balance.value() > dec!(0));
+        assert!(btc_balance.value() > final_btc_balance.value());
     }
 
     #[test]
@@ -2237,10 +2147,7 @@ mod tests {
         let mut dealer_engine = initialise_dealer_engine();
         let mut out_msg = VecDeque::new();
         let uid = 1003;
-        let btc_balance = Money {
-            currency: Currency::BTC,
-            value: dec!(0.0001),
-        };
+        let btc_balance = Money::new(Currency::BTC, dec!(0.0001));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -2263,10 +2170,7 @@ mod tests {
                 break;
             }
         }
-        let usd_balance = Money {
-            currency: Currency::USD,
-            value: dec!(1.0),
-        };
+        let usd_balance = Money::new(Currency::USD, dec!(1.0));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
@@ -2291,10 +2195,7 @@ mod tests {
             }
         }
 
-        let eur_balance = Money {
-            currency: Currency::EUR,
-            value: dec!(1.0),
-        };
+        let eur_balance = Money::new(Currency::EUR, dec!(1.0));
         let swap_request = SwapRequest {
             req_id: Uuid::new_v4(),
             uid,
