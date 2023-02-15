@@ -1094,27 +1094,33 @@ impl BankEngine {
                     }
                 }
                 Dealer::KarmaBalance(KarmaBalance { karma }) => {
-                    let dealer_karma = karma.round_dp_with_strategy(RATE_DP, RoundingStrategy::ToZero);
-                    let mut dealer_karma_account = self
-                        .ledger
-                        .dealer_accounts
-                        .get_default_account(Currency::KKP, Some(AccountType::Internal));
-                    dealer_karma_account.balance = -dealer_karma;
-                    self.ledger
-                        .dealer_accounts
-                        .accounts
-                        .insert(dealer_karma_account.account_id, dealer_karma_account.clone());
-                    self.update_account(&dealer_karma_account, DEALER_UID);
-
+                    let dealer_karma = Money::new(Currency::KKP, karma);
                     let bank_state = self.get_bank_state();
                     let distributed_karma = bank_state
                         .total_exposures
                         .get(&Currency::KKP)
                         .cloned()
                         .unwrap_or_default();
-                    let karma_diff = dealer_karma - distributed_karma;
-                    if karma_diff.is_sign_positive() {
-                        self.distribute_karma(karma_diff);
+
+                    let user_totals = match self.get_user_totals() {
+                        Ok(totals) => totals,
+                        Err(_) => return,
+                    };
+
+                    let mut dealer_karma_account = self
+                        .ledger
+                        .dealer_accounts
+                        .get_default_account(Currency::KKP, Some(AccountType::External));
+                    dealer_karma_account.balance = -dealer_karma.value();
+                    self.ledger
+                        .dealer_accounts
+                        .accounts
+                        .insert(dealer_karma_account.account_id, dealer_karma_account.clone());
+                    self.update_account(&dealer_karma_account, DEALER_UID);
+
+                    let karma_diff = Money::new(Currency::KKP, dealer_karma.value() - distributed_karma);
+                    if karma_diff.value() > Decimal::ZERO {
+                        self.distribute_karma(karma_diff, &user_totals);
                     }
                 }
                 _ => {}
@@ -3390,20 +3396,22 @@ impl BankEngine {
         Ok(())
     }
 
-    fn distribute_karma(&mut self, karma_amount: Decimal) {
+    fn get_user_totals(&self) -> Result<HashMap<UserId, Decimal>, String> {
         let connection_pool = match &self.conn_pool {
             Some(pool) => pool,
             None => {
-                slog::error!(self.logger, "No database provided.");
-                return;
+                let error_text = String::from("No database provided");
+                slog::error!(self.logger, "{}", error_text);
+                return Err(error_text);
             }
         };
 
         let conn = match connection_pool.get() {
             Ok(psql_connection) => psql_connection,
             Err(_) => {
-                slog::error!(self.logger, "Couldn't get psql connection.");
-                return;
+                let error_text = String::from("Couldn't get psql connection");
+                slog::error!(self.logger, "{}", error_text);
+                return Err(error_text);
             }
         };
         if let Ok(swap_totals) = models::transactions::Transaction::get_swap_totals(&conn) {
@@ -3465,38 +3473,45 @@ impl BankEngine {
                     "Failed to convert transaction totals: {}",
                     conversion_error
                 );
-                return;
+                return Err(conversion_error);
             }
-            let total_btc_swapped = user_totals.values().sum::<Decimal>();
-            let mut karma_left = karma_amount;
-            for (uid, total) in user_totals {
-                let ratio = total / total_btc_swapped;
-                let karma_received = ratio * karma_amount;
-                if karma_received.is_zero() {
-                    continue;
-                }
-                karma_left -= karma_received;
-                if karma_left < Decimal::ZERO {
-                    slog::error!(
-                        self.logger,
-                        "Karma to be distributed reached negative value: {}",
-                        karma_left
-                    );
-                    return;
-                }
+            Ok(user_totals)
+        } else {
+            let error_text = String::from("Failed to fetch swap totals from DB");
+            slog::error!(self.logger, "{}", error_text);
+            Err(error_text)
+        }
+    }
+
+    fn distribute_karma(&mut self, karma_amount: Money, user_totals: &HashMap<UserId, Decimal>) {
+        let total_btc_swapped = user_totals.values().sum::<Decimal>();
+        let mut dealer_change = karma_amount;
+        for (uid, total) in user_totals {
+            let ratio = total / total_btc_swapped;
+            let karma_received = Money::new(karma_amount.currency(), ratio * karma_amount.value());
+            if karma_received.value() > Decimal::ZERO {
                 let account = self
                     .ledger
                     .user_accounts
-                    .entry(uid)
-                    .or_insert_with(|| UserAccount::new(uid));
+                    .entry(*uid)
+                    .or_insert_with(|| UserAccount::new(*uid));
                 let mut karma_account = account.get_default_account(Currency::KKP, Some(AccountType::Internal));
-                karma_account.balance += karma_received;
-                self.insert_into_ledger(&uid, karma_account.account_id, karma_account.clone());
-                self.update_account(&karma_account, uid);
+                karma_account.balance += karma_received.value();
+                self.insert_into_ledger(uid, karma_account.account_id, karma_account.clone());
+                self.update_account(&karma_account, *uid);
             }
-        } else {
-            slog::error!(self.logger, "Failed to fetch swap totals from DB");
+            dealer_change.set(dealer_change.value() - karma_received.value());
         }
+        let mut dealer_karma_change_account = self
+            .ledger
+            .dealer_accounts
+            .get_default_account(Currency::KKP, Some(AccountType::Internal));
+        dealer_karma_change_account.balance = dealer_change.value();
+        self.ledger.dealer_accounts.accounts.insert(
+            dealer_karma_change_account.account_id,
+            dealer_karma_change_account.clone(),
+        );
+        self.update_account(&dealer_karma_change_account, DEALER_UID);
     }
 }
 
