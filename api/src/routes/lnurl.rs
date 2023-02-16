@@ -189,7 +189,7 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
     };
 
     let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
-        Ok(pubk) => Some(pubk),
+        Ok(pubk) => Some(pubk.pubkey),
         Err(_) => None
     };
 
