@@ -14,7 +14,7 @@ use uuid::Uuid;
 use xerror::api::*;
 
 use models::users::*;
-use models::nostr::*;
+use models::nostr_public_keys::*;
 
 use msgs::api::*;
 use msgs::*;
