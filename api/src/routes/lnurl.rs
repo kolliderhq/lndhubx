@@ -204,7 +204,7 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
         "minSendable": min_sendable,
         "metadata": metadata.to_string(),
         "allowsNostr": true,
-        "nostrPubkey": nostr_pubkey,
+        "nostrPubkey": nostr_pubkey.pubkey,
         "tag": "payRequest",
     });
 
