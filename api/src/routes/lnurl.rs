@@ -14,6 +14,7 @@ use uuid::Uuid;
 use xerror::api::*;
 
 use models::users::*;
+use models::nostr::*;
 
 use msgs::api::*;
 use msgs::*;
@@ -187,6 +188,11 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
         Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
     };
 
+    let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
+        Ok(u) => u,
+        Err(_) => None
+    };
+
     let callback = format!("https://kollider.me/api/pay/{username:}");
     let max_sendable = 1000000000;
     let min_sendable = 1000;
@@ -197,6 +203,8 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
         "maxSendable": max_sendable,
         "minSendable": min_sendable,
         "metadata": metadata.to_string(),
+        "allowsNostr": true,
+        "nostrPubkey": nostr_pubkey
         "tag": "payRequest",
     });
 
