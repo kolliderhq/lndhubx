@@ -3414,37 +3414,65 @@ impl BankEngine {
                 return Err(error_text);
             }
         };
-        if let Ok(swap_totals) = models::transactions::Transaction::get_swap_totals(&conn) {
+        if let Ok(swaps) = models::summary_transactions::SummaryTransaction::get_swaps(&conn) {
             let mut conversions_ok = true;
             let mut conversion_error = String::from("None");
             let mut user_totals = HashMap::new();
-            for total in swap_totals {
-                let amount = Decimal::from_str(&total.total.to_string()).unwrap_or_else(|_err| {
+            for summary in swaps {
+                let uid = if summary.outbound_uid != BANK_UID as i32 {
+                    summary.outbound_uid as UserId
+                } else if summary.inbound_uid != BANK_UID as i32 {
+                    summary.inbound_uid as UserId
+                } else {
+                    continue;
+                };
+
+                let inbound_amount = Decimal::from_str(&summary.inbound_amount.to_string()).unwrap_or_else(|_err| {
                     conversions_ok = false;
-                    conversion_error = format!("could not convert {} into Decimal", total.total);
+                    conversion_error = format!("could not convert {} into Decimal", summary.inbound_amount);
                     Decimal::default()
                 });
                 if !conversions_ok {
                     break;
                 }
-                let currency = match Currency::from_str(&total.inbound_currency) {
+
+                let outbound_amount = Decimal::from_str(&summary.outbound_amount.to_string()).unwrap_or_else(|_err| {
+                    conversions_ok = false;
+                    conversion_error = format!("could not convert {} into Decimal", summary.outbound_amount);
+                    Decimal::default()
+                });
+                if !conversions_ok {
+                    break;
+                }
+
+                let inbound_currency = match Currency::from_str(&summary.inbound_currency) {
                     Ok(currency) => currency,
                     Err(_) => {
                         conversions_ok = false;
                         conversion_error =
-                            format!("could not convert {} into a valid Currency", total.inbound_currency);
+                            format!("could not convert {} into a valid Currency", summary.inbound_currency);
                         break;
                     }
                 };
-                let user_total = user_totals
-                    .entry(total.inbound_uid as UserId)
-                    .or_insert(Decimal::default());
-                if currency == Currency::BTC {
-                    *user_total += amount;
+
+                let outbound_currency = match Currency::from_str(&summary.outbound_currency) {
+                    Ok(currency) => currency,
+                    Err(_) => {
+                        conversions_ok = false;
+                        conversion_error =
+                            format!("could not convert {} into a valid Currency", summary.outbound_currency);
+                        break;
+                    }
+                };
+
+                let btc_value = if outbound_currency == Currency::BTC {
+                    outbound_amount
+                } else if inbound_currency == Currency::BTC {
+                    inbound_amount
                 } else {
-                    let converted_value = match self.last_rates.get(&(Currency::BTC, currency)) {
+                    match self.last_rates.get(&(Currency::BTC, outbound_currency)) {
                         Some(rate) => {
-                            let money = Money::new(currency, amount);
+                            let money = Money::new(outbound_currency, outbound_amount);
                             match money.exchange(rate) {
                                 Ok(converted_money) => converted_money.value(),
                                 Err(_) => {
@@ -3456,17 +3484,24 @@ impl BankEngine {
                         }
                         None => {
                             conversions_ok = false;
-                            conversion_error =
-                                format!("exchange rate {:?}/{:?} not available yet", Currency::BTC, currency);
+                            conversion_error = format!(
+                                "exchange rate {:?}/{:?} not available yet",
+                                Currency::BTC,
+                                outbound_currency
+                            );
                             break;
                         }
-                    };
-                    let user_total = user_totals
-                        .entry(total.inbound_uid as UserId)
-                        .or_insert(Decimal::default());
-                    *user_total += converted_value;
+                    }
+                };
+
+                let user_total = user_totals.entry(uid).or_insert(Decimal::default());
+                if summary.reference == Some(String::from("PaymentRefund")) {
+                    *user_total -= btc_value;
+                } else {
+                    *user_total += btc_value;
                 }
             }
+
             if !conversions_ok {
                 slog::error!(
                     self.logger,
