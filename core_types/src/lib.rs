@@ -101,7 +101,7 @@ impl Currency {
             Currency::USD => 6,
             Currency::EUR => 6,
             Currency::GBP => 6,
-            Currency::KKP => 4,
+            Currency::KKP => 8,
         }
     }
 }
