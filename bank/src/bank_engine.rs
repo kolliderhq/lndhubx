@@ -2681,7 +2681,6 @@ impl BankEngine {
                 }
 
                 Api::NostrProfileResponse(resp) => {
-                    dbg!(&resp);
                     let msg = Message::Api(Api::NostrProfileResponse(resp));
                     listener(msg, ServiceIdentity::Api);
                 }
