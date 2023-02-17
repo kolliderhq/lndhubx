@@ -57,6 +57,7 @@ pub enum HealthStatus {
 pub struct DealerHealth {
     pub status: HealthStatus,
     pub available_currencies: Vec<Currency>,
+    pub rates: HashMap<(Currency, Currency), Rate>,
     pub timestamp: u64,
 }
 
@@ -87,6 +88,11 @@ pub struct FiatDepositResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KarmaBalance {
+    pub karma: Decimal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Dealer {
     BankStateRequest(BankStateRequest),
     BankStateResponse(BankStateResponse),
@@ -99,4 +105,5 @@ pub enum Dealer {
     CreateInvoiceResponse(CreateInvoiceResponse),
     FiatDepositRequest(FiatDepositRequest),
     FiatDepositResponse(FiatDepositResponse),
+    KarmaBalance(KarmaBalance),
 }

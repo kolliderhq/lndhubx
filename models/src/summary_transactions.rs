@@ -92,6 +92,16 @@ impl SummaryTransaction {
             .load(conn)
     }
 
+    pub fn get_swaps(conn: &PgConnection) -> Result<Vec<Self>, DieselError> {
+        let fiat = summary_transactions::inbound_currency
+            .ne("BTC")
+            .or(summary_transactions::outbound_currency.ne("BTC"));
+        summary_transactions::dsl::summary_transactions
+            .filter(fiat)
+            .filter(summary_transactions::inbound_currency.ne(summary_transactions::outbound_currency))
+            .load(conn)
+    }
+
     pub fn insert(&self, conn: &diesel::PgConnection) -> Result<String, DieselError> {
         diesel::insert_into(summary_transactions::table)
             .values(self)

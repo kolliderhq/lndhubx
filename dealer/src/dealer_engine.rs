@@ -246,6 +246,14 @@ impl DealerEngine {
             .collect::<HashSet<Currency>>();
 
         let mut available_currencies = available_currencies.into_iter().collect::<Vec<_>>();
+        let rates = available_currencies
+            .iter()
+            .filter_map(|currency| {
+                let money = Money::new(Currency::BTC, dec!(0.00000001));
+                let (rate, _fees) = self.get_rate(money, *currency);
+                rate.map(|rate| ((Currency::BTC, *currency), rate))
+            })
+            .collect();
         available_currencies.push(Currency::BTC);
 
         let status = if is_authenticated {
@@ -257,6 +265,7 @@ impl DealerEngine {
         let dealer_health = DealerHealth {
             status,
             available_currencies,
+            rates,
             timestamp: time_now(),
         };
 
@@ -283,7 +292,7 @@ impl DealerEngine {
             let currency = account.currency;
             let exposure = account.balance;
 
-            if currency == Currency::BTC {
+            if currency == Currency::BTC || currency == Currency::KKP {
                 continue;
             }
 
@@ -701,6 +710,11 @@ impl DealerEngine {
                     }
                     KolliderApiResponse::FundingPayment(funding_payment) => {
                         self.update_funding_profit(funding_payment.amount);
+                    }
+                    KolliderApiResponse::Balances(balances) => {
+                        let karma = balances.cash.get("KKP").cloned().unwrap_or_default();
+                        let msg = Message::Dealer(Dealer::KarmaBalance(KarmaBalance { karma }));
+                        listener(msg)
                     }
                     _ => {
                         slog::warn!(self.logger, "Handling of KolliderApiResponse {:?} not implemented", msg);
