@@ -6,14 +6,15 @@ use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::env;
 
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use tokio::sync::RwLock;
+use tokio::sync::{mpsc, Mutex};
 
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
-use core_types::DbPool;
+use core_types::{DbPool, UserId};
 use utils::xzmq::SocketContext;
 
 pub mod comms;
@@ -21,6 +22,8 @@ pub mod jwt;
 pub mod routes;
 
 use comms::*;
+use utils::xlogging::slog::Logger;
+use utils::xlogging::LoggingSettings;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ApiSettings {
@@ -29,6 +32,16 @@ pub struct ApiSettings {
     api_zmq_subscribe_address: String,
     quota_replenishment_interval_millis: u64,
     quota_size: u64,
+    creation_quota: u64,
+    creation_quota_interval_seconds: u64,
+    api_logging_settings: LoggingSettings,
+    admin_uids: Option<Vec<UserId>>,
+}
+
+impl ApiSettings {
+    pub fn logging_settings(&self) -> &LoggingSettings {
+        &self.api_logging_settings
+    }
 }
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
@@ -46,10 +59,60 @@ pub struct PriceCache {
     pub last_updated: Option<std::time::Instant>,
 }
 
+#[derive(Clone)]
+pub struct CreationLimiter {
+    creation_enabled: bool,
+    creation_quota: u64,
+    creation_quota_interval_seconds: u64,
+    created: u64,
+    last_interval_start: std::time::Instant,
+}
+
+impl CreationLimiter {
+    pub fn new(creation_quota: u64, creation_quota_interval_seconds: u64) -> Self {
+        Self {
+            creation_enabled: true,
+            creation_quota,
+            creation_quota_interval_seconds,
+            created: 0,
+            last_interval_start: std::time::Instant::now(),
+        }
+    }
+
+    pub fn is_creation_enabled(&self) -> bool {
+        self.creation_enabled
+    }
+
+    pub fn enable_creation(&mut self) {
+        self.creation_enabled = true;
+    }
+
+    pub fn disable_creation(&mut self) {
+        self.creation_enabled = false;
+    }
+
+    /// Returns number of successful create calls in the interval on Ok
+    /// or seconds left to replenish quota on Err
+    pub fn increase(&mut self) -> Result<u64, u64> {
+        let elapsed_seconds = self.last_interval_start.elapsed().as_secs();
+        if elapsed_seconds >= self.creation_quota_interval_seconds {
+            self.last_interval_start = std::time::Instant::now();
+            self.created = 0;
+        }
+        if self.created < self.creation_quota {
+            self.created += 1;
+            Ok(self.created)
+        } else {
+            let replenish_seconds_left = self.creation_quota_interval_seconds - elapsed_seconds;
+            Err(replenish_seconds_left)
+        }
+    }
+}
+
 pub type WebDbPool = web::Data<DbPool>;
 pub type WebSender = web::Data<mpsc::Sender<Envelope>>;
 
-pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
+pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()> {
     let endpoint = env::var("ENDPOINT").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let pool = r2d2::Pool::builder()
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url.clone()))
@@ -75,6 +138,17 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
 
     let price_cache = Arc::new(RwLock::new(PriceCache::default()));
 
+    let creation_limiter = Arc::new(Mutex::new(CreationLimiter::new(
+        settings.creation_quota,
+        settings.creation_quota_interval_seconds,
+    )));
+
+    let admin_uids = settings
+        .admin_uids
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<HashSet<UserId>>();
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -91,6 +165,9 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .app_data(Data::new(pool.clone()))
             .app_data(Data::new(tx.clone()))
             .app_data(Data::new(price_cache.clone()))
+            .app_data(Data::new(logger.clone()))
+            .app_data(Data::new(creation_limiter.clone()))
+            .app_data(Data::new(admin_uids.clone()))
             .service(routes::auth::create)
             .service(routes::auth::auth)
             .service(routes::auth::whoami)
@@ -122,6 +199,8 @@ pub async fn start(settings: ApiSettings) -> std::io::Result<()> {
             .service(routes::nostr::get_nostr_profile)
             .service(routes::user_profile::get_user_profile)
             .service(routes::user_profile::user_profile)
+            .service(routes::admin::disable_create)
+            .service(routes::admin::enable_create)
     })
     .bind(endpoint)?
     .run()

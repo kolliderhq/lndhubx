@@ -9,6 +9,9 @@ influx_token = "<INFLUX-TOKEN>"
 api_zmq_push_address = "tcp://0.0.0.0:5555"
 api_zmq_subscribe_address = "tcp://0.0.0.0:5556"
 
+creation_quota = 10
+creation_quota_interval_seconds = 3600
+
 ### Bank Config
 bank_zmq_pull_address = "tcp://0.0.0.0:5555"
 bank_zmq_publish_address = "tcp://0.0.0.0:5556"
@@ -91,5 +94,13 @@ log_path = "lndhubx.log"
 stdout = true
 level = "debug"
 name = "lndhubx"
+slack_hook = ""
+slack_channel = ""
+
+[api_logging_settings]
+log_path = "api.log"
+stdout = true
+level = "debug"
+name = "api"
 slack_hook = ""
 slack_channel = ""
