@@ -38,9 +38,22 @@ pub async fn create(
         None => Uuid::new_v4().to_string().to_lowercase(),
     };
 
-    if let Err(replenish_seconds_left) = creation_limiter.into_inner().lock().await.increase() {
-        log::warn!(logger, "Unsuccessful wallet creation attempt for user: {} due to exceeded registration limit. Quota replenishes in {} seconds", username, replenish_seconds_left);
-        return Err(ApiError::Auth(AuthError::RegistrationLimitExceeded));
+    {
+        let limiter = creation_limiter.into_inner();
+        let mut creation_limiter_guard = limiter.lock().await;
+        if !creation_limiter_guard.is_creation_enabled() {
+            log::warn!(
+                logger,
+                "Unsuccessful wallet creation attempt for user: {} due to: new registrations disabled",
+                username
+            );
+            return Err(ApiError::Auth(AuthError::RegistrationsDisabled));
+        }
+
+        if let Err(replenish_seconds_left) = creation_limiter_guard.increase() {
+            log::warn!(logger, "Unsuccessful wallet creation attempt for user: {} due to: exceeded registration limit. Quota replenishes in {} seconds", username, replenish_seconds_left);
+            return Err(ApiError::Auth(AuthError::RegistrationLimitExceeded));
+        }
     }
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;

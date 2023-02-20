@@ -13,6 +13,8 @@ pub enum AuthError {
     IncorrectPassword,
     #[error(display = "New registrations limit exceeded.")]
     RegistrationLimitExceeded,
+    #[error(display = "New registrations disabled.")]
+    RegistrationsDisabled,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -59,6 +61,13 @@ pub enum NostrEngineError {
 }
 
 #[derive(Debug, Error, Serialize)]
+#[error(display = "An Error has occurred for admin request.")]
+pub enum AdminError {
+    #[error(display = "Only admin can perform the operation.")]
+    NoPermission,
+}
+
+#[derive(Debug, Error, Serialize)]
 #[error(display = "An Error has occurred when authenticating.")]
 pub enum CommsError {
     #[error(display = "Unable to send message.")]
@@ -98,6 +107,8 @@ pub enum ApiError {
     External(ExternalError),
     #[error(display = "Nostr error.")]
     Nostr(NostrEngineError),
+    #[error(display = "Admin error.")]
+    Admin(AdminError),
 }
 
 impl error::ResponseError for ApiError {
@@ -107,6 +118,7 @@ impl error::ResponseError for ApiError {
                 AuthError::UserExists => HttpResponse::Conflict(),
                 AuthError::IncorrectPassword => HttpResponse::Unauthorized(),
                 AuthError::RegistrationLimitExceeded => HttpResponse::Unauthorized(),
+                AuthError::RegistrationsDisabled => HttpResponse::Unauthorized(),
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => HttpResponse::InternalServerError(),
@@ -131,6 +143,7 @@ impl error::ResponseError for ApiError {
                 NostrEngineError::UnableToLoadProfile => HttpResponse::InternalServerError(),
                 NostrEngineError::UnableToSendPrivateMessage => HttpResponse::InternalServerError(),
             },
+            ApiError::Admin(AdminError::NoPermission) => HttpResponse::Unauthorized(),
         };
         response_builder.json(json!({ "error": self }))
     }
@@ -141,6 +154,7 @@ impl error::ResponseError for ApiError {
                 AuthError::UserExists => StatusCode::CONFLICT,
                 AuthError::IncorrectPassword => StatusCode::UNAUTHORIZED,
                 AuthError::RegistrationLimitExceeded => StatusCode::UNAUTHORIZED,
+                AuthError::RegistrationsDisabled => StatusCode::UNAUTHORIZED,
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => StatusCode::INTERNAL_SERVER_ERROR,
@@ -166,6 +180,7 @@ impl error::ResponseError for ApiError {
                 NostrEngineError::UnableToLoadProfile => StatusCode::INTERNAL_SERVER_ERROR,
                 NostrEngineError::UnableToSendPrivateMessage => StatusCode::INTERNAL_SERVER_ERROR,
             },
+            ApiError::Admin(AdminError::NoPermission) => StatusCode::UNAUTHORIZED,
         }
     }
 }

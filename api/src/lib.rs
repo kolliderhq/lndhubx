@@ -6,6 +6,7 @@ use actix_web::{web, App, HttpServer};
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::env;
 
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use tokio::sync::RwLock;
 use tokio::sync::{mpsc, Mutex};
 
 use actix_ratelimit::{MemoryStore, MemoryStoreActor, RateLimiter};
-use core_types::DbPool;
+use core_types::{DbPool, UserId};
 use utils::xzmq::SocketContext;
 
 pub mod comms;
@@ -34,6 +35,7 @@ pub struct ApiSettings {
     creation_quota: u64,
     creation_quota_interval_seconds: u64,
     api_logging_settings: LoggingSettings,
+    admin_uids: Option<Vec<UserId>>,
 }
 
 impl ApiSettings {
@@ -59,6 +61,7 @@ pub struct PriceCache {
 
 #[derive(Clone)]
 pub struct CreationLimiter {
+    creation_enabled: bool,
     creation_quota: u64,
     creation_quota_interval_seconds: u64,
     created: u64,
@@ -68,11 +71,24 @@ pub struct CreationLimiter {
 impl CreationLimiter {
     pub fn new(creation_quota: u64, creation_quota_interval_seconds: u64) -> Self {
         Self {
+            creation_enabled: true,
             creation_quota,
             creation_quota_interval_seconds,
             created: 0,
             last_interval_start: std::time::Instant::now(),
         }
+    }
+
+    pub fn is_creation_enabled(&self) -> bool {
+        self.creation_enabled
+    }
+
+    pub fn enable_creation(&mut self) {
+        self.creation_enabled = true;
+    }
+
+    pub fn disable_creation(&mut self) {
+        self.creation_enabled = false;
     }
 
     /// Returns number of successful create calls in the interval on Ok
@@ -127,6 +143,12 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
         settings.creation_quota_interval_seconds,
     )));
 
+    let admin_uids = settings
+        .admin_uids
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<HashSet<UserId>>();
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -145,6 +167,7 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .app_data(Data::new(price_cache.clone()))
             .app_data(Data::new(logger.clone()))
             .app_data(Data::new(creation_limiter.clone()))
+            .app_data(Data::new(admin_uids.clone()))
             .service(routes::auth::create)
             .service(routes::auth::auth)
             .service(routes::auth::whoami)
@@ -176,6 +199,8 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .service(routes::nostr::get_nostr_profile)
             .service(routes::user_profile::get_user_profile)
             .service(routes::user_profile::user_profile)
+            .service(routes::admin::disable_create)
+            .service(routes::admin::enable_create)
     })
     .bind(endpoint)?
     .run()
