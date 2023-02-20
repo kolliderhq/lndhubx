@@ -11,6 +11,8 @@ pub enum AuthError {
     UserExists,
     #[error(display = "Incorrect password supplied.")]
     IncorrectPassword,
+    #[error(display = "New registrations limit exceeded.")]
+    RegistrationLimitExceeded,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -104,6 +106,7 @@ impl error::ResponseError for ApiError {
             ApiError::Auth(auth) => match auth {
                 AuthError::UserExists => HttpResponse::Conflict(),
                 AuthError::IncorrectPassword => HttpResponse::Unauthorized(),
+                AuthError::RegistrationLimitExceeded => HttpResponse::Unauthorized(),
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => HttpResponse::InternalServerError(),
@@ -137,6 +140,7 @@ impl error::ResponseError for ApiError {
             ApiError::Auth(auth) => match auth {
                 AuthError::UserExists => StatusCode::CONFLICT,
                 AuthError::IncorrectPassword => StatusCode::UNAUTHORIZED,
+                AuthError::RegistrationLimitExceeded => StatusCode::UNAUTHORIZED,
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => StatusCode::INTERNAL_SERVER_ERROR,
