@@ -10,4 +10,19 @@ pub struct NostrProfile {
     display_name: Option<String>,
     about: Option<String>,
     name: Option<String>,
+    lud16: Option<String>,
+}
+
+impl NostrProfile {
+    pub fn nip05(&self) -> &Option<String> {
+        &self.nip05
+    }
+
+    pub fn lud06(&self) -> &Option<String> {
+        &self.lud06
+    }
+
+    pub fn lud16(&self) -> &Option<String> {
+        &self.lud16
+    }
 }
