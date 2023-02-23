@@ -2,6 +2,7 @@ use crate::{get_user_profile, send_nostr_private_msg, DbPool, NostrEngineEvent, 
 use core_types::nostr::NostrProfile;
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
+use msgs::api::{NostrResponseError, PayableNostrProfile};
 use msgs::Message;
 use nostr_sdk::prelude::Keys;
 use nostr_sdk::Client;
@@ -77,6 +78,19 @@ impl NostrEngine {
                 let message = Message::Api(msgs::api::Api::NostrProfileResponse(resp));
                 utils::xzmq::send_as_bincode(&self.response_socket, &message);
             }
+            Message::Api(msgs::api::Api::NostrProfileSearchRequest(req)) => {
+                let (data, error) = match self.search_profile_by_text(&req.text) {
+                    Ok(profiles) => (profiles, None),
+                    Err(_) => (Vec::new(), Some(NostrResponseError::ProfileNotFound)),
+                };
+                let resp = msgs::api::NostrProfileSearchResponse {
+                    req_id: req.req_id,
+                    data,
+                    error,
+                };
+                let message = Message::Api(msgs::api::Api::NostrProfileSearchResponse(resp));
+                utils::xzmq::send_as_bincode(&self.response_socket, &message);
+            }
             Message::Nostr(msgs::nostr::Nostr::NostrPrivateMessage(req)) => {
                 send_nostr_private_msg(&self.nostr_client, &req.pubkey, &req.text).await;
             }
@@ -98,6 +112,29 @@ impl NostrEngine {
                     );
                 }
             }
+        }
+    }
+
+    fn search_profile_by_text(&self, text: &str) -> QueryResult<Vec<PayableNostrProfile>> {
+        if let Some(conn) = self.db_pool.try_get() {
+            let found_profiles = NostrProfileRecord::search_by_text(&conn, text)?;
+            let payable_profiles = found_profiles
+                .into_iter()
+                .map(|record| PayableNostrProfile {
+                    pubkey: record.pubkey,
+                    created_at: record.created_at,
+                    received_at: record.received_at,
+                    name: record.name,
+                    display_name: record.display_name,
+                    nip05: record.nip05,
+                    lud06: record.lud06,
+                    lud16: record.lud16,
+                    nip05_verified: record.nip05_verified,
+                })
+                .collect();
+            Ok(payable_profiles)
+        } else {
+            Err(diesel::result::Error::NotFound)
         }
     }
 }

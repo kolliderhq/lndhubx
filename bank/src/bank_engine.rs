@@ -2685,6 +2685,15 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
 
+                Api::NostrProfileSearchRequest(req) => {
+                    let msg = Message::Api(Api::NostrProfileSearchRequest(req));
+                    listener(msg, ServiceIdentity::Nostr);
+                }
+                Api::NostrProfileSearchResponse(resp) => {
+                    let msg = Message::Api(Api::NostrProfileSearchResponse(resp));
+                    listener(msg, ServiceIdentity::Api);
+                }
+
                 _ => {}
             },
             Message::Bank(msg) => match msg {
