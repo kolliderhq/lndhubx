@@ -2060,7 +2060,7 @@ dependencies = [
  "nom 6.1.2",
  "opentelemetry",
  "parking_lot 0.11.2",
- "reqwest 0.11.11",
+ "reqwest 0.11.14",
  "serde 1.0.144",
  "serde_json",
  "smallvec 1.9.0",
@@ -2091,7 +2091,7 @@ dependencies = [
  "opentelemetry",
  "ordered-float",
  "parking_lot 0.11.2",
- "reqwest 0.11.11",
+ "reqwest 0.11.14",
  "serde 1.0.144",
  "serde_json",
  "serde_qs",
@@ -2705,7 +2705,7 @@ dependencies = [
  "log",
  "once_cell",
  "regex",
- "reqwest 0.11.11",
+ "reqwest 0.11.14",
  "serde 1.0.144",
  "serde_json",
  "thiserror",
@@ -2745,6 +2745,7 @@ dependencies = [
  "models",
  "msgs",
  "nostr-sdk",
+ "reqwest 0.11.14",
  "rust_decimal",
  "rust_decimal_macros",
  "serde 1.0.144",
@@ -3517,11 +3518,11 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.11.11"
+version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b75aa69a3f06bbcc66ede33af2af253c6f7a86b1ca0033f60c580a27074fbf92"
+checksum = "21eed90ec8570952d53b772ecf8f206aa1ec9a3d76b2521c56c42973f2d91ee9"
 dependencies = [
- "base64 0.13.0",
+ "base64 0.21.0",
  "bytes 1.2.1",
  "encoding_rs",
  "futures-core",
@@ -3534,10 +3535,10 @@ dependencies = [
  "hyper-tls 0.5.0",
  "ipnet",
  "js-sys",
- "lazy_static 1.4.0",
  "log",
  "mime",
  "native-tls",
+ "once_cell",
  "percent-encoding 2.1.0",
  "pin-project-lite 0.2.9",
  "rustls",
@@ -3554,6 +3555,7 @@ dependencies = [
  "url 2.3.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
  "webpki-roots",
  "winreg 0.10.1",
@@ -5179,6 +5181,19 @@ name = "wasm-bindgen-shared"
 version = "0.2.82"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6598dd0bd3c7d51095ff6531a5b23e02acdc81804e30d8f07afb77b7215a140a"
+
+[[package]]
+name = "wasm-streams"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bbae3363c08332cadccd13b67db371814cd214c2524020932f0804b8cf7c078"
+dependencies = [
+ "futures-util",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
 
 [[package]]
 name = "web-sys"

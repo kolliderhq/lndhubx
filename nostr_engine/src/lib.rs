@@ -10,6 +10,7 @@ use nostr_sdk::{Client, RelayPoolNotification};
 use serde::{Deserialize, Serialize};
 use slog as log;
 use slog::Logger;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use utils::xlogging::LoggingSettings;
 use utils::xzmq::ZmqSocket;
@@ -39,6 +40,11 @@ pub struct NostrProfileUpdate {
     pub created_at_epoch_ms: u64,
     pub received_at_epoch_ms: u64,
     pub nostr_profile: NostrProfile,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Nip05Response {
+    pub names: HashMap<String, String>,
 }
 
 pub fn spawn_profile_subscriber(

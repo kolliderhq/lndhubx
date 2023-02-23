@@ -1,4 +1,4 @@
-use crate::{get_user_profile, send_nostr_private_msg, DbPool, NostrEngineEvent, NostrProfileUpdate};
+use crate::{get_user_profile, send_nostr_private_msg, DbPool, Nip05Response, NostrEngineEvent, NostrProfileUpdate};
 use core_types::nostr::NostrProfile;
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
@@ -45,35 +45,21 @@ impl NostrEngine {
         match event {
             NostrEngineEvent::NostrProfileUpdate(profile_update) => {
                 if profile_update.nostr_profile.lud06().is_some() || profile_update.nostr_profile.lud16().is_some() {
+                    let verified = if let Some(nip05) = profile_update.nostr_profile.nip05().as_ref() {
+                        verify_nip05(profile_update.pubkey.clone(), nip05.clone()).await
+                    } else {
+                        None
+                    };
                     self.nostr_profile_cache
                         .insert(profile_update.pubkey.clone(), profile_update.nostr_profile.clone());
                     if let Some(conn) = self.db_pool.try_get() {
-                        match insert_profile_update(&conn, profile_update) {
-                            Ok(_) => {
-                                if let Some(nip05) = profile_update.nostr_profile.nip05().as_ref() {
-                                    let verification_result = self.verify_nip05(&profile_update.pubkey, nip05);
-                                    if let Err(err) = NostrProfileRecord::update_nip05_verified(
-                                        &conn,
-                                        &profile_update.pubkey,
-                                        nip05,
-                                        verification_result,
-                                    ) {
-                                        log::error!(
-                                    self.logger,
-                                    "Failed to set nip05 verification result: {:?} for profile pubkey: {}, nip05: {}, err: {:?}",
-                                    verification_result, profile_update.pubkey, nip05, err
-                                );
-                                    }
-                                }
-                            }
-                            Err(err) => {
-                                log::error!(
-                                    self.logger,
-                                    "Failed to upsert nostr profile update: {:?}, err: {:?}",
-                                    profile_update,
-                                    err
-                                );
-                            }
+                        if let Err(err) = insert_profile_update(&conn, profile_update, verified) {
+                            log::error!(
+                                self.logger,
+                                "Failed to upsert nostr profile update: {:?}, err: {:?}",
+                                profile_update,
+                                err
+                            );
                         }
                     }
                 }
@@ -116,14 +102,13 @@ impl NostrEngine {
             _ => {}
         }
     }
-
-    fn verify_nip05(&self, pubkey: &str, nip05: &str) -> Option<bool> {
-        // todo run verification if nip05 present
-        None
-    }
 }
 
-fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProfileUpdate) -> QueryResult<usize> {
+fn insert_profile_update(
+    conn: &diesel::PgConnection,
+    profile_update: &NostrProfileUpdate,
+    verified: Option<bool>,
+) -> QueryResult<usize> {
     let record = NostrProfileRecord {
         pubkey: profile_update.pubkey.clone(),
         created_at: profile_update.created_at_epoch_ms as i64,
@@ -133,7 +118,20 @@ fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProf
         nip05: profile_update.nostr_profile.nip05().clone(),
         lud06: profile_update.nostr_profile.lud06().clone(),
         lud16: profile_update.nostr_profile.lud16().clone(),
-        nip05_verified: None,
+        nip05_verified: verified,
     };
     record.upsert(conn)
+}
+
+async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
+    if let Some((local_part, domain)) = nip05.split_once('@') {
+        let url = format!("https://{domain}/.well-known/nostr.json?name={local_part}");
+        let body = reqwest::get(&url).await.ok()?.text().await.ok()?;
+        let nip_verification = serde_json::from_str::<Nip05Response>(&body).ok()?;
+        return nip_verification
+            .names
+            .get(local_part)
+            .map(|response_pubkey| response_pubkey == &pubkey);
+    }
+    None
 }
