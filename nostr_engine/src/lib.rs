@@ -39,6 +39,7 @@ pub struct NostrProfileUpdate {
 pub fn spawn_profile_subscriber(
     nostr_engine_keys: Keys,
     relays: Vec<(String, Option<SocketAddr>)>,
+    subscribe_since_epoch_seconds: u64,
     events_tx: tokio::sync::mpsc::Sender<NostrEngineEvent>,
     logger: Logger,
 ) {
@@ -47,7 +48,8 @@ pub fn spawn_profile_subscriber(
         nostr_client.add_relays(relays).await.unwrap();
         nostr_client.connect().await;
 
-        let subscription = SubscriptionFilter::new().kind(Kind::Metadata).since(Timestamp::now());
+        let since_seconds = Timestamp::from(subscribe_since_epoch_seconds);
+        let subscription = SubscriptionFilter::new().kind(Kind::Metadata).since(since_seconds);
         nostr_client.subscribe(vec![subscription]).await;
         loop {
             let mut notifications = nostr_client.notifications();

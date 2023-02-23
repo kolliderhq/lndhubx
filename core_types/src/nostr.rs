@@ -14,6 +14,14 @@ pub struct NostrProfile {
 }
 
 impl NostrProfile {
+    pub fn name(&self) -> &Option<String> {
+        &self.name
+    }
+
+    pub fn display_name(&self) -> &Option<String> {
+        &self.display_name
+    }
+
     pub fn nip05(&self) -> &Option<String> {
         &self.nip05
     }

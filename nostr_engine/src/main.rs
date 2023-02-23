@@ -29,9 +29,11 @@ async fn main() {
 
     let (events_tx, events_rx) = tokio::sync::mpsc::channel(2048);
 
+    let subscribe_since = utils::time::time_now() / 1000;
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
         relays.clone(),
+        subscribe_since,
         events_tx.clone(),
         logger.clone(),
     );
