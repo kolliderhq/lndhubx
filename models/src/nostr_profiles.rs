@@ -1,5 +1,5 @@
 use crate::schema::nostr_profile_records;
-use diesel::{ExpressionMethods, QueryResult, RunQueryDsl};
+use diesel::{BoolExpressionMethods, ExpressionMethods, PgTextExpressionMethods, QueryDsl, QueryResult, RunQueryDsl};
 
 #[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
 #[changeset_options(treat_none_as_null = "true")]
@@ -37,5 +37,18 @@ impl NostrProfileRecord {
             .filter(nostr_profile_records::dsl::nip05.eq(nip05))
             .set(nostr_profile_records::dsl::nip05_verified.eq(nip05_verified))
             .execute(conn)
+    }
+
+    pub fn search_by_text(conn: &diesel::PgConnection, text: &str) -> QueryResult<Vec<Self>> {
+        let escaped_lowered = text.replace('%', "\\%").replace('_', "\\_").to_lowercase();
+        let pattern = format!("%{escaped_lowered}%");
+        let relevant_search = nostr_profile_records::dsl::name
+            .ilike(&pattern)
+            .or(nostr_profile_records::dsl::display_name.ilike(&pattern))
+            .or(nostr_profile_records::dsl::nip05.ilike(&pattern))
+            .or(nostr_profile_records::dsl::lud16.ilike(&pattern));
+        nostr_profile_records::dsl::nostr_profile_records
+            .filter(relevant_search)
+            .load::<Self>(conn)
     }
 }
