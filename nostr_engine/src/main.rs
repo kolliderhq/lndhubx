@@ -1,3 +1,5 @@
+use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::PgConnection;
 use msgs::*;
 use nostr_engine::{spawn_events_handler, spawn_profile_subscriber, NostrEngineEvent, NostrEngineSettings};
 use nostr_sdk::prelude::{FromSkStr, Keys};
@@ -29,6 +31,10 @@ async fn main() {
 
     let (events_tx, events_rx) = tokio::sync::mpsc::channel(2048);
 
+    let db_pool = Pool::builder()
+        .build(ConnectionManager::<PgConnection>::new(settings.psql_url))
+        .expect("Failed to create pool.");
+
     let subscribe_since = utils::time::time_now() / 1000;
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
@@ -38,7 +44,7 @@ async fn main() {
         logger.clone(),
     );
 
-    spawn_events_handler(nostr_engine_keys, relays, events_rx, bank_tx, logger.clone());
+    spawn_events_handler(nostr_engine_keys, relays, events_rx, bank_tx, db_pool, logger.clone());
 
     while let Ok(frame) = bank_recv.recv_msg(0) {
         if let Ok(message) = bincode::deserialize::<Message>(&frame) {

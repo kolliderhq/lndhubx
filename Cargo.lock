@@ -2738,6 +2738,7 @@ dependencies = [
  "core_types",
  "crossbeam",
  "crossbeam-channel",
+ "diesel",
  "futures 0.3.24",
  "influxdb2 0.1.1",
  "log",

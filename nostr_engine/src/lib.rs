@@ -2,6 +2,8 @@ mod nostr_engine;
 
 use crate::nostr_engine::NostrEngine;
 use core_types::nostr::NostrProfile;
+use diesel::r2d2::ConnectionManager;
+use diesel::PgConnection;
 use msgs::Message;
 use nostr_sdk::prelude::{FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
 use nostr_sdk::{Client, RelayPoolNotification};
@@ -14,8 +16,11 @@ use utils::xzmq::ZmqSocket;
 
 const PROFILE_REQUEST_TIMEOUT_MS: u64 = 100;
 
+type DbPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NostrEngineSettings {
+    pub psql_url: String,
     pub nostr_bank_push_address: String,
     pub nostr_bank_pull_address: String,
     pub nostr_private_key: String,
@@ -97,10 +102,11 @@ pub fn spawn_events_handler(
     relays: Vec<(String, Option<SocketAddr>)>,
     mut events_rx: tokio::sync::mpsc::Receiver<NostrEngineEvent>,
     response_socket: ZmqSocket,
+    db_pool: DbPool,
     logger: Logger,
 ) {
     tokio::spawn(async move {
-        let mut nostr_engine = NostrEngine::new(nostr_engine_keys, relays, response_socket, logger).await;
+        let mut nostr_engine = NostrEngine::new(nostr_engine_keys, relays, response_socket, db_pool, logger).await;
         while let Some(event) = events_rx.recv().await {
             nostr_engine.process_event(&event).await;
         }

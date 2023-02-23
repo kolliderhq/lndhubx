@@ -1,7 +1,8 @@
 use crate::schema::nostr_profile_records;
 use diesel::{ExpressionMethods, QueryResult, RunQueryDsl};
 
-#[derive(Queryable, Identifiable, Debug)]
+#[derive(Queryable, Identifiable, Insertable, AsChangeset, Debug)]
+#[changeset_options(treat_none_as_null = "true")]
 #[primary_key(pubkey)]
 pub struct NostrProfileRecord {
     pub pubkey: String,
@@ -16,6 +17,15 @@ pub struct NostrProfileRecord {
 }
 
 impl NostrProfileRecord {
+    pub fn upsert(&self, conn: &diesel::PgConnection) -> QueryResult<usize> {
+        diesel::insert_into(nostr_profile_records::dsl::nostr_profile_records)
+            .values(self)
+            .on_conflict(nostr_profile_records::dsl::pubkey)
+            .do_update()
+            .set(self)
+            .execute(conn)
+    }
+
     pub fn update_nip05_verified(
         conn: &diesel::PgConnection,
         pubkey: &str,
