@@ -5,7 +5,7 @@ use core_types::nostr::NostrProfile;
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use msgs::Message;
-use nostr_sdk::prelude::{FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
+use nostr_sdk::prelude::{Event, FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
 use nostr_sdk::{Client, RelayPoolNotification};
 use serde::{Deserialize, Serialize};
 use slog as log;
@@ -66,35 +66,19 @@ pub fn spawn_profile_subscriber(
             let mut notifications = nostr_client.notifications();
             while let Ok(notification) = notifications.recv().await {
                 if let RelayPoolNotification::Event(_url, event) = notification {
-                    if event.kind == Kind::Metadata {
-                        match serde_json::from_str::<NostrProfile>(&event.content) {
-                            Ok(nostr_profile) => {
-                                let pubkey = event.pubkey.to_string();
-                                let created_at_epoch_ms = 1000 * event.created_at.as_u64();
-                                let received_at_epoch_ms = utils::time::time_now();
-                                let profile_update =
-                                    NostrEngineEvent::NostrProfileUpdate(Box::new(NostrProfileUpdate {
-                                        pubkey,
-                                        created_at_epoch_ms,
-                                        received_at_epoch_ms,
-                                        nostr_profile,
-                                    }));
-                                if let Err(err) = events_tx.send(profile_update).await {
-                                    log::error!(
-                                        logger,
-                                        "Failed to send nostr profile update to events channel, error: {:?}",
-                                        err
-                                    );
-                                }
-                            }
-                            Err(err) => {
+                    match try_profile_update_from_event(&event).await {
+                        Some(profile_update) => {
+                            let msg = NostrEngineEvent::NostrProfileUpdate(Box::new(profile_update));
+                            if let Err(err) = events_tx.send(msg).await {
                                 log::error!(
                                     logger,
-                                    "Failed to deserialize {} into nostr profile, error: {:?}",
-                                    &event.content,
+                                    "Failed to send nostr profile update to events channel, error: {:?}",
                                     err
                                 );
                             }
+                        }
+                        None => {
+                            log::error!(logger, "Failed to deserialize {} into nostr profile", &event.content);
                         }
                     }
                 }
@@ -119,7 +103,7 @@ pub fn spawn_events_handler(
     });
 }
 
-async fn get_user_profile(client: &Client, pubkey: &str) -> Option<NostrProfile> {
+async fn get_user_profile(client: &Client, pubkey: &str) -> Option<NostrProfileUpdate> {
     let keys = Keys::from_pk_str(pubkey).ok()?;
 
     let subscription = SubscriptionFilter::new()
@@ -130,12 +114,49 @@ async fn get_user_profile(client: &Client, pubkey: &str) -> Option<NostrProfile>
     let timeout = std::time::Duration::from_millis(PROFILE_REQUEST_TIMEOUT_MS);
     let events = client.get_events_of(vec![subscription], Some(timeout)).await.ok()?;
 
-    events
-        .first()
-        .and_then(|event| serde_json::from_str::<NostrProfile>(&event.content).ok())
+    match events.first() {
+        Some(event) => try_profile_update_from_event(event).await,
+        None => None,
+    }
 }
 
 async fn send_nostr_private_msg(client: &Client, pubkey: &str, text: &str) {
     let keys = Keys::from_pk_str(pubkey).unwrap();
     client.send_direct_msg(keys.public_key(), text).await.unwrap();
+}
+
+async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
+    if let Some((local_part, domain)) = nip05.split_once('@') {
+        let url = format!("https://{domain}/.well-known/nostr.json?name={local_part}");
+        let body = reqwest::get(&url).await.ok()?.text().await.ok()?;
+        let nip_verification = serde_json::from_str::<Nip05Response>(&body).ok()?;
+        return nip_verification
+            .names
+            .get(local_part)
+            .map(|response_pubkey| response_pubkey == &pubkey);
+    }
+    None
+}
+
+async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpdate> {
+    if event.kind == Kind::Metadata {
+        let mut nostr_profile = serde_json::from_str::<NostrProfile>(&event.content).ok()?;
+        let pubkey = event.pubkey.to_string();
+        let created_at_epoch_ms = 1000 * event.created_at.as_u64();
+        let received_at_epoch_ms = utils::time::time_now();
+        let verified = if let Some(nip05) = nostr_profile.nip05().as_ref() {
+            verify_nip05(pubkey.clone(), nip05.clone()).await
+        } else {
+            None
+        };
+        nostr_profile.set_nip05_verified(verified);
+        let profile_update = NostrProfileUpdate {
+            pubkey,
+            created_at_epoch_ms,
+            received_at_epoch_ms,
+            nostr_profile,
+        };
+        return Some(profile_update);
+    }
+    None
 }

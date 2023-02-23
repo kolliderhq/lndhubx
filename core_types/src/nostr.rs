@@ -11,6 +11,8 @@ pub struct NostrProfile {
     about: Option<String>,
     name: Option<String>,
     lud16: Option<String>,
+    #[serde(default)]
+    nip05_verified: Option<bool>,
 }
 
 impl NostrProfile {
@@ -32,5 +34,13 @@ impl NostrProfile {
 
     pub fn lud16(&self) -> &Option<String> {
         &self.lud16
+    }
+
+    pub fn nip05_verified(&self) -> Option<bool> {
+        self.nip05_verified
+    }
+
+    pub fn set_nip05_verified(&mut self, verified: Option<bool>) {
+        self.nip05_verified = verified;
     }
 }

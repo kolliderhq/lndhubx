@@ -1,4 +1,4 @@
-use crate::{get_user_profile, send_nostr_private_msg, DbPool, Nip05Response, NostrEngineEvent, NostrProfileUpdate};
+use crate::{get_user_profile, send_nostr_private_msg, DbPool, NostrEngineEvent, NostrProfileUpdate};
 use core_types::nostr::NostrProfile;
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
@@ -44,25 +44,7 @@ impl NostrEngine {
         log::trace!(self.logger, "Processing event: {:?}", event);
         match event {
             NostrEngineEvent::NostrProfileUpdate(profile_update) => {
-                if profile_update.nostr_profile.lud06().is_some() || profile_update.nostr_profile.lud16().is_some() {
-                    let verified = if let Some(nip05) = profile_update.nostr_profile.nip05().as_ref() {
-                        verify_nip05(profile_update.pubkey.clone(), nip05.clone()).await
-                    } else {
-                        None
-                    };
-                    self.nostr_profile_cache
-                        .insert(profile_update.pubkey.clone(), profile_update.nostr_profile.clone());
-                    if let Some(conn) = self.db_pool.try_get() {
-                        if let Err(err) = insert_profile_update(&conn, profile_update, verified) {
-                            log::error!(
-                                self.logger,
-                                "Failed to upsert nostr profile update: {:?}, err: {:?}",
-                                profile_update,
-                                err
-                            );
-                        }
-                    }
-                }
+                self.store_payable_profile(profile_update);
             }
             NostrEngineEvent::LndhubxMessage(message) => {
                 self.process_message(message).await;
@@ -80,12 +62,11 @@ impl NostrEngine {
 
                 let response_profile = if let Some(profile) = self.nostr_profile_cache.get(pubkey) {
                     Some(profile.clone())
+                } else if let Some(profile_update) = get_user_profile(&self.nostr_client, pubkey).await {
+                    self.store_payable_profile(&profile_update);
+                    Some(profile_update.nostr_profile)
                 } else {
-                    let maybe_profile = get_user_profile(&self.nostr_client, pubkey).await;
-                    if let Some(ref profile) = maybe_profile {
-                        self.nostr_profile_cache.insert(pubkey.clone(), profile.clone());
-                    }
-                    maybe_profile
+                    None
                 };
 
                 let resp = msgs::api::NostrProfileResponse {
@@ -102,13 +83,26 @@ impl NostrEngine {
             _ => {}
         }
     }
+
+    fn store_payable_profile(&mut self, profile_update: &NostrProfileUpdate) {
+        if profile_update.nostr_profile.lud06().is_some() || profile_update.nostr_profile.lud16().is_some() {
+            self.nostr_profile_cache
+                .insert(profile_update.pubkey.clone(), profile_update.nostr_profile.clone());
+            if let Some(conn) = self.db_pool.try_get() {
+                if let Err(err) = insert_profile_update(&conn, profile_update) {
+                    log::error!(
+                        self.logger,
+                        "Failed to upsert nostr profile update: {:?}, err: {:?}",
+                        profile_update,
+                        err
+                    );
+                }
+            }
+        }
+    }
 }
 
-fn insert_profile_update(
-    conn: &diesel::PgConnection,
-    profile_update: &NostrProfileUpdate,
-    verified: Option<bool>,
-) -> QueryResult<usize> {
+fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProfileUpdate) -> QueryResult<usize> {
     let record = NostrProfileRecord {
         pubkey: profile_update.pubkey.clone(),
         created_at: profile_update.created_at_epoch_ms as i64,
@@ -118,20 +112,7 @@ fn insert_profile_update(
         nip05: profile_update.nostr_profile.nip05().clone(),
         lud06: profile_update.nostr_profile.lud06().clone(),
         lud16: profile_update.nostr_profile.lud16().clone(),
-        nip05_verified: verified,
+        nip05_verified: profile_update.nostr_profile.nip05_verified(),
     };
     record.upsert(conn)
-}
-
-async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
-    if let Some((local_part, domain)) = nip05.split_once('@') {
-        let url = format!("https://{domain}/.well-known/nostr.json?name={local_part}");
-        let body = reqwest::get(&url).await.ok()?.text().await.ok()?;
-        let nip_verification = serde_json::from_str::<Nip05Response>(&body).ok()?;
-        return nip_verification
-            .names
-            .get(local_part)
-            .map(|response_pubkey| response_pubkey == &pubkey);
-    }
-    None
 }
