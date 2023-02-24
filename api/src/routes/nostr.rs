@@ -170,3 +170,45 @@ pub async fn get_nostr_profile(
     }
     Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
+
+#[derive(Deserialize)]
+pub struct SearchNostrProfileParams {
+    text: String,
+}
+
+#[get("/search_nostr_profile")]
+pub async fn search_nostr_profile(
+    web_sender: WebSender,
+    params: Query<SearchNostrProfileParams>,
+) -> Result<HttpResponse, ApiError> {
+    let req_id = Uuid::new_v4();
+
+    let request = NostrProfileSearchRequest {
+        req_id,
+        text: params.text.clone(),
+    };
+
+    let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
+        move |message| matches!(message, Message::Api(Api::NostrProfileSearchResponse(response)) if response.req_id == req_id),
+    );
+
+    let (response_tx, mut response_rx) = mpsc::channel(1);
+
+    let message = Message::Api(Api::NostrProfileSearchRequest(request));
+
+    Arc::make_mut(&mut web_sender.into_inner())
+        .send(Envelope {
+            message,
+            response_tx: Some(response_tx),
+            response_filter: Some(response_filter),
+        })
+        .await
+        .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
+
+    if let Ok(Some(Ok(Message::Api(Api::NostrProfileSearchResponse(response))))) =
+        timeout(Duration::from_secs(5), response_rx.recv()).await
+    {
+        return Ok(HttpResponse::Ok().json(&response));
+    }
+    Err(ApiError::Comms(CommsError::ServerResponseTimeout))
+}

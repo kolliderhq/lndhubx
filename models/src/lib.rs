@@ -10,6 +10,7 @@ mod error;
 pub mod internal_user_mappings;
 pub mod invoices;
 pub mod ln_addresses;
+pub mod nostr_profiles;
 pub mod nostr_public_keys;
 pub mod pre_signups;
 mod schema;

@@ -346,6 +346,32 @@ pub struct NostrProfileResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PayableNostrProfile {
+    pub pubkey: String,
+    pub created_at: i64,
+    pub received_at: i64,
+    pub name: Option<String>,
+    pub display_name: Option<String>,
+    pub nip05: Option<String>,
+    pub lud06: Option<String>,
+    pub lud16: Option<String>,
+    pub nip05_verified: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrProfileSearchRequest {
+    pub req_id: RequestId,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrProfileSearchResponse {
+    pub req_id: RequestId,
+    pub data: Vec<PayableNostrProfile>,
+    pub error: Option<NostrResponseError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
     InvoiceRequest(InvoiceRequest),
     InvoiceResponse(InvoiceResponse),
@@ -371,4 +397,6 @@ pub enum Api {
     QueryRouteResponse(QueryRouteResponse),
     NostrProfileRequest(NostrProfileRequest),
     NostrProfileResponse(NostrProfileResponse),
+    NostrProfileSearchRequest(NostrProfileSearchRequest),
+    NostrProfileSearchResponse(NostrProfileSearchResponse),
 }

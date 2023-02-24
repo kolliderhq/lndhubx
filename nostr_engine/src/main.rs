@@ -1,103 +1,60 @@
-use std::collections::HashMap;
-use std::thread;
-
-use core_types::nostr::NostrProfile;
-use msgs::{nostr::*, *};
-use nostr_sdk::blocking::Client;
-use nostr_sdk::prelude::{FromPkStr, FromSkStr, Keys, Kind, SubscriptionFilter};
-use serde::{Deserialize, Serialize};
+use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::PgConnection;
+use msgs::*;
+use nostr_engine::{spawn_events_handler, spawn_profile_subscriber, NostrEngineEvent, NostrEngineSettings};
+use nostr_sdk::prelude::{FromSkStr, Keys};
+use slog as log;
 use utils::xzmq::SocketContext;
 
-const PROFILE_REQUEST_TIMEOUT_MS: u64 = 100;
-
-fn get_user_profile(client: &Client, pubkey: &str) -> Option<NostrProfile> {
-    let keys = Keys::from_pk_str(pubkey).ok()?;
-
-    let subscription = SubscriptionFilter::new()
-        .author(keys.public_key())
-        .kind(Kind::Metadata)
-        .limit(1);
-
-    let timeout = std::time::Duration::from_millis(PROFILE_REQUEST_TIMEOUT_MS);
-    let events = client.get_events_of(vec![subscription], Some(timeout)).ok()?;
-
-    events
-        .first()
-        .and_then(|event| serde_json::from_str::<NostrProfile>(&event.content).ok())
-}
-
-fn send_nostr_private_msg(client: Client, pubkey: &str, text: &str) {
-    let keys = Keys::from_pk_str(pubkey).unwrap();
-    client.send_direct_msg(keys.public_key(), text).unwrap();
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NostrEngineSettings {
-    pub nostr_bank_push_address: String,
-    pub nostr_bank_pull_address: String,
-    pub nostr_private_key: String,
-}
-
-fn main() {
+#[tokio::main]
+async fn main() {
     let settings = utils::config::get_config_from_env::<NostrEngineSettings>().expect("Failed to load settings.");
+    let logger = utils::xlogging::init_log(&settings.nostr_engine_logging_settings);
 
     let context = SocketContext::new();
     let bank_recv = context.create_pull(&settings.nostr_bank_pull_address);
     let bank_tx = context.create_push(&settings.nostr_bank_push_address);
 
-    let mut nostr_profile_cache: HashMap<String, NostrProfile> = HashMap::new();
+    let nostr_engine_keys = Keys::from_sk_str(&settings.nostr_private_key).unwrap();
+    let relay_addresses = [
+        "wss://relay.nostr.info",
+        "wss://nostr-pub.wellorder.net",
+        "wss://relay.damus.io",
+        "wss://nostr.zebedee.cloud",
+        "wss://nostr.bitcoiner.social",
+    ];
 
-    let keys = Keys::from_sk_str(&settings.nostr_private_key).unwrap();
-    let nostr_client = Client::new(&keys);
+    let relays = relay_addresses
+        .iter()
+        .map(|address| (address.to_string(), None))
+        .collect::<Vec<_>>();
 
-    nostr_client
-        .add_relays(vec![
-            ("wss://relay.nostr.info", None),
-            ("wss://nostr-pub.wellorder.net", None),
-            ("wss://relay.damus.io", None),
-            // ("wss://nostr.zebedee.cloud", None),
-            // ("wss://nostr.bitcoiner.social", None),
-        ])
-        .unwrap();
+    let (events_tx, events_rx) = tokio::sync::mpsc::channel(2048);
 
-    nostr_client.connect();
+    let db_pool = Pool::builder()
+        .build(ConnectionManager::<PgConnection>::new(settings.psql_url))
+        .expect("Failed to create pool.");
 
-    loop {
-        thread::sleep(std::time::Duration::from_micros(100));
+    let subscribe_since = utils::time::time_now() / 1000;
+    spawn_profile_subscriber(
+        nostr_engine_keys.clone(),
+        relays.clone(),
+        subscribe_since,
+        events_tx.clone(),
+        logger.clone(),
+    );
 
-        while let Ok(frame) = bank_recv.recv_msg(1) {
-            if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-                match message {
-                    Message::Api(api::Api::NostrProfileRequest(req)) => {
-                        let pubkey = match req.pubkey {
-                            Some(key) => key,
-                            None => return,
-                        };
+    spawn_events_handler(nostr_engine_keys, relays, events_rx, bank_tx, db_pool, logger.clone());
 
-                        let response_profile = if let Some(profile) = nostr_profile_cache.get(&pubkey) {
-                            Some(profile.clone())
-                        } else {
-                            let maybe_profile = get_user_profile(&nostr_client, &pubkey);
-                            if let Some(ref profile) = maybe_profile {
-                                nostr_profile_cache.insert(pubkey, profile.clone());
-                            }
-                            maybe_profile
-                        };
-
-                        let resp = api::NostrProfileResponse {
-                            req_id: req.req_id,
-                            profile: response_profile,
-                            error: None,
-                        };
-                        let message = Message::Api(api::Api::NostrProfileResponse(resp));
-                        utils::xzmq::send_as_bincode(&bank_tx, &message);
-                    }
-                    Message::Nostr(Nostr::NostrPrivateMessage(req)) => {
-                        send_nostr_private_msg(nostr_client.clone(), &req.pubkey, &req.text);
-                    }
-                    _ => {}
-                }
-            };
-        }
+    while let Ok(frame) = bank_recv.recv_msg(0) {
+        if let Ok(message) = bincode::deserialize::<Message>(&frame) {
+            if let Err(err) = events_tx.send(NostrEngineEvent::LndhubxMessage(message)).await {
+                log::error!(
+                    logger,
+                    "Failed to send lndhubx message to events channel, error: {:?}",
+                    err
+                );
+            }
+        };
     }
 }

@@ -104,3 +104,11 @@ level = "debug"
 name = "api"
 slack_hook = ""
 slack_channel = ""
+
+[nostr_engine_logging_settings]
+log_path = "nostr_engine.log"
+stdout = true
+level = "debug"
+name = "nostr_engine"
+slack_hook = ""
+slack_channel = ""

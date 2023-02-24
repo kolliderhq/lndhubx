@@ -10,4 +10,37 @@ pub struct NostrProfile {
     display_name: Option<String>,
     about: Option<String>,
     name: Option<String>,
+    lud16: Option<String>,
+    #[serde(default)]
+    nip05_verified: Option<bool>,
+}
+
+impl NostrProfile {
+    pub fn name(&self) -> &Option<String> {
+        &self.name
+    }
+
+    pub fn display_name(&self) -> &Option<String> {
+        &self.display_name
+    }
+
+    pub fn nip05(&self) -> &Option<String> {
+        &self.nip05
+    }
+
+    pub fn lud06(&self) -> &Option<String> {
+        &self.lud06
+    }
+
+    pub fn lud16(&self) -> &Option<String> {
+        &self.lud16
+    }
+
+    pub fn nip05_verified(&self) -> Option<bool> {
+        self.nip05_verified
+    }
+
+    pub fn set_nip05_verified(&mut self, verified: Option<bool>) {
+        self.nip05_verified = verified;
+    }
 }

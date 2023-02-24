@@ -70,6 +70,20 @@ table! {
 }
 
 table! {
+    nostr_profile_records (pubkey) {
+        pubkey -> Text,
+        created_at -> Int8,
+        received_at -> Int8,
+        name -> Nullable<Text>,
+        display_name -> Nullable<Text>,
+        nip05 -> Nullable<Text>,
+        lud06 -> Nullable<Text>,
+        lud16 -> Nullable<Text>,
+        nip05_verified -> Nullable<Bool>,
+    }
+}
+
+table! {
     nostr_public_keys (pubkey) {
         created_at -> Nullable<Timestamp>,
         pubkey -> Text,
@@ -150,9 +164,9 @@ table! {
     }
 }
 
+joinable!(accounts -> users (uid));
 joinable!(internal_user_mappings -> users (uid));
 joinable!(nostr_public_keys -> users (uid));
-joinable!(accounts -> users (uid));
 joinable!(user_profiles -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
@@ -162,6 +176,7 @@ allow_tables_to_appear_in_same_query!(
     internal_user_mappings,
     invoices,
     ln_addresses,
+    nostr_profile_records,
     nostr_public_keys,
     pre_signups,
     summary_transactions,

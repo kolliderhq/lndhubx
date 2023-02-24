@@ -197,6 +197,7 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .service(routes::nostr::update_nostr_pubkey)
             .service(routes::nostr::nostr_nip05)
             .service(routes::nostr::get_nostr_profile)
+            .service(routes::nostr::search_nostr_profile)
             .service(routes::user_profile::get_user_profile)
             .service(routes::user_profile::user_profile)
             .service(routes::admin::disable_create)
