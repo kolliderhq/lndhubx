@@ -99,7 +99,9 @@ impl NostrEngine {
     }
 
     fn store_payable_profile(&mut self, profile_update: &NostrProfileUpdate) {
-        if profile_update.nostr_profile.lud06().is_some() || profile_update.nostr_profile.lud16().is_some() {
+        let lud06 = profile_update.nostr_profile.lud06().clone().unwrap_or_default();
+        let lud16 = profile_update.nostr_profile.lud16().clone().unwrap_or_default();
+        if !lud06.is_empty() || !lud16.is_empty() {
             self.nostr_profile_cache
                 .insert(profile_update.pubkey.clone(), profile_update.nostr_profile.clone());
             if let Some(conn) = self.db_pool.try_get() {
