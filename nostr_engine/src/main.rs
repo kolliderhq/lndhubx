@@ -40,7 +40,7 @@ async fn main() {
     // for ongoing subscription
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
-        relays.subscribed_from_now.clone(),
+        relays.subscribed_from_now,
         Some(now_seconds),
         None,
         events_tx.clone(),
@@ -49,7 +49,7 @@ async fn main() {
 
     spawn_events_handler(
         nostr_engine_keys,
-        relays.subscribed_from_now,
+        relays.all,
         events_rx,
         bank_tx,
         db_pool,

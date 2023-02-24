@@ -54,6 +54,7 @@ pub struct Nip05Response {
 pub struct Relays {
     pub subscribed_from_now: Vec<(String, Option<SocketAddr>)>,
     pub subscribed_from_beginning: Vec<(String, Option<SocketAddr>)>,
+    pub all: Vec<(String, Option<SocketAddr>)>,
 }
 
 /// Returns relays for normal subscription and relays for which index should be rebuilt
@@ -70,9 +71,12 @@ pub fn get_relays(settings: &NostrEngineSettings) -> Relays {
         .cloned()
         .collect::<Vec<_>>();
 
+    let relays_union = from_now_urls.union(&from_beginning_urls).cloned().collect::<Vec<_>>();
+
     Relays {
         subscribed_from_now: into_relays(from_now_diff),
         subscribed_from_beginning: into_relays(from_beginning_urls),
+        all: into_relays(relays_union),
     }
 }
 
