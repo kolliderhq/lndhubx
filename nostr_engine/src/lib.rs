@@ -4,9 +4,11 @@ use crate::nostr_engine::NostrEngine;
 use core_types::nostr::NostrProfile;
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
+use lazy_static::lazy_static;
 use msgs::Message;
 use nostr_sdk::prelude::{Event, FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
 use nostr_sdk::{Client, RelayPoolNotification};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use slog as log;
 use slog::Logger;
@@ -181,6 +183,9 @@ async fn send_nostr_private_msg(client: &Client, pubkey: &str, text: &str) {
 
 async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
     if let Some((local_part, domain)) = nip05.split_once('@') {
+        if local_part.is_empty() || domain.is_empty() || !local_part_valid(local_part) || !domain_valid(domain) {
+            return None;
+        }
         let url = format!("https://{domain}/.well-known/nostr.json?name={local_part}");
         let body = reqwest::get(&url).await.ok()?.text().await.ok()?;
         let nip_verification = serde_json::from_str::<Nip05Response>(&body).ok()?;
@@ -213,4 +218,17 @@ async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpda
         return Some(profile_update);
     }
     None
+}
+
+fn domain_valid(domain: &str) -> bool {
+    // todo more restrictive validation using a good library
+    !domain.contains('@') && domain.len() <= 253
+}
+
+fn local_part_valid(local_part: &str) -> bool {
+    // as per current nip05 spec only a-z0-9-_. are allowed in local part
+    lazy_static! {
+        static ref LOCAL_PART_RE: Regex = Regex::new(r"^[a-z0-9-_.]+$").unwrap();
+    }
+    LOCAL_PART_RE.is_match(local_part)
 }
