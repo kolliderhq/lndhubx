@@ -3,7 +3,7 @@ use diesel::{BoolExpressionMethods, ExpressionMethods, PgTextExpressionMethods, 
 
 fn nullable_string(value: &Option<String>) -> String {
     match value {
-        Some(text) => format!("'{text}'"),
+        Some(text) => format!("'{}'", text.replace('\'', "''")),
         None => String::from("NULL"),
     }
 }
