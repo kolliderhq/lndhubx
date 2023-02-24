@@ -31,7 +31,7 @@ async fn main() {
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
         relays.subscribed_from_beginning,
-        Some(0),
+        None,
         None,
         events_tx.clone(),
         logger.clone(),

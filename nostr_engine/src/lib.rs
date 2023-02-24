@@ -110,10 +110,14 @@ pub fn spawn_profile_subscriber(
         nostr_client.add_relays(relays).await.unwrap();
         nostr_client.connect().await;
 
-        let since_epoch_seconds = subscribe_since_epoch_seconds.unwrap_or(0);
-        let since_timestamp = Timestamp::from(since_epoch_seconds);
         let subscription = {
-            let filter = SubscriptionFilter::new().kind(Kind::Metadata).since(since_timestamp);
+            let filter = SubscriptionFilter::new().kind(Kind::Metadata);
+            let filter = if let Some(since_epoch_seconds) = subscribe_since_epoch_seconds {
+                let since_timestamp = Timestamp::from(since_epoch_seconds);
+                filter.since(since_timestamp)
+            } else {
+                filter
+            };
             if let Some(until_epoch_seconds) = subscribe_until_epoch_seconds {
                 let until_timestamp = Timestamp::from(until_epoch_seconds);
                 filter.until(until_timestamp)
