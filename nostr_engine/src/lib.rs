@@ -10,7 +10,7 @@ use nostr_sdk::{Client, RelayPoolNotification};
 use serde::{Deserialize, Serialize};
 use slog as log;
 use slog::Logger;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use utils::xlogging::LoggingSettings;
 use utils::xzmq::ZmqSocket;
@@ -26,6 +26,8 @@ pub struct NostrEngineSettings {
     pub nostr_bank_pull_address: String,
     pub nostr_private_key: String,
     pub nostr_engine_logging_settings: LoggingSettings,
+    pub nostr_relays_urls: Vec<String>,
+    pub rebuild_index_nostr_relays_urls: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -47,20 +49,72 @@ pub struct Nip05Response {
     pub names: HashMap<String, String>,
 }
 
+pub struct Relays {
+    pub subscribed_from_now: Vec<(String, Option<SocketAddr>)>,
+    pub subscribed_from_beginning: Vec<(String, Option<SocketAddr>)>,
+}
+
+/// Returns relays for normal subscription and relays for which index should be rebuilt
+pub fn get_relays(settings: &NostrEngineSettings) -> Relays {
+    let from_now_urls = settings.nostr_relays_urls.iter().cloned().collect::<HashSet<_>>();
+    let from_beginning_urls = settings
+        .rebuild_index_nostr_relays_urls
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let from_now_diff = from_now_urls
+        .difference(&from_beginning_urls)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    Relays {
+        subscribed_from_now: into_relays(from_now_diff),
+        subscribed_from_beginning: into_relays(from_beginning_urls),
+    }
+}
+
+fn into_relays<T: IntoIterator>(urls: T) -> Vec<(String, Option<SocketAddr>)>
+where
+    <T as IntoIterator>::Item: Into<String>,
+{
+    urls.into_iter().map(|url| (url.into(), None)).collect()
+}
+
 pub fn spawn_profile_subscriber(
     nostr_engine_keys: Keys,
     relays: Vec<(String, Option<SocketAddr>)>,
-    subscribe_since_epoch_seconds: u64,
+    subscribe_since_epoch_seconds: Option<u64>,
+    subscribe_until_epoch_seconds: Option<u64>,
     events_tx: tokio::sync::mpsc::Sender<NostrEngineEvent>,
     logger: Logger,
 ) {
+    log::info!(
+        logger,
+        "Spawning profile subscriber with relays: {:?}, since: {:?}, until: {:?}",
+        relays,
+        subscribe_since_epoch_seconds,
+        subscribe_until_epoch_seconds
+    );
+    if relays.is_empty() {
+        return;
+    }
     tokio::spawn(async move {
         let nostr_client = Client::new(&nostr_engine_keys);
         nostr_client.add_relays(relays).await.unwrap();
         nostr_client.connect().await;
 
-        let since_seconds = Timestamp::from(subscribe_since_epoch_seconds);
-        let subscription = SubscriptionFilter::new().kind(Kind::Metadata).since(since_seconds);
+        let since_epoch_seconds = subscribe_since_epoch_seconds.unwrap_or(0);
+        let since_timestamp = Timestamp::from(since_epoch_seconds);
+        let subscription = {
+            let filter = SubscriptionFilter::new().kind(Kind::Metadata).since(since_timestamp);
+            if let Some(until_epoch_seconds) = subscribe_until_epoch_seconds {
+                let until_timestamp = Timestamp::from(until_epoch_seconds);
+                filter.until(until_timestamp)
+            } else {
+                filter
+            }
+        };
         nostr_client.subscribe(vec![subscription]).await;
         loop {
             let mut notifications = nostr_client.notifications();
