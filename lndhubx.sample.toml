@@ -43,6 +43,22 @@ dealer_bank_pull_address = "tcp://0.0.0.0:5558"
 nostr_bank_push_address = "tcp://0.0.0.0:5560"
 nostr_bank_pull_address = "tcp://0.0.0.0:5561"
 nostr_private_key = ""
+nostr_relays_urls = [
+    "wss://relay.nostr.info",
+    "wss://nostr-pub.wellorder.net",
+    "wss://relay.damus.io",
+    "wss://nostr.zebedee.cloud",
+    "wss://nostr.bitcoiner.social",
+    "wss://nostr.kollider.xyz"
+]
+rebuild_index_nostr_relays_urls = [
+    "wss://relay.nostr.info",
+    "wss://nostr-pub.wellorder.net",
+    "wss://relay.damus.io",
+    "wss://nostr.zebedee.cloud",
+    "wss://nostr.bitcoiner.social",
+    "wss://nostr.kollider.xyz"
+]
 
 ## The margin users have to keep on their account to account
 ## for network fees.
