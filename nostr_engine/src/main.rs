@@ -27,11 +27,11 @@ async fn main() {
 
     let now_seconds = utils::time::time_now() / 1000;
 
-    // for rebuilding index
+    // for rebuilding index since arbitrary date 2020-01-01 00:00:00
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
         relays.subscribed_from_beginning,
-        None,
+        Some(1577836800),
         None,
         events_tx.clone(),
         logger.clone(),
