@@ -1,19 +1,16 @@
 use crate::{get_user_profile, send_nostr_private_msg, DbPool, NostrEngineEvent, NostrProfileUpdate};
-use core_types::nostr::NostrProfile;
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
 use msgs::api::{NostrResponseError, PayableNostrProfile};
 use msgs::Message;
-use nostr_sdk::prelude::Keys;
 use nostr_sdk::Client;
 use slog as log;
 use slog::Logger;
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use utils::xzmq::ZmqSocket;
 
 pub struct NostrEngine {
-    nostr_profile_cache: HashMap<String, NostrProfile>,
+    nostr_profile_cache: HashMap<String, NostrProfileUpdate>,
     response_socket: ZmqSocket,
     nostr_client: Client,
     db_pool: DbPool,
@@ -21,17 +18,7 @@ pub struct NostrEngine {
 }
 
 impl NostrEngine {
-    pub async fn new(
-        nostr_engine_keys: Keys,
-        relays: Vec<(String, Option<SocketAddr>)>,
-        response_socket: ZmqSocket,
-        db_pool: DbPool,
-        logger: Logger,
-    ) -> Self {
-        let nostr_client = Client::new(&nostr_engine_keys);
-        nostr_client.add_relays(relays).await.unwrap();
-        nostr_client.connect().await;
-
+    pub async fn new(nostr_client: Client, response_socket: ZmqSocket, db_pool: DbPool, logger: Logger) -> Self {
         Self {
             nostr_profile_cache: HashMap::new(),
             response_socket,
@@ -61,8 +48,8 @@ impl NostrEngine {
                     None => return,
                 };
 
-                let response_profile = if let Some(profile) = self.nostr_profile_cache.get(pubkey) {
-                    Some(profile.clone())
+                let response_profile = if let Some(cached_profile_update) = self.nostr_profile_cache.get(pubkey) {
+                    Some(cached_profile_update.nostr_profile.clone())
                 } else if let Some(profile_update) = get_user_profile(&self.nostr_client, pubkey).await {
                     self.store_payable_profile(&profile_update);
                     Some(profile_update.nostr_profile)
@@ -102,8 +89,17 @@ impl NostrEngine {
         let lud06 = profile_update.nostr_profile.lud06().clone().unwrap_or_default();
         let lud16 = profile_update.nostr_profile.lud16().clone().unwrap_or_default();
         if !lud06.is_empty() || !lud16.is_empty() {
-            self.nostr_profile_cache
-                .insert(profile_update.pubkey.clone(), profile_update.nostr_profile.clone());
+            let existing_created_time_ms = {
+                let cached_profile_update = self
+                    .nostr_profile_cache
+                    .entry(profile_update.pubkey.clone())
+                    .or_insert(profile_update.clone());
+                cached_profile_update.created_at_epoch_ms
+            };
+            if existing_created_time_ms < profile_update.created_at_epoch_ms {
+                self.nostr_profile_cache
+                    .insert(profile_update.pubkey.clone(), profile_update.clone());
+            }
             if let Some(conn) = self.db_pool.try_get() {
                 if let Err(err) = insert_profile_update(&conn, profile_update) {
                     log::error!(

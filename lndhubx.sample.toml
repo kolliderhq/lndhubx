@@ -56,20 +56,7 @@ nostr_relays_urls = [
     "wss://nostr.bitcoiner.social",
     "wss://nostr.kollider.xyz"
 ]
-
-rebuild_index_nostr_relays_urls = [
-    "wss://relay.nostr.info",
-    "wss://nostr-pub.wellorder.net",
-    "wss://relay.damus.io",
-    "wss://nostr.zebedee.cloud",
-    "wss://relay.snort.social",
-    "wss://eden.nostr.land",
-    "wss://nos.lol",
-    "wss://brb.io",
-    "wss://relay.current.fyi",
-    "wss://nostr.bitcoiner.social",
-    "wss://nostr.kollider.xyz"
-]
+rebuild_nostr_profile_index = false
 
 ## The margin users have to keep on their account to account
 ## for network fees.
