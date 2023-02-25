@@ -25,8 +25,6 @@ async fn main() {
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url))
         .expect("Failed to create pool.");
 
-    let now_seconds = utils::time::time_now() / 1000;
-
     // for rebuilding index since arbitrary date 2020-01-01 00:00:00
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
@@ -37,11 +35,14 @@ async fn main() {
         logger.clone(),
     );
 
-    // for ongoing subscription
+    let time_now_ms = utils::time::time_now();
+    let time_24h_ago = (time_now_ms - utils::time::MILLISECONDS_IN_DAY) / 1000;
+    // for ongoing subscription include past 24h in case anything was missed
+    // due to some outage
     spawn_profile_subscriber(
         nostr_engine_keys.clone(),
         relays.subscribed_from_now,
-        Some(now_seconds),
+        Some(time_24h_ago),
         None,
         events_tx.clone(),
         logger.clone(),
@@ -58,7 +59,7 @@ async fn main() {
 
     while let Ok(frame) = bank_recv.recv_msg(0) {
         if let Ok(message) = bincode::deserialize::<Message>(&frame) {
-            if let Err(err) = events_tx.send(NostrEngineEvent::LndhubxMessage(message)).await {
+            if let Err(err) = events_tx.try_send(NostrEngineEvent::LndhubxMessage(message)) {
                 log::error!(
                     logger,
                     "Failed to send lndhubx message to events channel, error: {:?}",

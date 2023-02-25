@@ -2,14 +2,23 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NostrProfile {
+    #[serde(default)]
     banner: Option<String>,
+    #[serde(default)]
     website: Option<String>,
+    #[serde(default)]
     lud06: Option<String>,
+    #[serde(default)]
     nip05: Option<String>,
+    #[serde(default)]
     picture: Option<String>,
+    #[serde(default)]
     display_name: Option<String>,
+    #[serde(default)]
     about: Option<String>,
+    #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
     lud16: Option<String>,
     #[serde(default)]
     nip05_verified: Option<bool>,

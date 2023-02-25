@@ -8,6 +8,17 @@ pub mod time {
     use serde::Serializer;
     use std::time::SystemTime;
 
+    pub const MILLISECONDS_IN_SECOND: u64 = 1000;
+
+    pub const SECONDS_IN_MINUTE: u64 = 60;
+
+    pub const MINUTES_IN_HOUR: u64 = 60;
+
+    pub const HOURS_IN_DAY: u64 = 24;
+    pub const MINUTES_IN_DAY: u64 = HOURS_IN_DAY * MINUTES_IN_HOUR;
+    pub const SECONDS_IN_DAY: u64 = SECONDS_IN_MINUTE * MINUTES_IN_DAY;
+    pub const MILLISECONDS_IN_DAY: u64 = MILLISECONDS_IN_SECOND * SECONDS_IN_DAY;
+
     pub fn time_now() -> u64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)

@@ -95,6 +95,9 @@ pub fn spawn_profile_subscriber(
     events_tx: tokio::sync::mpsc::Sender<NostrEngineEvent>,
     logger: Logger,
 ) {
+    if relays.is_empty() {
+        return;
+    }
     log::info!(
         logger,
         "Spawning profile subscriber with relays: {:?}, since: {:?}, until: {:?}",
@@ -102,9 +105,6 @@ pub fn spawn_profile_subscriber(
         subscribe_since_epoch_seconds,
         subscribe_until_epoch_seconds
     );
-    if relays.is_empty() {
-        return;
-    }
     tokio::spawn(async move {
         let nostr_client = Client::new(&nostr_engine_keys);
         nostr_client.add_relays(relays).await.unwrap();
@@ -133,7 +133,7 @@ pub fn spawn_profile_subscriber(
                     match try_profile_update_from_event(&event).await {
                         Some(profile_update) => {
                             let msg = NostrEngineEvent::NostrProfileUpdate(Box::new(profile_update));
-                            if let Err(err) = events_tx.send(msg).await {
+                            if let Err(err) = events_tx.try_send(msg) {
                                 log::error!(
                                     logger,
                                     "Failed to send nostr profile update to events channel, error: {:?}",
@@ -191,7 +191,7 @@ async fn send_nostr_private_msg(client: &Client, pubkey: &str, text: &str) {
 
 async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
     if let Some((local_part, domain)) = nip05.split_once('@') {
-        if local_part.is_empty() || domain.is_empty() || !local_part_valid(local_part) || !domain_valid(domain) {
+        if !local_part_valid(local_part) || !domain_valid(domain) {
             return None;
         }
         let url = format!("https://{domain}/.well-known/nostr.json?name={local_part}");
@@ -212,7 +212,11 @@ async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpda
         let created_at_epoch_ms = 1000 * event.created_at.as_u64();
         let received_at_epoch_ms = utils::time::time_now();
         let verified = if let Some(nip05) = nostr_profile.nip05().as_ref() {
-            verify_nip05(pubkey.clone(), nip05.clone()).await
+            if !nip05.is_empty() {
+                verify_nip05(pubkey.clone(), nip05.clone()).await
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -230,7 +234,7 @@ async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpda
 
 fn domain_valid(domain: &str) -> bool {
     // todo more restrictive validation using a good library
-    !domain.contains('@') && domain.len() <= 253
+    !domain.is_empty() && !domain.contains('@') && domain.len() <= 253
 }
 
 fn local_part_valid(local_part: &str) -> bool {
