@@ -43,7 +43,14 @@ async fn main() {
     )
     .await;
 
-    spawn_events_handler(nostr_client, events_rx, bank_tx, db_pool, logger.clone());
+    let (bank_tx_sender, mut bank_tx_receiver) = tokio::sync::mpsc::channel(2048);
+    spawn_events_handler(nostr_client, events_rx, bank_tx_sender, db_pool, logger.clone());
+
+    std::thread::spawn(move || {
+        while let Some(message) = bank_tx_receiver.blocking_recv() {
+            utils::xzmq::send_as_bincode(&bank_tx, &message);
+        }
+    });
 
     while let Ok(frame) = bank_recv.recv_msg(0) {
         if let Ok(message) = bincode::deserialize::<Message>(&frame) {

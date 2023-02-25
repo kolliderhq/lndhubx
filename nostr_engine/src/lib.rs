@@ -15,9 +15,9 @@ use slog::Logger;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use utils::xlogging::LoggingSettings;
-use utils::xzmq::ZmqSocket;
 
-const PROFILE_REQUEST_TIMEOUT_MS: u64 = 10_000;
+const REQUEST_USER_PROFILE_TIMEOUT: u64 = 30_000;
+const API_PROFILE_TIMEOUT: u64 = 5_000;
 
 type DbPool = diesel::r2d2::Pool<ConnectionManager<PgConnection>>;
 
@@ -130,28 +130,16 @@ pub async fn spawn_profile_subscriber(
 pub fn spawn_events_handler(
     nostr_client: Client,
     mut events_rx: tokio::sync::mpsc::Receiver<NostrEngineEvent>,
-    response_socket: ZmqSocket,
+    bank_tx_sender: tokio::sync::mpsc::Sender<Message>,
     db_pool: DbPool,
     logger: Logger,
 ) {
     tokio::spawn(async move {
-        let mut nostr_engine = NostrEngine::new(nostr_client, response_socket, db_pool, logger).await;
+        let mut nostr_engine = NostrEngine::new(nostr_client, bank_tx_sender, db_pool, logger).await;
         while let Some(event) = events_rx.recv().await {
             nostr_engine.process_event(&event).await;
         }
     });
-}
-
-async fn get_user_profile(client: &Client, pubkey: &str) -> Option<NostrProfileUpdate> {
-    let subscription = create_profile_filter(pubkey)?;
-
-    let timeout = std::time::Duration::from_millis(PROFILE_REQUEST_TIMEOUT_MS);
-    let mut events = client.get_events_of(vec![subscription], Some(timeout)).await.ok()?;
-    events.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    match events.first() {
-        Some(event) => try_profile_update_from_event(event).await,
-        None => None,
-    }
 }
 
 async fn request_user_profile(client: &Client, pubkey: &str) {
@@ -160,7 +148,7 @@ async fn request_user_profile(client: &Client, pubkey: &str) {
         None => return,
     };
 
-    let timeout = std::time::Duration::from_millis(PROFILE_REQUEST_TIMEOUT_MS);
+    let timeout = std::time::Duration::from_millis(REQUEST_USER_PROFILE_TIMEOUT);
     client.req_events_of(vec![subscription], Some(timeout)).await;
 }
 
