@@ -99,7 +99,11 @@ impl NostrEngine {
             let inserted = match self.nostr_profile_cache.entry(profile_update.pubkey.clone()) {
                 Entry::Occupied(mut entry) => {
                     let existing_created_time_ms = entry.get().created_at_epoch_ms;
-                    if existing_created_time_ms < profile_update.created_at_epoch_ms {
+                    let existing_nip05_verified_status = entry.get().nostr_profile.nip05_verified();
+                    if existing_created_time_ms < profile_update.created_at_epoch_ms
+                        || (existing_created_time_ms == profile_update.created_at_epoch_ms
+                            && existing_nip05_verified_status != profile_update.nostr_profile.nip05_verified())
+                    {
                         entry.insert(profile_update.clone());
                         true
                     } else {

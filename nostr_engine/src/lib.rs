@@ -7,7 +7,7 @@ use diesel::PgConnection;
 use lazy_static::lazy_static;
 use msgs::Message;
 use nostr_sdk::prelude::{Event, FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
-use nostr_sdk::{Client, RelayPoolNotification};
+use nostr_sdk::{Client, Options, RelayPoolNotification};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use slog as log;
@@ -73,14 +73,17 @@ pub async fn spawn_profile_subscriber(
 ) -> Client {
     log::info!(
         logger,
-        "Spawning profile subscriber with relays: {:?}, since: {:?}, until: {:?}",
+        "Waiting to connect with relays: {:?}, since: {:?}, until: {:?}",
         relays,
         subscribe_since_epoch_seconds,
         subscribe_until_epoch_seconds
     );
-    let nostr_client = Client::new(&nostr_engine_keys);
+    let options = Options::new().wait_for_connection(true);
+    let nostr_client = Client::new_with_opts(&nostr_engine_keys, options);
     nostr_client.add_relays(relays).await.unwrap();
     nostr_client.connect().await;
+
+    log::info!(logger, "Connected");
 
     let subscription = {
         let filter = SubscriptionFilter::new();
@@ -104,8 +107,8 @@ pub async fn spawn_profile_subscriber(
             let mut notifications = task_nostr_client.notifications();
             while let Ok(notification) = notifications.recv().await {
                 if let RelayPoolNotification::Event(_url, event) = notification {
-                    match try_profile_update_from_event(&event).await {
-                        Some(profile_update) => {
+                    if event.kind == Kind::Metadata {
+                        if let Some(profile_update) = try_profile_update_from_event(&event).await {
                             let msg = NostrEngineEvent::NostrProfileUpdate(Box::new(profile_update));
                             if let Err(err) = events_tx.try_send(msg) {
                                 log::error!(
@@ -115,10 +118,9 @@ pub async fn spawn_profile_subscriber(
                                 );
                             }
                         }
-                        None => {
-                            let pubkey = event.pubkey.to_string();
-                            request_user_profile(&task_nostr_client, &pubkey).await;
-                        }
+                    } else {
+                        let pubkey = event.pubkey.to_string();
+                        request_user_profile(&task_nostr_client, &pubkey).await;
                     }
                 }
             }

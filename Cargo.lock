@@ -2714,9 +2714,9 @@ dependencies = [
 
 [[package]]
 name = "nostr-sdk"
-version = "0.18.0"
+version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef26b63ec29191a9a795b69502d5a0b954a2650418ad23c248fe5253017fa70"
+checksum = "6dbe65805e30a754561795313347d2945d38fe88c1faed90deb445c680cae660"
 dependencies = [
  "futures-util",
  "log",

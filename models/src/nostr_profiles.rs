@@ -86,7 +86,10 @@ impl NostrProfileRecord {
                     lud06 = EXCLUDED.lud06, \
                     lud16 = EXCLUDED.lud16, \
                     nip05_verified = EXCLUDED.nip05_verified \
-                WHERE n.created_at < EXCLUDED.created_at\
+                WHERE \
+                    n.created_at < EXCLUDED.created_at OR \
+                    (n.created_at = EXCLUDED.created_at \
+                        AND (COALESCE(n.nip05_verified, FALSE) != COALESCE(EXCLUDED.nip05_verified, FALSE)))
             "
         );
         diesel::sql_query(upsert_query).execute(conn)
