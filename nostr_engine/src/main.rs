@@ -25,37 +25,32 @@ async fn main() {
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url))
         .expect("Failed to create pool.");
 
-    // for rebuilding index since arbitrary date 2020-01-01 00:00:00
-    spawn_profile_subscriber(
+    let subscribe_since_epoch_seconds = if settings.rebuild_nostr_profile_index {
+        // rebuilding index since arbitrary date 2020-01-01 00:00:00
+        1577836800
+    } else {
+        // include past 24h in case anything was missed due to some outage
+        (utils::time::time_now() - utils::time::MILLISECONDS_IN_DAY) / 1000
+    };
+
+    let nostr_client = spawn_profile_subscriber(
         nostr_engine_keys.clone(),
-        relays.subscribed_from_beginning,
-        Some(1577836800),
+        relays,
+        Some(subscribe_since_epoch_seconds),
         None,
         events_tx.clone(),
         logger.clone(),
-    );
+    )
+    .await;
 
-    let time_now_ms = utils::time::time_now();
-    let time_24h_ago = (time_now_ms - utils::time::MILLISECONDS_IN_DAY) / 1000;
-    // for ongoing subscription include past 24h in case anything was missed
-    // due to some outage
-    spawn_profile_subscriber(
-        nostr_engine_keys.clone(),
-        relays.subscribed_from_now,
-        Some(time_24h_ago),
-        None,
-        events_tx.clone(),
-        logger.clone(),
-    );
+    let (bank_tx_sender, mut bank_tx_receiver) = tokio::sync::mpsc::channel(2048);
+    spawn_events_handler(nostr_client, events_rx, bank_tx_sender, db_pool, logger.clone());
 
-    spawn_events_handler(
-        nostr_engine_keys,
-        relays.all,
-        events_rx,
-        bank_tx,
-        db_pool,
-        logger.clone(),
-    );
+    std::thread::spawn(move || {
+        while let Some(message) = bank_tx_receiver.blocking_recv() {
+            utils::xzmq::send_as_bincode(&bank_tx, &message);
+        }
+    });
 
     while let Ok(frame) = bank_recv.recv_msg(0) {
         if let Ok(message) = bincode::deserialize::<Message>(&frame) {
