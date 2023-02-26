@@ -1,8 +1,9 @@
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
 use msgs::*;
-use nostr_engine::{get_relays, spawn_events_handler, spawn_profile_subscriber, NostrEngineEvent, NostrEngineSettings};
+use nostr_engine::{get_relays, spawn_events_handler, spawn_profile_indexer, NostrEngineEvent, NostrEngineSettings};
 use nostr_sdk::prelude::{FromSkStr, Keys};
+use nostr_sdk::{Client, Options};
 use slog as log;
 use utils::xzmq::SocketContext;
 
@@ -25,26 +26,21 @@ async fn main() {
         .build(ConnectionManager::<PgConnection>::new(settings.psql_url))
         .expect("Failed to create pool.");
 
-    let subscribe_since_epoch_seconds = if settings.rebuild_nostr_profile_index {
-        // rebuilding index since arbitrary date 2020-01-01 00:00:00
-        1577836800
-    } else {
-        // include past 24h in case anything was missed due to some outage
-        (utils::time::time_now() - utils::time::MILLISECONDS_IN_DAY) / 1000
-    };
-
-    let nostr_client = spawn_profile_subscriber(
-        nostr_engine_keys.clone(),
-        relays,
-        Some(subscribe_since_epoch_seconds),
-        None,
-        events_tx.clone(),
-        logger.clone(),
-    )
-    .await;
+    log::info!(logger, "Waiting to connect with relays: {:?}", relays,);
+    let options = Options::new().wait_for_connection(true);
+    let nostr_client = Client::new_with_opts(&nostr_engine_keys, options);
+    nostr_client.add_relays(relays).await.unwrap();
+    nostr_client.connect().await;
+    log::info!(logger, "Connected");
 
     let (bank_tx_sender, mut bank_tx_receiver) = tokio::sync::mpsc::channel(2048);
-    spawn_events_handler(nostr_client, events_rx, bank_tx_sender, db_pool, logger.clone());
+    spawn_events_handler(nostr_client.clone(), events_rx, bank_tx_sender, db_pool, logger.clone());
+    spawn_profile_indexer(
+        nostr_client,
+        settings.nostr_indexer_start,
+        events_tx.clone(),
+        logger.clone(),
+    );
 
     std::thread::spawn(move || {
         while let Some(message) = bank_tx_receiver.blocking_recv() {

@@ -7,7 +7,7 @@ use diesel::PgConnection;
 use lazy_static::lazy_static;
 use msgs::Message;
 use nostr_sdk::prelude::{Event, FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
-use nostr_sdk::{Client, Options, RelayPoolNotification};
+use nostr_sdk::{Client, RelayPoolNotification};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use slog as log;
@@ -29,13 +29,15 @@ pub struct NostrEngineSettings {
     pub nostr_private_key: String,
     pub nostr_engine_logging_settings: LoggingSettings,
     pub nostr_relays_urls: Vec<String>,
-    pub rebuild_nostr_profile_index: bool,
+    #[serde(default)]
+    pub nostr_indexer_start: Option<u64>,
 }
 
 #[derive(Debug)]
 pub enum NostrEngineEvent {
     NostrProfileUpdate(Box<NostrProfileUpdate>),
     LndhubxMessage(Message),
+    InternalNostrProfileRequest(InternalNostrProfileRequest),
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +46,14 @@ pub struct NostrProfileUpdate {
     pub created_at_epoch_ms: u64,
     pub received_at_epoch_ms: u64,
     pub nostr_profile: NostrProfile,
+}
+
+#[derive(Debug)]
+pub struct InternalNostrProfileRequest {
+    pub pubkey: Option<String>,
+    pub since: Option<u64>,
+    pub until: Option<u64>,
+    pub limit: Option<usize>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -63,48 +73,76 @@ where
     urls.into_iter().map(|url| (url.into(), None)).collect()
 }
 
-pub async fn spawn_profile_subscriber(
-    nostr_engine_keys: Keys,
-    relays: Vec<(String, Option<SocketAddr>)>,
-    subscribe_since_epoch_seconds: Option<u64>,
-    subscribe_until_epoch_seconds: Option<u64>,
+pub fn spawn_profile_indexer(
+    nostr_client: Client,
+    indexer_start: Option<u64>,
     events_tx: tokio::sync::mpsc::Sender<NostrEngineEvent>,
     logger: Logger,
-) -> Client {
-    log::info!(
-        logger,
-        "Waiting to connect with relays: {:?}, since: {:?}, until: {:?}",
-        relays,
-        subscribe_since_epoch_seconds,
-        subscribe_until_epoch_seconds
-    );
-    let options = Options::new().wait_for_connection(true);
-    let nostr_client = Client::new_with_opts(&nostr_engine_keys, options);
-    nostr_client.add_relays(relays).await.unwrap();
-    nostr_client.connect().await;
-
-    log::info!(logger, "Connected");
-
-    let subscription = {
-        let filter = SubscriptionFilter::new();
-        let filter = if let Some(since_epoch_seconds) = subscribe_since_epoch_seconds {
-            let since_timestamp = Timestamp::from(since_epoch_seconds);
-            filter.since(since_timestamp)
-        } else {
-            filter
-        };
-        if let Some(until_epoch_seconds) = subscribe_until_epoch_seconds {
-            let until_timestamp = Timestamp::from(until_epoch_seconds);
-            filter.until(until_timestamp)
-        } else {
-            filter
+) {
+    spawn_profile_subscriber(nostr_client.clone(), events_tx.clone(), logger.clone());
+    tokio::spawn(async move {
+        if let Some(since_epoch_seconds) = indexer_start {
+            let mut range_since = since_epoch_seconds;
+            loop {
+                let time_now = utils::time::time_now() / 1000;
+                if range_since >= time_now {
+                    log::info!(logger, "Indexer progress [100%]");
+                    break;
+                }
+                let range_until = range_since + utils::time::SECONDS_IN_DAY;
+                let range_until_capped = range_until.min(time_now);
+                let internal_request = InternalNostrProfileRequest {
+                    pubkey: None,
+                    since: Some(range_since),
+                    until: Some(range_until_capped),
+                    limit: None,
+                };
+                if let Err(err) = events_tx.try_send(NostrEngineEvent::InternalNostrProfileRequest(internal_request)) {
+                    log::error!(
+                        logger,
+                        "Indexer failed to send internal profile request since: {}, until: {}, error: {:?}",
+                        range_since,
+                        range_until_capped,
+                        err
+                    );
+                } else {
+                    let full_range = time_now - since_epoch_seconds;
+                    let progress = range_since - since_epoch_seconds;
+                    let progress_pct = 100 * progress / full_range;
+                    log::info!(
+                        logger,
+                        "Indexer progress [{}%]: since: {}, until: {}",
+                        progress_pct,
+                        range_since,
+                        range_until_capped
+                    );
+                }
+                range_since = range_until;
+                tokio::time::sleep(tokio::time::Duration::from_secs(utils::time::SECONDS_IN_MINUTE)).await;
+            }
         }
-    };
-    nostr_client.subscribe(vec![subscription]).await;
-    let task_nostr_client = nostr_client.clone();
+        let internal_request = InternalNostrProfileRequest {
+            pubkey: None,
+            since: None,
+            until: None,
+            limit: None,
+        };
+        let subscription_filter = match create_profile_filter(&internal_request) {
+            Some(filter) => filter,
+            None => return,
+        };
+        nostr_client.subscribe(vec![subscription_filter]).await;
+    });
+}
+
+fn spawn_profile_subscriber(
+    nostr_client: Client,
+    events_tx: tokio::sync::mpsc::Sender<NostrEngineEvent>,
+    logger: Logger,
+) {
     tokio::spawn(async move {
         loop {
-            let mut notifications = task_nostr_client.notifications();
+            let mut notifications = nostr_client.notifications();
             while let Ok(notification) = notifications.recv().await {
                 if let RelayPoolNotification::Event(_url, event) = notification {
                     if event.kind == Kind::Metadata {
@@ -118,15 +156,11 @@ pub async fn spawn_profile_subscriber(
                                 );
                             }
                         }
-                    } else {
-                        let pubkey = event.pubkey.to_string();
-                        request_user_profile(&task_nostr_client, &pubkey).await;
                     }
                 }
             }
         }
     });
-    nostr_client
 }
 
 pub fn spawn_events_handler(
@@ -144,12 +178,11 @@ pub fn spawn_events_handler(
     });
 }
 
-async fn request_user_profile(client: &Client, pubkey: &str) {
-    let subscription = match create_profile_filter(pubkey) {
+async fn request_user_profile(client: &Client, request: &InternalNostrProfileRequest) {
+    let subscription = match create_profile_filter(request) {
         Some(filter) => filter,
         None => return,
     };
-
     let timeout = std::time::Duration::from_millis(REQUEST_USER_PROFILE_TIMEOUT);
     client.req_events_of(vec![subscription], Some(timeout)).await;
 }
@@ -215,11 +248,31 @@ fn local_part_valid(local_part: &str) -> bool {
     LOCAL_PART_RE.is_match(local_part)
 }
 
-fn create_profile_filter(pubkey: &str) -> Option<SubscriptionFilter> {
-    let keys = Keys::from_pk_str(pubkey).ok()?;
-    let subscription = SubscriptionFilter::new()
-        .author(keys.public_key())
-        .kind(Kind::Metadata)
-        .limit(1);
-    Some(subscription)
+fn create_profile_filter(request: &InternalNostrProfileRequest) -> Option<SubscriptionFilter> {
+    let filter = SubscriptionFilter::new().kind(Kind::Metadata);
+
+    let filter = match request.pubkey {
+        Some(ref pubkey) => {
+            let keys = Keys::from_pk_str(pubkey).ok()?;
+            filter.author(keys.public_key())
+        }
+        None => filter,
+    };
+
+    let filter = match request.since {
+        Some(since) => filter.since(Timestamp::from(since)),
+        None => filter,
+    };
+
+    let filter = match request.until {
+        Some(until) => filter.until(Timestamp::from(until)),
+        None => filter,
+    };
+
+    let filter = match request.limit {
+        Some(limit) => filter.limit(limit),
+        None => filter,
+    };
+
+    Some(filter)
 }

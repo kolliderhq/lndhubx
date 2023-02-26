@@ -55,8 +55,9 @@ nostr_relays_urls = [
     "wss://relay.current.fyi",
     "wss://nostr.bitcoiner.social",
     "wss://nostr.kollider.xyz"
+
 ]
-rebuild_nostr_profile_index = false
+#nostr_indexer_start = 1640995200
 
 ## The margin users have to keep on their account to account
 ## for network fees.

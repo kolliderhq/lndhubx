@@ -1,5 +1,6 @@
 use crate::{
-    request_user_profile, send_nostr_private_msg, DbPool, NostrEngineEvent, NostrProfileUpdate, API_PROFILE_TIMEOUT,
+    request_user_profile, send_nostr_private_msg, DbPool, InternalNostrProfileRequest, NostrEngineEvent,
+    NostrProfileUpdate, API_PROFILE_TIMEOUT,
 };
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
@@ -47,6 +48,9 @@ impl NostrEngine {
             NostrEngineEvent::LndhubxMessage(message) => {
                 self.process_message(message).await;
             }
+            NostrEngineEvent::InternalNostrProfileRequest(request) => {
+                request_user_profile(&self.nostr_client, request).await;
+            }
         }
     }
 
@@ -69,7 +73,13 @@ impl NostrEngine {
                 } else {
                     self.nostr_profile_pending
                         .insert(pubkey.clone(), (utils::time::time_now(), req.req_id));
-                    request_user_profile(&self.nostr_client, pubkey).await;
+                    let internal_request = InternalNostrProfileRequest {
+                        pubkey: Some(pubkey.clone()),
+                        since: None,
+                        until: None,
+                        limit: Some(1),
+                    };
+                    request_user_profile(&self.nostr_client, &internal_request).await;
                 }
             }
             Message::Api(msgs::api::Api::NostrProfileSearchRequest(req)) => {
@@ -116,21 +126,7 @@ impl NostrEngine {
                 }
             };
             if inserted {
-                if let Some((pending_request_time_ms, req_id)) =
-                    self.nostr_profile_pending.get(&profile_update.pubkey).cloned()
-                {
-                    let time_now_ms = utils::time::time_now();
-                    let elapsed = time_now_ms - pending_request_time_ms;
-                    if elapsed < API_PROFILE_TIMEOUT {
-                        let resp = msgs::api::NostrProfileResponse {
-                            req_id,
-                            profile: Some(profile_update.nostr_profile.clone()),
-                            error: None,
-                        };
-                        let message = Message::Api(msgs::api::Api::NostrProfileResponse(resp));
-                        self.send_to_bank(message).await;
-                    }
-                }
+                self.reply_if_pending(profile_update).await;
             }
             if let Some(conn) = self.db_pool.try_get() {
                 if let Err(err) = insert_profile_update(&conn, profile_update) {
@@ -142,6 +138,8 @@ impl NostrEngine {
                     );
                 }
             }
+        } else {
+            self.reply_if_pending(profile_update).await;
         }
         let time_now_ms = utils::time::time_now();
         self.nostr_profile_pending
@@ -177,6 +175,23 @@ impl NostrEngine {
     async fn send_to_bank(&self, message: Message) {
         if let Err(err) = self.bank_tx_sender.send(message).await {
             log::error!(self.logger, "Failed to send message to bank_tx, error: {:?}", err);
+        }
+    }
+
+    async fn reply_if_pending(&self, profile_update: &NostrProfileUpdate) {
+        if let Some((pending_request_time_ms, req_id)) = self.nostr_profile_pending.get(&profile_update.pubkey).cloned()
+        {
+            let time_now_ms = utils::time::time_now();
+            let elapsed = time_now_ms - pending_request_time_ms;
+            if elapsed < API_PROFILE_TIMEOUT {
+                let resp = msgs::api::NostrProfileResponse {
+                    req_id,
+                    profile: Some(profile_update.nostr_profile.clone()),
+                    error: None,
+                };
+                let message = Message::Api(msgs::api::Api::NostrProfileResponse(resp));
+                self.send_to_bank(message).await;
+            }
         }
     }
 }
