@@ -77,9 +77,9 @@ table! {
         name -> Nullable<Text>,
         display_name -> Nullable<Text>,
         nip05 -> Nullable<Text>,
-        lud06 -> Nullable<Text>,
         lud16 -> Nullable<Text>,
         nip05_verified -> Nullable<Bool>,
+        content -> Text,
     }
 }
 

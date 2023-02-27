@@ -43,6 +43,7 @@ pub enum NostrEngineEvent {
 #[derive(Clone, Debug)]
 pub struct NostrProfileUpdate {
     pub pubkey: String,
+    pub content: String,
     pub created_at_epoch_ms: u64,
     pub received_at_epoch_ms: u64,
     pub nostr_profile: NostrProfile,
@@ -172,6 +173,7 @@ pub fn spawn_events_handler(
 ) {
     tokio::spawn(async move {
         let mut nostr_engine = NostrEngine::new(nostr_client, bank_tx_sender, db_pool, logger).await;
+        nostr_engine.initialize_profile_cache();
         while let Some(event) = events_rx.recv().await {
             nostr_engine.process_event(&event).await;
         }
@@ -210,6 +212,7 @@ async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
 
 async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpdate> {
     if event.kind == Kind::Metadata {
+        let content = event.content.clone();
         let mut nostr_profile = serde_json::from_str::<NostrProfile>(&event.content).ok()?;
         let pubkey = event.pubkey.to_string();
         let created_at_epoch_ms = 1000 * event.created_at.as_u64();
@@ -226,6 +229,7 @@ async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpda
         nostr_profile.set_nip05_verified(verified);
         let profile_update = NostrProfileUpdate {
             pubkey,
+            content,
             created_at_epoch_ms,
             received_at_epoch_ms,
             nostr_profile,

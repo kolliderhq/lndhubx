@@ -2,9 +2,10 @@ use crate::{
     request_user_profile, send_nostr_private_msg, DbPool, InternalNostrProfileRequest, NostrEngineEvent,
     NostrProfileUpdate, API_PROFILE_TIMEOUT,
 };
+use core_types::nostr::NostrProfile;
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
-use msgs::api::{NostrResponseError, PayableNostrProfile};
+use msgs::api::{NostrResponseError, ShareableNostrProfile};
 use msgs::Message;
 use nostr_sdk::Client;
 use slog as log;
@@ -43,7 +44,7 @@ impl NostrEngine {
         log::trace!(self.logger, "Processing event: {:?}", event);
         match event {
             NostrEngineEvent::NostrProfileUpdate(profile_update) => {
-                self.store_payable_profile(profile_update).await;
+                self.store_profile(profile_update).await;
             }
             NostrEngineEvent::LndhubxMessage(message) => {
                 self.process_message(message).await;
@@ -102,44 +103,38 @@ impl NostrEngine {
         }
     }
 
-    async fn store_payable_profile(&mut self, profile_update: &NostrProfileUpdate) {
-        let lud06 = profile_update.nostr_profile.lud06().clone().unwrap_or_default();
-        let lud16 = profile_update.nostr_profile.lud16().clone().unwrap_or_default();
-        if !lud06.is_empty() || !lud16.is_empty() {
-            let inserted = match self.nostr_profile_cache.entry(profile_update.pubkey.clone()) {
-                Entry::Occupied(mut entry) => {
-                    let existing_created_time_ms = entry.get().created_at_epoch_ms;
-                    let existing_nip05_verified_status = entry.get().nostr_profile.nip05_verified();
-                    if existing_created_time_ms < profile_update.created_at_epoch_ms
-                        || (existing_created_time_ms == profile_update.created_at_epoch_ms
-                            && existing_nip05_verified_status != profile_update.nostr_profile.nip05_verified())
-                    {
-                        entry.insert(profile_update.clone());
-                        true
-                    } else {
-                        false
-                    }
-                }
-                Entry::Vacant(entry) => {
+    async fn store_profile(&mut self, profile_update: &NostrProfileUpdate) {
+        let inserted = match self.nostr_profile_cache.entry(profile_update.pubkey.clone()) {
+            Entry::Occupied(mut entry) => {
+                let existing_created_time_ms = entry.get().created_at_epoch_ms;
+                let existing_nip05_verified_status = entry.get().nostr_profile.nip05_verified();
+                if existing_created_time_ms < profile_update.created_at_epoch_ms
+                    || (existing_created_time_ms == profile_update.created_at_epoch_ms
+                        && existing_nip05_verified_status != profile_update.nostr_profile.nip05_verified())
+                {
                     entry.insert(profile_update.clone());
                     true
-                }
-            };
-            if inserted {
-                self.reply_if_pending(profile_update).await;
-            }
-            if let Some(conn) = self.db_pool.try_get() {
-                if let Err(err) = insert_profile_update(&conn, profile_update) {
-                    log::error!(
-                        self.logger,
-                        "Failed to upsert nostr profile update: {:?}, err: {:?}",
-                        profile_update,
-                        err
-                    );
+                } else {
+                    false
                 }
             }
-        } else {
+            Entry::Vacant(entry) => {
+                entry.insert(profile_update.clone());
+                true
+            }
+        };
+        if inserted {
             self.reply_if_pending(profile_update).await;
+        }
+        if let Some(conn) = self.db_pool.try_get() {
+            if let Err(err) = insert_profile_update(&conn, profile_update) {
+                log::error!(
+                    self.logger,
+                    "Failed to upsert nostr profile update: {:?}, err: {:?}",
+                    profile_update,
+                    err
+                );
+            }
         }
         let time_now_ms = utils::time::time_now();
         self.nostr_profile_pending
@@ -149,26 +144,62 @@ impl NostrEngine {
             });
     }
 
-    fn search_profile_by_text(&self, text: &str) -> QueryResult<Vec<PayableNostrProfile>> {
+    fn search_profile_by_text(&self, text: &str) -> QueryResult<Vec<ShareableNostrProfile>> {
         if let Some(conn) = self.db_pool.try_get() {
             let found_profiles = NostrProfileRecord::search_by_text(&conn, text)?;
-            let payable_profiles = found_profiles
+            let nostr_profiles = found_profiles
                 .into_iter()
-                .map(|record| PayableNostrProfile {
-                    pubkey: record.pubkey,
-                    created_at: record.created_at,
-                    received_at: record.received_at,
-                    name: record.name,
-                    display_name: record.display_name,
-                    nip05: record.nip05,
-                    lud06: record.lud06,
-                    lud16: record.lud16,
-                    nip05_verified: record.nip05_verified,
+                .filter_map(|record| {
+                    serde_json::from_str::<NostrProfile>(&record.content)
+                        .ok()
+                        .map(|profile| ShareableNostrProfile {
+                            pubkey: record.pubkey,
+                            created_at: record.created_at / 1000,
+                            profile,
+                        })
                 })
                 .collect();
-            Ok(payable_profiles)
+            Ok(nostr_profiles)
         } else {
             Err(diesel::result::Error::NotFound)
+        }
+    }
+
+    pub fn initialize_profile_cache(&mut self) {
+        match self.db_pool.try_get() {
+            Some(conn) => {
+                if let Ok(profile_records) = NostrProfileRecord::fetch_all(&conn) {
+                    let cache = profile_records
+                        .into_iter()
+                        .filter_map(|record| {
+                            if record.content.is_empty() {
+                                None
+                            } else {
+                                serde_json::from_str::<NostrProfile>(&record.content)
+                                    .ok()
+                                    .map(|mut profile| {
+                                        profile.set_nip05_verified(record.nip05_verified);
+                                        let profile_update = NostrProfileUpdate {
+                                            pubkey: record.pubkey.clone(),
+                                            content: record.content,
+                                            created_at_epoch_ms: record.created_at as u64,
+                                            received_at_epoch_ms: record.received_at as u64,
+                                            nostr_profile: profile,
+                                        };
+                                        (record.pubkey, profile_update)
+                                    })
+                            }
+                        })
+                        .collect();
+                    self.nostr_profile_cache = cache;
+                }
+            }
+            None => {
+                log::error!(
+                    self.logger,
+                    "Failed to initialize profile cache. Could not get DB connection"
+                );
+            }
         }
     }
 
@@ -204,9 +235,9 @@ fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProf
         name: profile_update.nostr_profile.name().clone(),
         display_name: profile_update.nostr_profile.display_name().clone(),
         nip05: profile_update.nostr_profile.nip05().clone(),
-        lud06: profile_update.nostr_profile.lud06().clone(),
         lud16: profile_update.nostr_profile.lud16().clone(),
         nip05_verified: profile_update.nostr_profile.nip05_verified(),
+        content: profile_update.content.clone(),
     };
     record.upsert(conn)
 }

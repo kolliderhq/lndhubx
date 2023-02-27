@@ -56,7 +56,7 @@ nostr_relays_urls = [
     "wss://nostr.bitcoiner.social",
     "wss://nostr.kollider.xyz"
 ]
-#nostr_indexer_start = 1640995200
+#nostr_indexer_start = 1609459200
 
 ## The margin users have to keep on their account to account
 ## for network fees.
