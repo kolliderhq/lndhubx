@@ -29,8 +29,7 @@ pub struct NostrEngineSettings {
     pub nostr_private_key: String,
     pub nostr_engine_logging_settings: LoggingSettings,
     pub nostr_relays_urls: Vec<String>,
-    #[serde(default)]
-    pub nostr_indexer_start: Option<u64>,
+    pub nostr_historical_profile_indexer: bool,
 }
 
 #[derive(Debug)]
@@ -78,6 +77,7 @@ pub fn spawn_profile_indexer(
     nostr_client: Client,
     indexer_start: Option<u64>,
     events_tx: tokio::sync::mpsc::Sender<NostrEngineEvent>,
+    db_pool: DbPool,
     logger: Logger,
 ) {
     spawn_profile_subscriber(nostr_client.clone(), events_tx.clone(), logger.clone());
@@ -118,21 +118,30 @@ pub fn spawn_profile_indexer(
                         range_until_capped
                     );
                 }
-                range_since = range_until;
                 tokio::time::sleep(tokio::time::Duration::from_secs(utils::time::SECONDS_IN_MINUTE)).await;
+                store_last_check(&db_pool, range_since, &logger);
+                range_since = range_until;
             }
         }
-        let internal_request = InternalNostrProfileRequest {
-            pubkey: None,
-            since: None,
-            until: None,
-            limit: None,
-        };
-        let subscription_filter = match create_profile_filter(&internal_request) {
-            Some(filter) => filter,
-            None => return,
-        };
-        nostr_client.subscribe(vec![subscription_filter]).await;
+        // this loop moves ongoing subscription timeout every 24h
+        // to avoid subscribing from the same time point when any relay disconnects
+        loop {
+            let since_epoch_seconds = utils::time::time_now() / 1000;
+            let since = Some(since_epoch_seconds);
+            let internal_request = InternalNostrProfileRequest {
+                pubkey: None,
+                since,
+                until: None,
+                limit: None,
+            };
+            let subscription_filter = match create_profile_filter(&internal_request) {
+                Some(filter) => filter,
+                None => return,
+            };
+            nostr_client.subscribe(vec![subscription_filter]).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(utils::time::SECONDS_IN_DAY)).await;
+            store_last_check(&db_pool, since_epoch_seconds, &logger);
+        }
     });
 }
 
@@ -279,4 +288,25 @@ fn create_profile_filter(request: &InternalNostrProfileRequest) -> Option<Subscr
     };
 
     Some(filter)
+}
+
+fn store_last_check(db_pool: &DbPool, last_check: u64, logger: &Logger) {
+    if let Some(conn) = db_pool.try_get() {
+        if let Err(err) =
+            models::nostr_profile_indexer_times::NostrProfileIndexerTime::set_last_check(&conn, Some(last_check as i64))
+        {
+            log::error!(
+                logger,
+                "Indexer failed to store last_check time: {}, error: {:?}",
+                last_check,
+                err
+            );
+        }
+    } else {
+        log::error!(
+            logger,
+            "Indexer failed to get a DB connection to store last_check time: {}",
+            last_check,
+        );
+    }
 }
