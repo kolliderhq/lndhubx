@@ -1,11 +1,19 @@
 use crate::schema::nostr_profile_records;
 use diesel::{BoolExpressionMethods, ExpressionMethods, PgTextExpressionMethods, QueryDsl, QueryResult, RunQueryDsl};
 
+fn escaped_text(text: &str) -> String {
+    text.replace('\'', "''")
+}
+
 fn nullable_string(value: &Option<String>) -> String {
     match value {
-        Some(text) => format!("'{}'", text.replace('\'', "''")),
+        Some(text) => format!("'{}'", escaped_text(text)),
         None => String::from("NULL"),
     }
+}
+
+fn not_nullable_string(value: &str) -> String {
+    format!("'{}'", escaped_text(value))
 }
 
 fn nullable_bool(value: &Option<bool>) -> String {
@@ -25,30 +33,26 @@ pub struct NostrProfileRecord {
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub nip05: Option<String>,
-    pub lud06: Option<String>,
     pub lud16: Option<String>,
     pub nip05_verified: Option<bool>,
+    pub content: String,
 }
 
 impl NostrProfileRecord {
-    pub fn upsert(&self, conn: &diesel::PgConnection) -> QueryResult<usize> {
-        // diesel::insert_into(nostr_profile_records::dsl::nostr_profile_records)
-        //     .values(self)
-        //     .on_conflict(nostr_profile_records::dsl::pubkey)
-        //     .do_update()
-        //     .set(self)
-        //     .filter(nostr_profile_records::dsl::created_at.lt(self.created_at))
-        //     .execute(conn)
+    pub fn fetch_all(conn: &diesel::PgConnection) -> QueryResult<Vec<Self>> {
+        nostr_profile_records::dsl::nostr_profile_records.load(conn)
+    }
 
-        // the above does not work because diesel does not allow specifying filtering
-        // that is where clause on the update statement after conflict
+    pub fn upsert(&self, conn: &diesel::PgConnection) -> QueryResult<usize> {
+        // diesel does not allow specifying filtering using a WHERE clause
+        // on the update statement after conflict, so using a hand crafted query
         let pubkey = self.pubkey.clone();
         let created_at = self.created_at;
         let received_at = self.received_at;
+        let content = not_nullable_string(&self.content);
         let name = nullable_string(&self.name);
         let display_name = nullable_string(&self.display_name);
         let nip05 = nullable_string(&self.nip05);
-        let lud06 = nullable_string(&self.lud06);
         let lud16 = nullable_string(&self.lud16);
         let nip05_verified = nullable_bool(&self.nip05_verified);
         let upsert_query = format!(
@@ -60,9 +64,9 @@ impl NostrProfileRecord {
                     name, \
                     display_name, \
                     nip05, \
-                    lud06, \
                     lud16, \
-                    nip05_verified\
+                    nip05_verified, \
+                    content \
                 ) \
                 VALUES(\
                     '{pubkey}', \
@@ -71,9 +75,9 @@ impl NostrProfileRecord {
                     {name}, \
                     {display_name}, \
                     {nip05}, \
-                    {lud06}, \
                     {lud16}, \
-                    {nip05_verified}\
+                    {nip05_verified}, \
+                    {content} \
                 ) \
                 ON CONFLICT (pubkey) \
                 DO UPDATE \
@@ -83,9 +87,9 @@ impl NostrProfileRecord {
                     name = EXCLUDED.name, \
                     display_name = EXCLUDED.display_name, \
                     nip05 = EXCLUDED.nip05, \
-                    lud06 = EXCLUDED.lud06, \
                     lud16 = EXCLUDED.lud16, \
-                    nip05_verified = EXCLUDED.nip05_verified \
+                    nip05_verified = EXCLUDED.nip05_verified, \
+                     content = EXCLUDED.content \
                 WHERE \
                     n.created_at < EXCLUDED.created_at OR \
                     (n.created_at = EXCLUDED.created_at \
@@ -119,6 +123,6 @@ impl NostrProfileRecord {
             .or(nostr_profile_records::dsl::lud16.ilike(&local_part_pattern));
         nostr_profile_records::dsl::nostr_profile_records
             .filter(relevant_search)
-            .load::<Self>(conn)
+            .load(conn)
     }
 }

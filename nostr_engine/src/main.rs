@@ -33,14 +33,46 @@ async fn main() {
     nostr_client.connect().await;
     log::info!(logger, "Connected");
 
+    let indexer_start = if settings.nostr_historical_profile_indexer {
+        if let Some(conn) = db_pool.try_get() {
+            match models::nostr_profile_indexer_times::NostrProfileIndexerTime::get_last_check(&conn) {
+                Ok(last_check) => match last_check {
+                    Some(last) => Some(last as u64),
+                    None => {
+                        // default to 2021-01-01 00:00:00
+                        Some(1609459200)
+                    }
+                },
+                Err(err) => {
+                    log::error!(
+                        logger,
+                        "Failed to fetch last nostr profile indexer check time, error: {:?}. Shutting down",
+                        err
+                    );
+                    return;
+                }
+            }
+        } else {
+            log::error!(
+                logger,
+                "Failed to get a DB connection to fetch last nostr profile indexer check time. Shutting down"
+            );
+            return;
+        }
+    } else {
+        None
+    };
+
     let (bank_tx_sender, mut bank_tx_receiver) = tokio::sync::mpsc::channel(2048);
-    spawn_events_handler(nostr_client.clone(), events_rx, bank_tx_sender, db_pool, logger.clone());
-    spawn_profile_indexer(
-        nostr_client,
-        settings.nostr_indexer_start,
-        events_tx.clone(),
+    spawn_events_handler(
+        nostr_client.clone(),
+        events_rx,
+        bank_tx_sender,
+        db_pool.clone(),
         logger.clone(),
     );
+
+    spawn_profile_indexer(nostr_client, indexer_start, events_tx.clone(), db_pool, logger.clone());
 
     std::thread::spawn(move || {
         while let Some(message) = bank_tx_receiver.blocking_recv() {

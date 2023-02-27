@@ -70,6 +70,13 @@ table! {
 }
 
 table! {
+    nostr_profile_indexer_times (id) {
+        id -> Int4,
+        last_check -> Nullable<Int8>,
+    }
+}
+
+table! {
     nostr_profile_records (pubkey) {
         pubkey -> Text,
         created_at -> Int8,
@@ -77,9 +84,9 @@ table! {
         name -> Nullable<Text>,
         display_name -> Nullable<Text>,
         nip05 -> Nullable<Text>,
-        lud06 -> Nullable<Text>,
         lud16 -> Nullable<Text>,
         nip05_verified -> Nullable<Bool>,
+        content -> Text,
     }
 }
 
@@ -176,6 +183,7 @@ allow_tables_to_appear_in_same_query!(
     internal_user_mappings,
     invoices,
     ln_addresses,
+    nostr_profile_indexer_times,
     nostr_profile_records,
     nostr_public_keys,
     pre_signups,
