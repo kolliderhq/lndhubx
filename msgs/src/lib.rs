@@ -19,6 +19,14 @@ use nostr::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deposit {
     pub payment_request: String,
+    pub payment_hash: String,
+    pub description_hash: String,
+    pub preimage: String,
+    pub value: u64,
+    pub value_msat: u64,
+    pub settled: bool,
+    pub creation_date: u64,
+    pub settle_date: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -24,6 +24,7 @@ pub struct Invoice {
     pub currency: Option<String>,
     pub target_account_currency: Option<String>,
     pub reference: Option<String>,
+    pub description: Option<String>,
 }
 
 impl Invoice {
@@ -77,6 +78,7 @@ pub struct InsertableInvoice {
     pub currency: Option<String>,
     pub target_account_currency: Option<String>,
     pub reference: Option<String>,
+    pub description: Option<String>,
 }
 
 impl InsertableInvoice {

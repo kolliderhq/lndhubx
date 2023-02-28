@@ -99,6 +99,34 @@ impl NostrEngine {
             Message::Nostr(msgs::nostr::Nostr::NostrPrivateMessage(req)) => {
                 send_nostr_private_msg(&self.nostr_client, &req.pubkey, &req.text).await;
             }
+            Message::Nostr(msgs::nostr::Nostr::NostrZapNote(zap)) => {
+                let (zap_note, relays) = match utils::nostr::create_zap_note(
+                    &self.nostr_client.keys(),
+                    zap.amount,
+                    &zap.description,
+                    &zap.description_hash,
+                    &zap.bolt11,
+                    &zap.preimage,
+                    zap.settled_timestamp,
+                ) {
+                    Ok(success) => success,
+                    Err(err) => {
+                        log::error!(self.logger, "Could not create a zap note, error: {:?}", err);
+                        return;
+                    }
+                };
+                for url in relays.iter() {
+                    if let Err(err) = self.nostr_client.send_event_to(url.clone(), zap_note.clone()).await {
+                        log::info!(
+                            self.logger,
+                            "Failed to send a zap note: {:?} to {}, error: {:?}",
+                            zap_note,
+                            url,
+                            err
+                        );
+                    }
+                }
+            }
             _ => {}
         }
     }

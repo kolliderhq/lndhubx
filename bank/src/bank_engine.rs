@@ -1287,6 +1287,21 @@ impl BankEngine {
                             }
                         }
                     }
+
+                    if invoice.reference == Some(String::from(utils::nostr::ZAP_REQUEST_MEMO)) {
+                        if let Some(description) = invoice.description {
+                            let nostr_zap = msgs::nostr::NostrZapNote {
+                                amount: msg.value_msat,
+                                description,
+                                description_hash: msg.description_hash,
+                                bolt11: invoice.payment_request,
+                                preimage: msg.preimage,
+                                settled_timestamp: msg.settle_date,
+                            };
+                            let msg = Message::Nostr(msgs::nostr::Nostr::NostrZapNote(nostr_zap));
+                            listener(msg, ServiceIdentity::Nostr)
+                        }
+                    }
                 }
             }
             Message::Api(msg) => match msg {
@@ -1885,6 +1900,7 @@ impl BankEngine {
                             currency: Some(msg.currency.to_string()),
                             target_account_currency: None,
                             reference: None,
+                            description: None,
                         };
                         if let Err(err) = invoice.insert(&psql_connection) {
                             slog::error!(self.logger, "Error inserting Invoice {:?}", err);
@@ -3279,6 +3295,7 @@ impl BankEngine {
             currency: Some(payment_request.currency.to_string()),
             target_account_currency: None,
             reference: None,
+            description: None,
         };
         invoice.insert(&c).expect("Failed to insert psql connection");
         // let estimated_fee_in_sats = estimated_fee.try_sats().unwrap();

@@ -4,20 +4,23 @@ use core_types::{Currency, Money};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
+use actix_web::web::Data;
 use std::{sync::Arc, time::Duration};
 
 use rust_decimal::prelude::Decimal;
 use rust_decimal_macros::*;
 use serde::Deserialize;
 use serde_json::json;
+use utils::xlogging::slog as log;
 use uuid::Uuid;
 use xerror::api::*;
 
-use models::users::*;
 use models::nostr_public_keys::*;
+use models::users::*;
 
 use msgs::api::*;
 use msgs::*;
+use utils::xlogging::slog::Logger;
 
 use crate::comms::*;
 use crate::jwt::*;
@@ -188,9 +191,9 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
         Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
     };
 
-    let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
+    let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, String::from("kollider")) {
         Ok(pubk) => Some(pubk.pubkey),
-        Err(_) => None
+        Err(_) => None,
     };
 
     let callback = format!("https://kollider.me/api/pay/{username:}");
@@ -214,6 +217,8 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
 #[derive(Deserialize)]
 pub struct PayAddressParams {
     amount: u64,
+    #[serde(default)]
+    nostr: Option<String>,
 }
 
 #[get("/pay/{username}")]
@@ -222,11 +227,12 @@ pub async fn pay_address(
     pool: WebDbPool,
     query: Query<PayAddressParams>,
     web_sender: WebSender,
+    logger: Data<Logger>,
 ) -> Result<HttpResponse, ApiError> {
     let username = path.into_inner();
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-    let amount = Decimal::new(query.amount as i64, 0) / dec!(100000000000);
+    let amount = Decimal::new(query.amount as i64, 0) / dec!(100_000_000_000);
 
     let money = Money::new(Currency::BTC, amount);
 
@@ -243,17 +249,29 @@ pub async fn pay_address(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    let meta = "Lnurl Pay".to_string();
+    let (memo, metadata) = match query.nostr {
+        Some(ref zap_request_json) => {
+            if let Err(err) = utils::nostr::validate_zap_request(zap_request_json, query.amount) {
+                log::error!(logger, "Rejected a zap request: {}, error: {:?}", zap_request_json, err);
+                return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+            } else {
+                let memo = utils::nostr::ZAP_REQUEST_MEMO.to_string();
+                (memo, Some(zap_request_json.clone()))
+            }
+        }
+        None => {
+            let memo = "Lnurl Pay".to_string();
+            (memo, Some(format!("[[\"text/plain\",\"{RANDOM_META_DATA:}\"]]")))
+        }
+    };
 
-    if meta.len() > 128 {
+    if memo.len() > 128 {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    let metadata = Some(format!("[[\"text/plain\",\"{RANDOM_META_DATA:}\"]]"));
-
     let invoice_request = InvoiceRequest {
         req_id,
-        meta,
+        meta: memo,
         metadata,
         uid,
         currency: Currency::BTC,
