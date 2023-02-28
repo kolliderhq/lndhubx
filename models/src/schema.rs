@@ -57,6 +57,7 @@ table! {
         currency -> Nullable<Text>,
         target_account_currency -> Nullable<Text>,
         reference -> Nullable<Text>,
+        description -> Nullable<Text>,
     }
 }
 

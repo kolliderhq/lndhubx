@@ -80,6 +80,14 @@ impl LndConnector {
                     {
                         let deposit = Deposit {
                             payment_request: invoice.payment_request,
+                            payment_hash: hex::encode(invoice.r_hash),
+                            description_hash: hex::encode(invoice.description_hash),
+                            preimage: hex::encode(invoice.r_preimage),
+                            value: invoice.value as u64,
+                            value_msat: invoice.value_msat as u64,
+                            settled: true,
+                            creation_date: invoice.creation_date as u64,
+                            settle_date: invoice.settle_date as u64,
                         };
                         let msg = Message::Deposit(deposit);
                         listener.send(msg).expect("Failed to send a message");
@@ -100,8 +108,8 @@ impl LndConnector {
         metadata: Option<String>,
     ) -> Result<Invoice, LndConnectorError> {
         let hash = match metadata {
-            Some(m) => {
-                if let Some(une) = unescape(&m) {
+            Some(ref m) => {
+                if let Some(une) = unescape(m) {
                     digest(une)
                 } else {
                     return Err(LndConnectorError::FailedToCreateInvoice);
@@ -138,6 +146,7 @@ impl LndConnector {
                 currency: None,
                 target_account_currency: None,
                 reference: Some(memo),
+                description: metadata,
             };
             return Ok(invoice);
         }

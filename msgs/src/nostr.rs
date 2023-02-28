@@ -7,6 +7,17 @@ pub struct NostrPrivateMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrZapNote {
+    pub amount: u64,
+    pub description: String,
+    pub description_hash: String,
+    pub bolt11: String,
+    pub preimage: String,
+    pub settled_timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Nostr {
     NostrPrivateMessage(NostrPrivateMessage),
+    NostrZapNote(NostrZapNote),
 }
