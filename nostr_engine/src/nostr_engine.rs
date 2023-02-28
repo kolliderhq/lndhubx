@@ -152,10 +152,13 @@ impl NostrEngine {
                 .filter_map(|record| {
                     serde_json::from_str::<NostrProfile>(&record.content)
                         .ok()
-                        .map(|profile| ShareableNostrProfile {
-                            pubkey: record.pubkey,
-                            created_at: record.created_at / 1000,
-                            profile,
+                        .map(|mut profile| {
+                            profile.set_nip05_verified(record.nip05_verified);
+                            ShareableNostrProfile {
+                                pubkey: record.pubkey,
+                                created_at: record.created_at / 1000,
+                                profile,
+                            }
                         })
                 })
                 .collect();
