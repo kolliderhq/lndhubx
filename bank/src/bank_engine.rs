@@ -735,12 +735,12 @@ impl BankEngine {
         &mut self,
         payment_request: PaymentRequest,
         listener: &mut F,
-    ) {
+    ) -> Result<(), PaymentResponseError> {
         let conn = match &self.conn_pool {
             Some(conn) => conn,
             None => {
                 slog::error!(self.logger, "No database provided.");
-                return;
+                return Err(PaymentResponseError::DatabaseConnectionFailed);
             }
         };
 
@@ -748,7 +748,7 @@ impl BankEngine {
             Ok(psql_connection) => psql_connection,
             Err(_) => {
                 slog::error!(self.logger, "Couldn't get psql connection.");
-                return;
+                return Err(PaymentResponseError::DatabaseConnectionFailed);
             }
         };
 
@@ -788,43 +788,46 @@ impl BankEngine {
         let outbound_amount = match payment_request.amount {
             Some(a) => a,
             None => {
-                payment_response.error = Some(PaymentResponseError::InvalidAmount);
+                let payment_error = PaymentResponseError::InvalidAmount;
+                payment_response.error = Some(payment_error);
                 let msg = Message::Api(Api::PaymentResponse(payment_response));
                 listener(msg, ServiceIdentity::Api);
-                return;
+                return Err(payment_error);
             }
         };
 
         let inbound_user = match User::get_by_username(&c, inbound_username.clone()) {
             Ok(u) => u,
             Err(_) => {
-                payment_response.error = Some(PaymentResponseError::UserDoesNotExist);
+                let payment_error = PaymentResponseError::UserDoesNotExist;
+                payment_response.error = Some(payment_error);
                 let msg = Message::Api(Api::PaymentResponse(payment_response));
                 listener(msg, ServiceIdentity::Api);
-                return;
+                return Err(payment_error);
             }
         };
 
         let outbound_user = match User::get_by_id(&c, outbound_uid as i32) {
             Ok(u) => u,
             Err(_) => {
-                payment_response.error = Some(PaymentResponseError::UserDoesNotExist);
+                let payment_error = PaymentResponseError::UserDoesNotExist;
+                payment_response.error = Some(payment_error);
                 let msg = Message::Api(Api::PaymentResponse(payment_response));
                 listener(msg, ServiceIdentity::Api);
-                return;
+                return Err(payment_error);
             }
         };
 
         let inbound_uid = inbound_user.uid as u64;
         if inbound_uid == outbound_uid {
             slog::error!(self.logger, "User tried to send to self via username.");
-            return;
+            return Err(PaymentResponseError::SelfPayment);
         }
 
         let mut outbound_account = {
             let user_account = match self.ledger.user_accounts.get_mut(&outbound_uid) {
                 Some(ua) => ua,
-                None => return,
+                None => return Err(PaymentResponseError::UserAccountNotFound),
             };
 
             user_account.get_default_account(payment_request.currency, None)
@@ -840,10 +843,11 @@ impl BankEngine {
         };
 
         if outbound_account.balance < outbound_amount.value() {
-            payment_response.error = Some(PaymentResponseError::InsufficientFunds);
+            let payment_error = PaymentResponseError::InsufficientFunds;
+            payment_response.error = Some(payment_error);
             let msg = Message::Api(Api::PaymentResponse(payment_response));
             listener(msg, ServiceIdentity::Api);
-            return;
+            return Err(payment_error);
         }
 
         let txid = if let Ok(txid) = self.make_tx(
@@ -855,7 +859,7 @@ impl BankEngine {
         ) {
             txid
         } else {
-            return;
+            return Err(PaymentResponseError::TransactionFailed);
         };
 
         if self
@@ -876,7 +880,7 @@ impl BankEngine {
             )
             .is_err()
         {
-            return;
+            return Err(PaymentResponseError::TransactionFailed);
         }
 
         self.insert_into_ledger(&inbound_uid, inbound_account.account_id, inbound_account.clone());
@@ -889,6 +893,7 @@ impl BankEngine {
         payment_response.success = true;
         let msg = Message::Api(Api::PaymentResponse(payment_response));
         listener(msg, ServiceIdentity::Api);
+        Ok(())
     }
 
     pub async fn process_msg<F: FnMut(Message, ServiceIdentity)>(&mut self, msg: Message, listener: &mut F) {
@@ -1288,20 +1293,14 @@ impl BankEngine {
                         }
                     }
 
-                    if invoice.reference == Some(String::from(utils::nostr::ZAP_REQUEST_MEMO)) {
-                        if let Some(description) = invoice.description {
-                            let nostr_zap = msgs::nostr::NostrZapNote {
-                                amount: msg.value_msat,
-                                description,
-                                description_hash: msg.description_hash,
-                                bolt11: invoice.payment_request,
-                                preimage: msg.preimage,
-                                settled_timestamp: msg.settle_date,
-                            };
-                            let msg = Message::Nostr(msgs::nostr::Nostr::NostrZapNote(nostr_zap));
-                            listener(msg, ServiceIdentity::Nostr)
-                        }
-                    }
+                    publish_if_zap_note(
+                        &invoice,
+                        Some(msg.description_hash),
+                        Some(msg.preimage),
+                        msg.settle_date,
+                        false,
+                        listener,
+                    );
                 }
             }
             Message::Api(msg) => match msg {
@@ -1803,12 +1802,16 @@ impl BankEngine {
                                     };
                                 } else if domain == *"kollider.me" && is_internal {
                                     msg.recipient = Some(username);
-                                    self.make_internal_tx(msg, listener);
+                                    if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
+                                        slog::error!(self.logger, "PaymentRequest: {:?} failed, error: {:?}", msg, err);
+                                    }
                                     return;
                                 }
                             } else if is_internal {
                                 msg.recipient = Some(username);
-                                self.make_internal_tx(msg, listener);
+                                if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
+                                    slog::error!(self.logger, "PaymentRequest: {:?} failed, error: {:?}", msg, err);
+                                }
                                 return;
                             }
                         }
@@ -2252,7 +2255,12 @@ impl BankEngine {
                     };
                     // If there is an owner we make an internal tx.
                     msg.recipient = Some(owner_username.username);
-                    self.make_internal_tx(msg, listener);
+                    if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
+                        slog::error!(self.logger, "PaymentRequest: {:?} failed, error: {:?}", msg, err);
+                    } else {
+                        let time_now_sec = utils::time::time_now() / 1000;
+                        publish_if_zap_note(&invoice, None, None, time_now_sec, true, listener);
+                    }
                 }
 
                 Api::SwapRequest(msg) => {
@@ -3572,6 +3580,40 @@ impl BankEngine {
             dealer_karma_change_account.clone(),
         );
         self.update_account(&dealer_karma_change_account, DEALER_UID);
+    }
+}
+
+fn publish_if_zap_note<F: FnMut(Message, ServiceIdentity)>(
+    invoice: &Invoice,
+    description_hash: Option<String>,
+    preimage: Option<String>,
+    settled_timestamp_seconds: u64,
+    is_internally_settled: bool,
+    listener: &mut F,
+) {
+    if invoice.reference == Some(String::from(utils::nostr::ZAP_REQUEST_MEMO)) {
+        if let Some(description) = invoice.description.clone() {
+            let desc_hash = match description_hash {
+                Some(hash) => hash,
+                None => {
+                    if is_internally_settled {
+                        sha256::digest(description.clone())
+                    } else {
+                        panic!("description_hash is mandatory for external transaction zap note")
+                    }
+                }
+            };
+            let nostr_zap = msgs::nostr::NostrZapNote {
+                amount: invoice.value_msat as u64,
+                description,
+                description_hash: desc_hash,
+                bolt11: invoice.payment_request.clone(),
+                preimage,
+                settled_timestamp: settled_timestamp_seconds,
+            };
+            let msg = Message::Nostr(msgs::nostr::Nostr::NostrZapNote(nostr_zap));
+            listener(msg, ServiceIdentity::Nostr)
+        }
     }
 }
 

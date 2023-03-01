@@ -114,7 +114,7 @@ pub struct PaymentRequest {
     pub fees: Option<Money>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PaymentResponseError {
     InsufficientFunds,
     InsufficientFundsForFees,

@@ -12,7 +12,7 @@ pub struct NostrZapNote {
     pub description: String,
     pub description_hash: String,
     pub bolt11: String,
-    pub preimage: String,
+    pub preimage: Option<String>,
     pub settled_timestamp: u64,
 }
 
