@@ -85,7 +85,7 @@ pub fn create_zap_note(
     description: &str,
     description_hash: &str,
     bolt11: &str,
-    preimage: &str,
+    preimage: &Option<String>,
     settled_timestamp: u64,
 ) -> Result<(nostr_sdk::nostr::Event, Vec<String>), ZapError> {
     let description_sha256 = sha256::digest(description);
@@ -121,15 +121,19 @@ pub fn create_zap_note(
         event::TagKind::Custom(String::from("description")),
         vec![String::from(description)],
     );
-    let preimage_tag = event::Tag::Generic(
-        event::TagKind::Custom(String::from("preimage")),
-        vec![String::from(preimage)],
-    );
+
+    let mut response_tags = vec![bolt11_tag, description_tag];
+
+    if let Some(pre_img) = preimage {
+        let preimage_tag = event::Tag::Generic(event::TagKind::Custom(String::from("preimage")), vec![pre_img.clone()]);
+        response_tags.push(preimage_tag);
+    }
+
     let tags = request
         .tags
         .into_iter()
         .filter(|tag| matches!(tag, event::Tag::PubKey(_, _) | event::Tag::Event(_, _, _)))
-        .chain([bolt11_tag, description_tag, preimage_tag])
+        .chain(response_tags)
         .collect::<Vec<_>>();
     let builder = event::EventBuilder::new(event::Kind::Custom(ZAP_NOTE_KIND), "", tags.as_slice());
     let mut event = builder.to_event(keys).map_err(|_| ZapError::CouldNotCreateZapNote)?;
