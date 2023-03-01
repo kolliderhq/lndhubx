@@ -8,7 +8,7 @@ use models::nostr_profiles::NostrProfileRecord;
 use msgs::api::{NostrResponseError, ShareableNostrProfile};
 use msgs::nostr::NostrZapNote;
 use msgs::Message;
-use nostr_sdk::nostr::Event;
+use nostr_sdk::nostr::{Event, Url};
 use nostr_sdk::{Client, Options};
 use slog as log;
 use slog::Logger;
@@ -262,9 +262,11 @@ impl NostrEngine {
             .keys()
             .map(|url| url.to_string())
             .collect::<HashSet<_>>();
-        let (exiting_pool_relays, unknown_relays): (Vec<_>, Vec<_>) =
-            zap_note_relays.into_iter().partition(|url| client_relays.contains(url));
-        send_to_relays(&self.nostr_client, &zap_note, &exiting_pool_relays, &self.logger).await;
+        let (existing_pool_relays, unknown_relays): (Vec<_>, Vec<_>) = zap_note_relays
+            .into_iter()
+            .filter_map(|url| Url::parse(&url).ok().map(|url| url.to_string()))
+            .partition(|url| client_relays.contains(url));
+        send_to_relays(&self.nostr_client, &zap_note, &existing_pool_relays, &self.logger).await;
         let keys = self.nostr_client.keys();
         let task_logger = self.logger.clone();
         tokio::spawn(async move {
