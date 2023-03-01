@@ -186,6 +186,7 @@ pub async fn search_nostr_profile(
     let request = NostrProfileSearchRequest {
         req_id,
         text: params.text.clone(),
+        limit: Some(25),
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(

@@ -356,6 +356,7 @@ pub struct ShareableNostrProfile {
 pub struct NostrProfileSearchRequest {
     pub req_id: RequestId,
     pub text: String,
+    pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
