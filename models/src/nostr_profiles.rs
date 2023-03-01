@@ -1,5 +1,8 @@
 use crate::schema::nostr_profile_records;
-use diesel::{BoolExpressionMethods, ExpressionMethods, PgTextExpressionMethods, QueryDsl, QueryResult, RunQueryDsl};
+use diesel::{
+    BoolExpressionMethods, ExpressionMethods, PgSortExpressionMethods, PgTextExpressionMethods, QueryDsl, QueryResult,
+    RunQueryDsl,
+};
 
 fn escaped_text(text: &str) -> String {
     text.replace('\'', "''")
@@ -123,7 +126,7 @@ impl NostrProfileRecord {
             .or(nostr_profile_records::dsl::lud16.ilike(&local_part_pattern));
         let query = nostr_profile_records::dsl::nostr_profile_records
             .filter(relevant_search)
-            .order(nostr_profile_records::dsl::nip05_verified.desc());
+            .order(nostr_profile_records::dsl::nip05_verified.desc().nulls_last());
 
         match limit {
             Some(num_records) => query.limit(num_records as i64).load(conn),
