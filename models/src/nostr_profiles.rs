@@ -112,7 +112,7 @@ impl NostrProfileRecord {
             .execute(conn)
     }
 
-    pub fn search_by_text(conn: &diesel::PgConnection, text: &str) -> QueryResult<Vec<Self>> {
+    pub fn search_by_text(conn: &diesel::PgConnection, text: &str, limit: Option<u64>) -> QueryResult<Vec<Self>> {
         let escaped_lowered = text.replace('%', "\\%").replace('_', "\\_").to_lowercase();
         let name_pattern = format!("%{escaped_lowered}%");
         let local_part_pattern = format!("{name_pattern}@%");
@@ -121,8 +121,13 @@ impl NostrProfileRecord {
             .or(nostr_profile_records::dsl::display_name.ilike(&name_pattern))
             .or(nostr_profile_records::dsl::nip05.ilike(&local_part_pattern))
             .or(nostr_profile_records::dsl::lud16.ilike(&local_part_pattern));
-        nostr_profile_records::dsl::nostr_profile_records
+        let query = nostr_profile_records::dsl::nostr_profile_records
             .filter(relevant_search)
-            .load(conn)
+            .order(nostr_profile_records::dsl::nip05_verified.desc());
+
+        match limit {
+            Some(num_records) => query.limit(num_records as i64).load(conn),
+            None => query.load(conn),
+        }
     }
 }
