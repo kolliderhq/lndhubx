@@ -1803,14 +1803,19 @@ impl BankEngine {
                                 } else if domain == *"kollider.me" && is_internal {
                                     msg.recipient = Some(username);
                                     if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
-                                        slog::error!(self.logger, "PaymentRequest: {:?} failed, error: {:?}", msg, err);
+                                        slog::error!(self.logger, "Failed PaymentRequest for internal kollider.me user: {:?} failed, error: {:?}", msg, err);
                                     }
                                     return;
                                 }
                             } else if is_internal {
                                 msg.recipient = Some(username);
                                 if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
-                                    slog::error!(self.logger, "PaymentRequest: {:?} failed, error: {:?}", msg, err);
+                                    slog::error!(
+                                        self.logger,
+                                        "Failed PaymentRequest for internal user: {:?} failed, error: {:?}",
+                                        msg,
+                                        err
+                                    );
                                 }
                                 return;
                             }
@@ -1868,6 +1873,11 @@ impl BankEngine {
                     let amount_in_btc = Money::from_sats(amount_in_sats);
 
                     msg.invoice_amount = Some(amount_in_btc);
+                    if let Some(ref mut amount) = msg.amount {
+                        if amount.currency() == amount_in_btc.currency() && amount.value() != amount_in_btc.value() {
+                            amount.set(amount_in_btc.value());
+                        }
+                    }
 
                     // If payed from a fiat account we have to get a quote first.
                     if msg.currency != Currency::BTC && msg.rate.is_none() {
@@ -2256,7 +2266,12 @@ impl BankEngine {
                     // If there is an owner we make an internal tx.
                     msg.recipient = Some(owner_username.username);
                     if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
-                        slog::error!(self.logger, "PaymentRequest: {:?} failed, error: {:?}", msg, err);
+                        slog::error!(
+                            self.logger,
+                            "Failed PaymentRequest for ln payment request: {:?} failed, error: {:?}",
+                            msg,
+                            err
+                        );
                     } else {
                         let time_now_sec = utils::time::time_now() / 1000;
                         publish_if_zap_note(&invoice, None, None, time_now_sec, true, listener);
