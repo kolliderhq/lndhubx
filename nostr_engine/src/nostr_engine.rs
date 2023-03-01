@@ -1,17 +1,19 @@
 use crate::{
-    request_user_profile, send_nostr_private_msg, DbPool, InternalNostrProfileRequest, NostrEngineEvent,
+    into_relays, request_user_profile, send_nostr_private_msg, DbPool, InternalNostrProfileRequest, NostrEngineEvent,
     NostrProfileUpdate, API_PROFILE_TIMEOUT,
 };
 use core_types::nostr::NostrProfile;
 use diesel::QueryResult;
 use models::nostr_profiles::NostrProfileRecord;
 use msgs::api::{NostrResponseError, ShareableNostrProfile};
+use msgs::nostr::NostrZapNote;
 use msgs::Message;
-use nostr_sdk::Client;
+use nostr_sdk::nostr::Event;
+use nostr_sdk::{Client, Options};
 use slog as log;
 use slog::Logger;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 pub struct NostrEngine {
@@ -100,32 +102,7 @@ impl NostrEngine {
                 send_nostr_private_msg(&self.nostr_client, &req.pubkey, &req.text).await;
             }
             Message::Nostr(msgs::nostr::Nostr::NostrZapNote(zap)) => {
-                let (zap_note, relays) = match utils::nostr::create_zap_note(
-                    &self.nostr_client.keys(),
-                    zap.amount,
-                    &zap.description,
-                    &zap.description_hash,
-                    &zap.bolt11,
-                    &zap.preimage,
-                    zap.settled_timestamp,
-                ) {
-                    Ok(success) => success,
-                    Err(err) => {
-                        log::error!(self.logger, "Could not create a zap note, error: {:?}", err);
-                        return;
-                    }
-                };
-                for url in relays.iter() {
-                    if let Err(err) = self.nostr_client.send_event_to(url.clone(), zap_note.clone()).await {
-                        log::info!(
-                            self.logger,
-                            "Failed to send a zap note: {:?} to {}, error: {:?}",
-                            zap_note,
-                            url,
-                            err
-                        );
-                    }
-                }
+                self.send_zap_note(zap).await;
             }
             _ => {}
         }
@@ -256,6 +233,55 @@ impl NostrEngine {
             }
         }
     }
+
+    async fn send_zap_note(&self, zap: &NostrZapNote) {
+        let (zap_note, zap_note_relays) = match utils::nostr::create_zap_note(
+            &self.nostr_client.keys(),
+            zap.amount,
+            &zap.description,
+            &zap.description_hash,
+            &zap.bolt11,
+            &zap.preimage,
+            zap.settled_timestamp,
+        ) {
+            Ok(success) => success,
+            Err(err) => {
+                log::error!(
+                    self.logger,
+                    "Could not create a zap note from data: {:?}, error: {:?}",
+                    zap,
+                    err
+                );
+                return;
+            }
+        };
+        let client_relays = self
+            .nostr_client
+            .relays()
+            .await
+            .keys()
+            .map(|url| url.to_string())
+            .collect::<HashSet<_>>();
+        let (exiting_pool_relays, unknown_relays): (Vec<_>, Vec<_>) =
+            zap_note_relays.into_iter().partition(|url| client_relays.contains(url));
+        send_to_relays(&self.nostr_client, &zap_note, &exiting_pool_relays, &self.logger).await;
+        let keys = self.nostr_client.keys();
+        let task_logger = self.logger.clone();
+        tokio::spawn(async move {
+            let options = Options::new().wait_for_connection(true).wait_for_send(true);
+            let nostr_client = Client::new_with_opts(&keys, options);
+            nostr_client.add_relays(into_relays(unknown_relays)).await.unwrap();
+            nostr_client.connect().await;
+            if let Err(err) = nostr_client.send_event(zap_note.clone()).await {
+                log::error!(
+                    task_logger,
+                    "Failed to send a zap note: {:?}, error: {:?}",
+                    zap_note,
+                    err
+                );
+            }
+        });
+    }
 }
 
 fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProfileUpdate) -> QueryResult<usize> {
@@ -271,4 +297,18 @@ fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProf
         content: profile_update.content.clone(),
     };
     record.upsert(conn)
+}
+
+async fn send_to_relays(nostr_client: &Client, event: &Event, relays: &[String], logger: &Logger) {
+    for url in relays.iter() {
+        if let Err(err) = nostr_client.send_event_to(url.clone(), event.clone()).await {
+            log::error!(
+                logger,
+                "Failed to send an event: {:?} to {}, error: {:?}",
+                event,
+                url,
+                err
+            );
+        }
+    }
 }
