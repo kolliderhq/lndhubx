@@ -141,9 +141,17 @@ pub async fn get_nostr_profile(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
+    let pubkey = if let Some(ref pkey) = params.pubkey {
+        let pubkey_hex =
+            utils::nostr::get_pubkey_hex(pkey).map_err(|_| ApiError::Request(RequestError::InvalidDataSupplied))?;
+        Some(pubkey_hex)
+    } else {
+        None
+    };
+
     let request = NostrProfileRequest {
         req_id,
-        pubkey: params.pubkey.clone(),
+        pubkey,
         lightning_address: params.lightning_address.clone(),
     };
 
@@ -194,9 +202,15 @@ pub async fn search_nostr_profile(
 ) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
+    let (text, pubkey) = match utils::nostr::get_pubkey_hex(&params.text) {
+        Ok(pkey) => (None, Some(pkey)),
+        Err(_) => (Some(params.text.clone()), None),
+    };
+
     let request = NostrProfileSearchRequest {
         req_id,
-        text: params.text.clone(),
+        text,
+        pubkey,
         limit: Some(25),
     };
 

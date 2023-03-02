@@ -115,22 +115,53 @@ impl NostrProfileRecord {
             .execute(conn)
     }
 
-    pub fn search_by_text(conn: &diesel::PgConnection, text: &str, limit: Option<u64>) -> QueryResult<Vec<Self>> {
-        let escaped_lowered = text.replace('%', "\\%").replace('_', "\\_").to_lowercase();
-        let name_pattern = format!("%{escaped_lowered}%");
-        let local_part_pattern = format!("{name_pattern}@%");
-        let relevant_search = nostr_profile_records::dsl::name
-            .ilike(&name_pattern)
-            .or(nostr_profile_records::dsl::display_name.ilike(&name_pattern))
-            .or(nostr_profile_records::dsl::nip05.ilike(&local_part_pattern))
-            .or(nostr_profile_records::dsl::lud16.ilike(&local_part_pattern));
+    pub fn search_by_text(
+        conn: &diesel::PgConnection,
+        pubkey: Option<String>,
+        text: Option<String>,
+        limit: Option<u64>,
+    ) -> QueryResult<Vec<Self>> {
+        if pubkey.is_none() && text.is_none() {
+            return Ok(Vec::new());
+        }
+
+        let maybe_pubkey_expr = pubkey.map(|pkey| nostr_profile_records::dsl::pubkey.eq(pkey));
+        let maybe_text_expr = text.map(|txt| {
+            let escaped_lowered = txt.replace('%', "\\%").replace('_', "\\_").to_lowercase();
+            let name_pattern = format!("%{escaped_lowered}%");
+            let local_part_pattern = format!("{name_pattern}@%");
+            nostr_profile_records::dsl::name
+                .ilike(name_pattern.clone())
+                .or(nostr_profile_records::dsl::display_name.ilike(name_pattern))
+                .or(nostr_profile_records::dsl::nip05.ilike(local_part_pattern.clone()))
+                .or(nostr_profile_records::dsl::lud16.ilike(local_part_pattern))
+        });
+
         let query = nostr_profile_records::dsl::nostr_profile_records
-            .filter(relevant_search)
             .order(nostr_profile_records::dsl::nip05_verified.desc().nulls_last());
 
-        match limit {
-            Some(num_records) => query.limit(num_records as i64).load(conn),
-            None => query.load(conn),
+        if let Some(pubkey_expr) = maybe_pubkey_expr {
+            let query = query.filter(pubkey_expr);
+            if let Some(text_expr) = maybe_text_expr {
+                let query = query.filter(text_expr);
+                let query_result = match limit {
+                    Some(num_records) => query.limit(num_records as i64).load(conn),
+                    None => query.load(conn),
+                };
+                return query_result;
+            }
+            match limit {
+                Some(num_records) => query.limit(num_records as i64).load(conn),
+                None => query.load(conn),
+            }
+        } else if let Some(text_expr) = maybe_text_expr {
+            let query = query.filter(text_expr);
+            match limit {
+                Some(num_records) => query.limit(num_records as i64).load(conn),
+                None => query.load(conn),
+            }
+        } else {
+            Ok(Vec::new())
         }
     }
 }

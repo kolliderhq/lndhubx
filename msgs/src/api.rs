@@ -341,7 +341,8 @@ pub struct NostrProfileRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NostrProfileSearchRequest {
     pub req_id: RequestId,
-    pub text: String,
+    pub text: Option<String>,
+    pub pubkey: Option<String>,
     pub limit: Option<u64>,
 }
 
