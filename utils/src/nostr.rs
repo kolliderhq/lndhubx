@@ -1,4 +1,6 @@
 use nostr_sdk::nostr::event;
+use nostr_sdk::prelude::FromPkStr;
+use secp256k1::bitcoin_hashes::hex::ToHex;
 
 pub const ZAP_REQUEST_MEMO: &str = "Zap Request";
 
@@ -139,4 +141,15 @@ pub fn create_zap_note(
     let mut event = builder.to_event(keys).map_err(|_| ZapError::CouldNotCreateZapNote)?;
     event.created_at = nostr_sdk::nostr::Timestamp::from(settled_timestamp);
     Ok((event, relays))
+}
+
+#[derive(Debug)]
+pub enum PubKeyError {
+    InvalidPubKey,
+}
+
+pub fn get_pubkey_hex(pubkey: &str) -> Result<String, PubKeyError> {
+    let keys = nostr_sdk::nostr::Keys::from_pk_str(pubkey).map_err(|_| PubKeyError::InvalidPubKey)?;
+    let pubkey_hex = keys.public_key().to_hex();
+    Ok(pubkey_hex)
 }

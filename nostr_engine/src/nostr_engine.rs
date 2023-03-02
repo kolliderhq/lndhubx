@@ -87,7 +87,7 @@ impl NostrEngine {
                 }
             }
             Message::Api(msgs::api::Api::NostrProfileSearchRequest(req)) => {
-                let (data, error) = match self.search_profile_by_text(&req.text, req.limit) {
+                let (data, error) = match self.search_profile_by_text(req.pubkey.clone(), req.text.clone(), req.limit) {
                     Ok(profiles) => (profiles, None),
                     Err(_) => (Vec::new(), Some(NostrResponseError::ProfileNotFound)),
                 };
@@ -150,9 +150,14 @@ impl NostrEngine {
             });
     }
 
-    fn search_profile_by_text(&self, text: &str, limit: Option<u64>) -> QueryResult<Vec<ShareableNostrProfile>> {
+    fn search_profile_by_text(
+        &self,
+        pubkey: Option<String>,
+        text: Option<String>,
+        limit: Option<u64>,
+    ) -> QueryResult<Vec<ShareableNostrProfile>> {
         if let Some(conn) = self.db_pool.try_get() {
-            let found_profiles = NostrProfileRecord::search_by_text(&conn, text, limit)?;
+            let found_profiles = NostrProfileRecord::search_by_text(&conn, pubkey, text, limit)?;
             let nostr_profiles = found_profiles
                 .into_iter()
                 .filter_map(|record| {
