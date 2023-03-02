@@ -5,6 +5,7 @@ use core_types::nostr::NostrProfile;
 use diesel::r2d2::ConnectionManager;
 use diesel::PgConnection;
 use lazy_static::lazy_static;
+use msgs::api::ShareableNostrProfile;
 use msgs::Message;
 use nostr_sdk::prelude::{Event, FromPkStr, Keys, Kind, SubscriptionFilter, Timestamp};
 use nostr_sdk::{Client, RelayPoolNotification};
@@ -46,6 +47,16 @@ pub struct NostrProfileUpdate {
     pub created_at_epoch_ms: u64,
     pub received_at_epoch_ms: u64,
     pub nostr_profile: NostrProfile,
+}
+
+impl From<&NostrProfileUpdate> for ShareableNostrProfile {
+    fn from(profile_update: &NostrProfileUpdate) -> Self {
+        Self {
+            pubkey: profile_update.pubkey.clone(),
+            created_at: profile_update.created_at_epoch_ms as i64 / 1000,
+            profile: profile_update.nostr_profile.clone(),
+        }
+    }
 }
 
 #[derive(Debug)]
