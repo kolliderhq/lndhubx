@@ -129,12 +129,15 @@ impl NostrProfileRecord {
         let maybe_text_expr = text.map(|txt| {
             let escaped_lowered = txt.replace('%', "\\%").replace('_', "\\_").to_lowercase();
             let name_pattern = format!("%{escaped_lowered}%");
-            let local_part_pattern = format!("{name_pattern}@%");
+            let internet_identifier = match escaped_lowered.split_once('@') {
+                Some((local_part, domain)) => format!("%{local_part}@{domain}%"),
+                None => format!("{name_pattern}@%"),
+            };
             nostr_profile_records::dsl::name
                 .ilike(name_pattern.clone())
                 .or(nostr_profile_records::dsl::display_name.ilike(name_pattern))
-                .or(nostr_profile_records::dsl::nip05.ilike(local_part_pattern.clone()))
-                .or(nostr_profile_records::dsl::lud16.ilike(local_part_pattern))
+                .or(nostr_profile_records::dsl::nip05.ilike(internet_identifier.clone()))
+                .or(nostr_profile_records::dsl::lud16.ilike(internet_identifier))
         });
 
         let query = nostr_profile_records::dsl::nostr_profile_records
