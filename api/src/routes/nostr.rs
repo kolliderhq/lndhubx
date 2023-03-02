@@ -202,16 +202,24 @@ pub async fn search_nostr_profile(
 ) -> Result<HttpResponse, ApiError> {
     let req_id = Uuid::new_v4();
 
-    let (text, pubkey) = match utils::nostr::get_pubkey_hex(&params.text) {
-        Ok(pkey) => (None, Some(pkey)),
-        Err(_) => (Some(params.text.clone()), None),
-    };
-
-    let request = NostrProfileSearchRequest {
-        req_id,
-        text,
-        pubkey,
-        limit: Some(25),
+    let message = match utils::nostr::get_pubkey_hex(&params.text) {
+        Ok(pkey) => {
+            let request = NostrProfileRequest {
+                req_id,
+                pubkey: Some(pkey),
+                lightning_address: None,
+            };
+            Message::Api(Api::NostrProfileRequest(request))
+        }
+        Err(_) => {
+            let request = NostrProfileSearchRequest {
+                req_id,
+                text: Some(params.text.clone()),
+                pubkey: None,
+                limit: Some(25),
+            };
+            Message::Api(Api::NostrProfileSearchRequest(request))
+        }
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
@@ -219,8 +227,6 @@ pub async fn search_nostr_profile(
     );
 
     let (response_tx, mut response_rx) = mpsc::channel(1);
-
-    let message = Message::Api(Api::NostrProfileSearchRequest(request));
 
     Arc::make_mut(&mut web_sender.into_inner())
         .send(Envelope {
