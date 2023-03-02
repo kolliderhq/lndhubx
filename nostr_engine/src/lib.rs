@@ -266,8 +266,9 @@ fn domain_valid(domain: &str) -> bool {
 
 fn local_part_valid(local_part: &str) -> bool {
     // as per current nip05 spec only a-z0-9-_. are allowed in local part
+    // to loosen restriction we also allow capitial letters A-Z
     lazy_static! {
-        static ref LOCAL_PART_RE: Regex = Regex::new(r"^[a-z0-9-_.]+$").unwrap();
+        static ref LOCAL_PART_RE: Regex = Regex::new(r"^[a-zA-Z0-9-_.]+$").unwrap();
     }
     LOCAL_PART_RE.is_match(local_part)
 }
