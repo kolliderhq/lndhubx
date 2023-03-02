@@ -66,12 +66,13 @@ impl NostrEngine {
                 };
 
                 if let Some(cached_profile_update) = self.nostr_profile_cache.get(pubkey) {
-                    let resp = msgs::api::NostrProfileResponse {
+                    let sharable_profile = ShareableNostrProfile::from(cached_profile_update);
+                    let resp = msgs::api::NostrProfileSearchResponse {
                         req_id: req.req_id,
-                        profile: Some(cached_profile_update.nostr_profile.clone()),
+                        data: vec![sharable_profile],
                         error: None,
                     };
-                    let message = Message::Api(msgs::api::Api::NostrProfileResponse(resp));
+                    let message = Message::Api(msgs::api::Api::NostrProfileSearchResponse(resp));
                     self.send_to_bank(message).await;
                 } else {
                     self.nostr_profile_pending
@@ -223,12 +224,13 @@ impl NostrEngine {
             let time_now_ms = utils::time::time_now();
             let elapsed = time_now_ms - pending_request_time_ms;
             if elapsed < API_PROFILE_TIMEOUT {
-                let resp = msgs::api::NostrProfileResponse {
+                let shareable_profile = ShareableNostrProfile::from(profile_update);
+                let resp = msgs::api::NostrProfileSearchResponse {
                     req_id,
-                    profile: Some(profile_update.nostr_profile.clone()),
+                    data: vec![shareable_profile],
                     error: None,
                 };
-                let message = Message::Api(msgs::api::Api::NostrProfileResponse(resp));
+                let message = Message::Api(msgs::api::Api::NostrProfileSearchResponse(resp));
                 self.send_to_bank(message).await;
             }
         }

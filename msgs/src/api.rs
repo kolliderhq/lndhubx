@@ -339,10 +339,10 @@ pub struct NostrProfileRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NostrProfileResponse {
+pub struct NostrProfileSearchRequest {
     pub req_id: RequestId,
-    pub profile: Option<NostrProfile>,
-    pub error: Option<NostrResponseError>,
+    pub text: String,
+    pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,13 +350,6 @@ pub struct ShareableNostrProfile {
     pub pubkey: String,
     pub created_at: i64,
     pub profile: NostrProfile,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NostrProfileSearchRequest {
-    pub req_id: RequestId,
-    pub text: String,
-    pub limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -391,7 +384,6 @@ pub enum Api {
     QueryRouteRequest(QueryRouteRequest),
     QueryRouteResponse(QueryRouteResponse),
     NostrProfileRequest(NostrProfileRequest),
-    NostrProfileResponse(NostrProfileResponse),
     NostrProfileSearchRequest(NostrProfileSearchRequest),
     NostrProfileSearchResponse(NostrProfileSearchResponse),
 }

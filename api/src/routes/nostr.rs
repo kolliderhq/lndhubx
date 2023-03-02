@@ -127,6 +127,7 @@ pub async fn nostr_nip05(pool: WebDbPool, params: Query<Nip05Params>) -> Result<
 pub struct GetNostrProfileParams {
     lightning_address: Option<String>,
     pubkey: Option<String>,
+    wrapped: Option<bool>,
 }
 
 #[get("/get_nostr_profile")]
@@ -147,7 +148,7 @@ pub async fn get_nostr_profile(
     };
 
     let response_filter: Box<dyn Send + Fn(&Message) -> bool> = Box::new(
-        move |message| matches!(message, Message::Api(Api::NostrProfileResponse(response)) if response.req_id == req_id),
+        move |message| matches!(message, Message::Api(Api::NostrProfileSearchResponse(response)) if response.req_id == req_id),
     );
 
     let (response_tx, mut response_rx) = mpsc::channel(1);
@@ -163,10 +164,20 @@ pub async fn get_nostr_profile(
         .await
         .map_err(|_| ApiError::Comms(CommsError::FailedToSendMessage))?;
 
-    if let Ok(Some(Ok(Message::Api(Api::NostrProfileResponse(response))))) =
+    if let Ok(Some(Ok(Message::Api(Api::NostrProfileSearchResponse(response))))) =
         timeout(Duration::from_secs(5), response_rx.recv()).await
     {
-        return Ok(HttpResponse::Ok().json(&response));
+        let wrapped = params.wrapped.unwrap_or_default();
+        if wrapped {
+            return Ok(HttpResponse::Ok().json(&response));
+        } else {
+            let unwrapped_profile = response.data.get(0).map(|shareable| &shareable.profile);
+            return Ok(HttpResponse::Ok().json(json!({
+                "req_id": response.req_id,
+                "profile": unwrapped_profile,
+                "error": response.error
+            })));
+        }
     }
     Err(ApiError::Comms(CommsError::ServerResponseTimeout))
 }
