@@ -4,6 +4,7 @@ pub mod nostr;
 pub mod slack;
 pub mod xlogging;
 pub mod xzmq;
+pub use url::Url;
 
 pub mod time {
     use serde::Serializer;

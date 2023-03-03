@@ -88,6 +88,7 @@ table! {
         lud16 -> Nullable<Text>,
         nip05_verified -> Nullable<Bool>,
         content -> Text,
+        lnurl_pay_req -> Nullable<Text>,
     }
 }
 

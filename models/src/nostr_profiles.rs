@@ -39,6 +39,7 @@ pub struct NostrProfileRecord {
     pub lud16: Option<String>,
     pub nip05_verified: Option<bool>,
     pub content: String,
+    pub lnurl_pay_req: Option<String>,
 }
 
 impl NostrProfileRecord {
@@ -57,6 +58,7 @@ impl NostrProfileRecord {
         let display_name = nullable_string(&self.display_name);
         let nip05 = nullable_string(&self.nip05);
         let lud16 = nullable_string(&self.lud16);
+        let lnurl_pay_req = nullable_string(&self.lnurl_pay_req);
         let nip05_verified = nullable_bool(&self.nip05_verified);
         let upsert_query = format!(
             "\
@@ -69,7 +71,8 @@ impl NostrProfileRecord {
                     nip05, \
                     lud16, \
                     nip05_verified, \
-                    content \
+                    content, \
+                    lnurl_pay_req \
                 ) \
                 VALUES(\
                     '{pubkey}', \
@@ -80,7 +83,8 @@ impl NostrProfileRecord {
                     {nip05}, \
                     {lud16}, \
                     {nip05_verified}, \
-                    {content} \
+                    {content}, \
+                    {lnurl_pay_req}
                 ) \
                 ON CONFLICT (pubkey) \
                 DO UPDATE \
@@ -92,7 +96,8 @@ impl NostrProfileRecord {
                     nip05 = EXCLUDED.nip05, \
                     lud16 = EXCLUDED.lud16, \
                     nip05_verified = EXCLUDED.nip05_verified, \
-                     content = EXCLUDED.content \
+                    content = EXCLUDED.content, \
+                    lnurl_pay_req = EXCLUDED.lnurl_pay_req
                 WHERE \
                     n.created_at < EXCLUDED.created_at OR \
                     (n.created_at = EXCLUDED.created_at \
@@ -112,6 +117,17 @@ impl NostrProfileRecord {
             .filter(nostr_profile_records::dsl::pubkey.eq(pubkey))
             .filter(nostr_profile_records::dsl::nip05.eq(nip05))
             .set(nostr_profile_records::dsl::nip05_verified.eq(nip05_verified))
+            .execute(conn)
+    }
+
+    pub fn update_lnurl_pay_req(
+        conn: &diesel::PgConnection,
+        pubkey: &str,
+        lnurl_pay_req: Option<String>,
+    ) -> QueryResult<usize> {
+        diesel::update(nostr_profile_records::dsl::nostr_profile_records)
+            .filter(nostr_profile_records::dsl::pubkey.eq(pubkey))
+            .set(nostr_profile_records::dsl::lnurl_pay_req.eq(lnurl_pay_req))
             .execute(conn)
     }
 
