@@ -27,8 +27,6 @@ use crate::jwt::*;
 use crate::WebDbPool;
 use crate::WebSender;
 
-const RANDOM_META_DATA: &str = "randomstring";
-
 #[derive(Deserialize, Debug)]
 pub struct CreateLnurlWithdrawalParams {
     pub amount: Decimal,
@@ -199,7 +197,8 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
     let callback = format!("https://kollider.me/api/pay/{username:}");
     let max_sendable = 1000000000;
     let min_sendable = 1000;
-    let metadata = json!([["text/plain", RANDOM_META_DATA]]);
+    let desc = format!("Paid to {username:}@kollider.me");
+    let metadata = json!([["text/plain", desc]]);
 
     let resp = json!({
         "callback": callback,
@@ -261,7 +260,8 @@ pub async fn pay_address(
         }
         None => {
             let memo = "Lnurl Pay".to_string();
-            (memo, Some(format!("[[\"text/plain\",\"{RANDOM_META_DATA:}\"]]")))
+            let desc = format!("Paid to {username:}@kollider.me");
+            (memo, Some(format!("[[\"text/plain\",\"{desc}\"]]")))
         }
     };
 
