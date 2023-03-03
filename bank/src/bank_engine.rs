@@ -24,6 +24,7 @@ use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 use rand_core::{OsRng, RngCore};
 
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
+use msgs::nostr::Nostr;
 use serde::{Deserialize, Serialize};
 
 use crate::ledger::*;
@@ -2987,6 +2988,10 @@ impl BankEngine {
                 // the identity is ignored by cli listener, so we are using ServiceIdentity::Api here
                 // just to pass some argument
                 listener(msg, ServiceIdentity::Api);
+            }
+            Message::Nostr(Nostr::NostrProfilesRefetchRequest(req)) => {
+                let msg = Message::Nostr(Nostr::NostrProfilesRefetchRequest(req));
+                listener(msg, ServiceIdentity::Nostr);
             }
             _ => {}
         }

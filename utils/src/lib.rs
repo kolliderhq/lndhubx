@@ -15,6 +15,7 @@ pub mod time {
     pub const SECONDS_IN_MINUTE: u64 = 60;
 
     pub const MINUTES_IN_HOUR: u64 = 60;
+    pub const SECONDS_IN_HOUR: u64 = SECONDS_IN_MINUTE * MINUTES_IN_HOUR;
 
     pub const HOURS_IN_DAY: u64 = 24;
     pub const MINUTES_IN_DAY: u64 = HOURS_IN_DAY * MINUTES_IN_HOUR;

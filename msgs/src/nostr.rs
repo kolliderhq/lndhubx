@@ -17,7 +17,16 @@ pub struct NostrZapNote {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NostrProfilesRefetchRequest {
+    pub pubkey: Option<String>,
+    pub since_epoch_ms: Option<u64>,
+    pub until_epoch_ms: Option<u64>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Nostr {
     NostrPrivateMessage(NostrPrivateMessage),
     NostrZapNote(NostrZapNote),
+    NostrProfilesRefetchRequest(NostrProfilesRefetchRequest),
 }
