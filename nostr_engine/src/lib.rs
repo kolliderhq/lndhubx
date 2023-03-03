@@ -47,6 +47,7 @@ pub struct NostrProfileUpdate {
     pub created_at_epoch_ms: u64,
     pub received_at_epoch_ms: u64,
     pub nostr_profile: NostrProfile,
+    pub validated_lnurl_pay_req: Option<String>,
 }
 
 impl From<&NostrProfileUpdate> for ShareableNostrProfile {
@@ -55,6 +56,7 @@ impl From<&NostrProfileUpdate> for ShareableNostrProfile {
             pubkey: profile_update.pubkey.clone(),
             created_at: profile_update.created_at_epoch_ms as i64 / 1000,
             profile: profile_update.nostr_profile.clone(),
+            validated_ln_url_pay_req: profile_update.validated_lnurl_pay_req.clone(),
         }
     }
 }
@@ -68,8 +70,19 @@ pub struct InternalNostrProfileRequest {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct Nip05Response {
+struct Nip05Response {
     pub names: HashMap<String, String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct LnUrlPayResponse {
+    callback: String,
+    #[serde(rename = "maxSendable")]
+    max_sendable: u64,
+    #[serde(rename = "minSendable")]
+    min_sendable: u64,
+    metadata: String,
+    tag: String,
 }
 
 /// Returns relays for normal subscription and relays for which index should be rebuilt
@@ -193,7 +206,7 @@ pub fn spawn_events_handler(
 ) {
     tokio::spawn(async move {
         let mut nostr_engine = NostrEngine::new(nostr_client, bank_tx_sender, db_pool, logger).await;
-        nostr_engine.initialize_profile_cache();
+        nostr_engine.initialize_profile_cache().await;
         while let Some(event) = events_rx.recv().await {
             nostr_engine.process_event(&event).await;
         }
@@ -216,7 +229,7 @@ async fn send_nostr_private_msg(client: &Client, pubkey: &str, text: &str) {
 
 async fn verify_nip05(pubkey: String, nip05: String) -> Option<bool> {
     if let Some((local_part, domain)) = nip05.split_once('@') {
-        if !local_part_valid(local_part) || !domain_valid(domain) {
+        if !nip05_local_part_valid(local_part) || !domain_valid(domain) {
             return None;
         }
         let url = format!("https://{domain}/.well-known/nostr.json?name={local_part}");
@@ -247,12 +260,14 @@ async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpda
             None
         };
         nostr_profile.set_nip05_verified(verified);
+        let lnurl_pay_req = get_caps_lnurl_pay_request(&nostr_profile).await;
         let profile_update = NostrProfileUpdate {
             pubkey,
             content,
             created_at_epoch_ms,
             received_at_epoch_ms,
             nostr_profile,
+            validated_lnurl_pay_req: lnurl_pay_req,
         };
         return Some(profile_update);
     }
@@ -264,13 +279,21 @@ fn domain_valid(domain: &str) -> bool {
     !domain.is_empty() && !domain.contains('@') && domain.len() <= 253
 }
 
-fn local_part_valid(local_part: &str) -> bool {
+fn nip05_local_part_valid(local_part: &str) -> bool {
     // as per current nip05 spec only a-z0-9-_. are allowed in local part
     // to loosen restriction we also allow capitial letters A-Z
     lazy_static! {
-        static ref LOCAL_PART_RE: Regex = Regex::new(r"^[a-zA-Z0-9-_.]+$").unwrap();
+        static ref NIP05_LOCAL_PART_RE: Regex = Regex::new(r"^[a-zA-Z0-9-_.]+$").unwrap();
     }
-    LOCAL_PART_RE.is_match(local_part)
+    NIP05_LOCAL_PART_RE.is_match(local_part)
+}
+
+fn lud16_local_part_valid(local_part: &str) -> bool {
+    // as per current lud16 spec only a-z0-9-_. are allowed in local part
+    lazy_static! {
+        static ref LUD16_LOCAL_PART_RE: Regex = Regex::new(r"^[a-z0-9-_.]+$").unwrap();
+    }
+    LUD16_LOCAL_PART_RE.is_match(local_part)
 }
 
 fn create_profile_filter(request: &InternalNostrProfileRequest) -> Option<SubscriptionFilter> {
@@ -321,4 +344,76 @@ fn store_last_check(db_pool: &DbPool, last_check: u64, logger: &Logger) {
             last_check,
         );
     }
+}
+
+async fn get_lnurl_pay_request(profile: &NostrProfile) -> Option<String> {
+    if let Some(lud16_value) = profile.lud16() {
+        if let Some(lnurl) = lnurl_from_address(lud16_value) {
+            if verify_lnurl(&lnurl).await {
+                return utils::lnurl::encode(&lnurl, None).ok();
+            }
+        } else if let Ok(lnurl) = utils::lnurl::decode(lud16_value) {
+            if verify_lnurl(&lnurl).await {
+                // some people put lnurl pay request into lud16 field
+                // so we check this and return it if it is valid
+                return Some(lud16_value.clone());
+            }
+        }
+    }
+
+    if let Some(lud06_value) = profile.lud06() {
+        if let Ok(lnurl) = utils::lnurl::decode(lud06_value) {
+            if verify_lnurl(&lnurl).await {
+                // some people put lnurl pay request into lud16 field
+                // so we check this and return it if it is valid
+                return Some(lud06_value.clone());
+            }
+        }
+    }
+    None
+}
+
+async fn get_caps_lnurl_pay_request(profile: &NostrProfile) -> Option<String> {
+    get_lnurl_pay_request(profile)
+        .await
+        .map(|pay_request| pay_request.to_uppercase())
+}
+
+fn lnurl_from_address(lightning_address: &str) -> Option<String> {
+    if let Some((local_part, domain)) = lightning_address.split_once('@') {
+        if lud16_local_part_valid(local_part) && domain_valid(domain) {
+            let link = format!("https://{domain}/.well-known/lnurlp/{local_part}");
+            return Some(link);
+        }
+    }
+    None
+}
+
+async fn verify_lnurl(url: &str) -> bool {
+    if let Ok(response) = reqwest::get(url).await {
+        if let Ok(body) = response.text().await {
+            let lnurl_verification = match serde_json::from_str::<LnUrlPayResponse>(&body) {
+                Ok(parsed) => parsed,
+                Err(_) => return false,
+            };
+
+            if utils::Url::parse(&lnurl_verification.callback).is_err() {
+                return false;
+            }
+
+            if lnurl_verification.min_sendable < 1 || lnurl_verification.max_sendable < lnurl_verification.min_sendable
+            {
+                return false;
+            }
+
+            if lnurl_verification.tag != "payRequest" {
+                return false;
+            }
+
+            // more detailed check on metadata could be performed,
+            // but that should be enough for our purposes
+            return serde_json::from_str::<Vec<Vec<String>>>(&lnurl_verification.metadata).is_ok();
+        }
+    }
+    false
 }

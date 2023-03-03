@@ -169,6 +169,7 @@ impl NostrEngine {
                                 pubkey: record.pubkey,
                                 created_at: record.created_at / 1000,
                                 profile,
+                                validated_ln_url_pay_req: record.lnurl_pay_req,
                             }
                         })
                 })
@@ -179,41 +180,42 @@ impl NostrEngine {
         }
     }
 
-    pub fn initialize_profile_cache(&mut self) {
-        match self.db_pool.try_get() {
-            Some(conn) => {
-                if let Ok(profile_records) = NostrProfileRecord::fetch_all(&conn) {
-                    let cache = profile_records
-                        .into_iter()
-                        .filter_map(|record| {
-                            if record.content.is_empty() {
-                                None
-                            } else {
-                                serde_json::from_str::<NostrProfile>(&record.content)
-                                    .ok()
-                                    .map(|mut profile| {
-                                        profile.set_nip05_verified(record.nip05_verified);
-                                        let profile_update = NostrProfileUpdate {
-                                            pubkey: record.pubkey.clone(),
-                                            content: record.content,
-                                            created_at_epoch_ms: record.created_at as u64,
-                                            received_at_epoch_ms: record.received_at as u64,
-                                            nostr_profile: profile,
-                                        };
-                                        (record.pubkey, profile_update)
-                                    })
-                            }
-                        })
-                        .collect();
-                    self.nostr_profile_cache = cache;
-                }
-            }
+    pub async fn initialize_profile_cache(&mut self) {
+        let maybe_profile_records = match self.db_pool.try_get() {
+            Some(conn) => NostrProfileRecord::fetch_all(&conn).ok(),
             None => {
                 log::error!(
                     self.logger,
                     "Failed to initialize profile cache. Could not get DB connection"
                 );
+                return;
             }
+        };
+        if let Some(profile_records) = maybe_profile_records {
+            let cache = profile_records
+                .into_iter()
+                .filter_map(|record| {
+                    if record.content.is_empty() {
+                        None
+                    } else {
+                        serde_json::from_str::<NostrProfile>(&record.content)
+                            .ok()
+                            .map(|mut profile| {
+                                profile.set_nip05_verified(record.nip05_verified);
+                                let profile_update = NostrProfileUpdate {
+                                    pubkey: record.pubkey.clone(),
+                                    content: record.content,
+                                    created_at_epoch_ms: record.created_at as u64,
+                                    received_at_epoch_ms: record.received_at as u64,
+                                    nostr_profile: profile,
+                                    validated_lnurl_pay_req: record.lnurl_pay_req,
+                                };
+                                (record.pubkey, profile_update)
+                            })
+                    }
+                })
+                .collect();
+            self.nostr_profile_cache = cache;
         }
     }
 
@@ -304,6 +306,7 @@ fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProf
         lud16: profile_update.nostr_profile.lud16().clone(),
         nip05_verified: profile_update.nostr_profile.nip05_verified(),
         content: profile_update.content.clone(),
+        lnurl_pay_req: profile_update.validated_lnurl_pay_req.clone(),
     };
     record.upsert(conn)
 }
