@@ -64,9 +64,13 @@ pub mod currencies {
 
 #[cfg(test)]
 mod tests {
+    use crate::lnurl;
+
     #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+    fn lnurl_encode_decode() {
+        let url = "https://kollider.me/.well-known/lnurlp/kollider";
+        let lnurl = lnurl::encode(url, None).unwrap();
+        let url_decoded = lnurl::decode(&lnurl).unwrap();
+        assert_eq!(url, url_decoded);
     }
 }

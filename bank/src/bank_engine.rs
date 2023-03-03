@@ -2586,7 +2586,7 @@ impl BankEngine {
 
                     let lnurl_path = String::from("https://kollider.me/api/lnurl_withdrawal/request");
                     let q = msg.req_id;
-                    let lnurl = if let Ok(encoded) = utils::lnurl::encode(lnurl_path, Some(q.to_string())) {
+                    let lnurl = if let Ok(encoded) = utils::lnurl::encode(&lnurl_path, Some(q.to_string())) {
                         encoded
                     } else {
                         response.error = Some(CreateLnurlWithdrawalError::FailedToCreateLnUrl);

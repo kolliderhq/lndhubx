@@ -5014,6 +5014,7 @@ dependencies = [
  "slog",
  "slog-async",
  "slog-term",
+ "url 1.7.2",
  "zmq",
 ]
 
