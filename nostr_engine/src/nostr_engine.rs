@@ -169,7 +169,7 @@ impl NostrEngine {
                                 pubkey: record.pubkey,
                                 created_at: record.created_at / 1000,
                                 profile,
-                                validated_ln_url_pay_req: record.lnurl_pay_req,
+                                validated_lnurl_pay_req: record.lnurl_pay_req,
                             }
                         })
                 })

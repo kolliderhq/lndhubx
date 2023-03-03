@@ -56,7 +56,7 @@ impl From<&NostrProfileUpdate> for ShareableNostrProfile {
             pubkey: profile_update.pubkey.clone(),
             created_at: profile_update.created_at_epoch_ms as i64 / 1000,
             profile: profile_update.nostr_profile.clone(),
-            validated_ln_url_pay_req: profile_update.validated_lnurl_pay_req.clone(),
+            validated_lnurl_pay_req: profile_update.validated_lnurl_pay_req.clone(),
         }
     }
 }

@@ -351,7 +351,7 @@ pub struct ShareableNostrProfile {
     pub pubkey: String,
     pub created_at: i64,
     pub profile: NostrProfile,
-    pub validated_ln_url_pay_req: Option<String>,
+    pub validated_lnurl_pay_req: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
