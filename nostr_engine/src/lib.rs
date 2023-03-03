@@ -114,7 +114,7 @@ pub fn spawn_profile_indexer(
                     log::info!(logger, "Indexer progress [100%]");
                     break;
                 }
-                let range_until = range_since + utils::time::SECONDS_IN_DAY;
+                let range_until = range_since + utils::time::SECONDS_IN_HOUR;
                 let range_until_capped = range_until.min(time_now);
                 let internal_request = InternalNostrProfileRequest {
                     pubkey: None,
@@ -142,7 +142,7 @@ pub fn spawn_profile_indexer(
                         range_until_capped
                     );
                 }
-                tokio::time::sleep(tokio::time::Duration::from_secs(utils::time::SECONDS_IN_MINUTE)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 store_last_check(&db_pool, range_since, &logger);
                 range_since = range_until;
             }
@@ -163,7 +163,7 @@ pub fn spawn_profile_indexer(
                 None => return,
             };
             nostr_client.subscribe(vec![subscription_filter]).await;
-            tokio::time::sleep(tokio::time::Duration::from_secs(utils::time::SECONDS_IN_DAY)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(utils::time::SECONDS_IN_HOUR)).await;
             store_last_check(&db_pool, since_epoch_seconds, &logger);
         }
     });

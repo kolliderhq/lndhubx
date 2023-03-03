@@ -1,4 +1,5 @@
 use crate::actions::Action;
+use msgs::nostr::Nostr;
 use msgs::{cli::Cli as CliMsg, dealer::Dealer, Message};
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
@@ -42,6 +43,9 @@ impl ResponseHandler {
                     }
                     Message::Cli(CliMsg::MakeTxResult(tx_result)) => {
                         println!("Received transaction result: {tx_result:?}");
+                    }
+                    Message::Nostr(Nostr::NostrProfilesRefetchRequest(delivery_receipt)) => {
+                        println!("Received delivery receipt: {delivery_receipt:?}");
                     }
                     _ => {
                         println!("Received unhandled message: {msg:?}")

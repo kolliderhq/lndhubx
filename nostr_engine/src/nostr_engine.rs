@@ -99,6 +99,15 @@ impl NostrEngine {
                 let message = Message::Api(msgs::api::Api::NostrProfileSearchResponse(resp));
                 self.send_to_bank(message).await;
             }
+            Message::Nostr(msgs::nostr::Nostr::NostrProfilesRefetchRequest(req)) => {
+                let internal_request = InternalNostrProfileRequest {
+                    pubkey: req.pubkey.clone(),
+                    since: req.since_epoch_ms.map(|ms| ms / 1000),
+                    until: req.until_epoch_ms.map(|ms| ms / 1000),
+                    limit: req.limit,
+                };
+                request_user_profile(&self.nostr_client, &internal_request).await;
+            }
             Message::Nostr(msgs::nostr::Nostr::NostrPrivateMessage(req)) => {
                 send_nostr_private_msg(&self.nostr_client, &req.pubkey, &req.text).await;
             }

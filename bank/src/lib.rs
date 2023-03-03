@@ -155,8 +155,12 @@ pub async fn start(
         _ => {}
     };
 
-    let mut cli_listener = |msg: Message, _destination: ServiceIdentity| {
-        utils::xzmq::send_as_json(&cli_socket, &msg);
+    let mut cli_listener = |msg: Message, _destination: ServiceIdentity| match msg {
+        Message::Nostr(nostr_msg) => {
+            utils::xzmq::send_as_bincode(&nostr_sender, &Message::Nostr(nostr_msg.clone()));
+            utils::xzmq::send_as_json(&cli_socket, &Message::Nostr(nostr_msg))
+        }
+        _ => utils::xzmq::send_as_json(&cli_socket, &msg),
     };
 
     loop {

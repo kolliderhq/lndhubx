@@ -1,6 +1,7 @@
 use core_types::{Currency, UserId};
 use msgs::cli::{Cli, MakeTx};
 use msgs::dealer::{BankStateRequest, CreateInvoiceRequest, Dealer};
+use msgs::nostr::{Nostr, NostrProfilesRefetchRequest};
 use msgs::Message;
 use rust_decimal::Decimal;
 use structopt::StructOpt;
@@ -26,6 +27,16 @@ pub enum Action {
         amount: Decimal,
         #[structopt(short = "c", long = "currency")]
         currency: Currency,
+    },
+    RefetchNostrProfiles {
+        #[structopt(short = "p", long = "pubkey")]
+        pubkey: Option<String>,
+        #[structopt(short = "s", long = "since")]
+        since_epoch_ms: Option<u64>,
+        #[structopt(short = "u", long = "until")]
+        until_epoch_ms: Option<u64>,
+        #[structopt(short = "l", long = "limit")]
+        limit: Option<usize>,
     },
 }
 
@@ -56,6 +67,17 @@ impl Action {
                 inbound_account_id,
                 amount,
                 currency,
+            })),
+            Self::RefetchNostrProfiles {
+                pubkey,
+                since_epoch_ms,
+                until_epoch_ms,
+                limit,
+            } => Message::Nostr(Nostr::NostrProfilesRefetchRequest(NostrProfilesRefetchRequest {
+                pubkey,
+                since_epoch_ms,
+                until_epoch_ms,
+                limit,
             })),
         }
     }
