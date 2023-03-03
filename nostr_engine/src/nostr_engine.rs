@@ -169,6 +169,7 @@ impl NostrEngine {
                                 pubkey: record.pubkey,
                                 created_at: record.created_at / 1000,
                                 profile,
+                                validated_ln_url_pay_req: record.lnurl_pay_req,
                             }
                         })
                 })
@@ -207,7 +208,7 @@ impl NostrEngine {
                                     created_at_epoch_ms: record.created_at as u64,
                                     received_at_epoch_ms: record.received_at as u64,
                                     nostr_profile: profile,
-                                    lnurl_pay_req: record.lnurl_pay_req,
+                                    validated_lnurl_pay_req: record.lnurl_pay_req,
                                 };
                                 (record.pubkey, profile_update)
                             })
@@ -305,7 +306,7 @@ fn insert_profile_update(conn: &diesel::PgConnection, profile_update: &NostrProf
         lud16: profile_update.nostr_profile.lud16().clone(),
         nip05_verified: profile_update.nostr_profile.nip05_verified(),
         content: profile_update.content.clone(),
-        lnurl_pay_req: profile_update.lnurl_pay_req.clone(),
+        lnurl_pay_req: profile_update.validated_lnurl_pay_req.clone(),
     };
     record.upsert(conn)
 }

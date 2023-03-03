@@ -47,7 +47,7 @@ pub struct NostrProfileUpdate {
     pub created_at_epoch_ms: u64,
     pub received_at_epoch_ms: u64,
     pub nostr_profile: NostrProfile,
-    pub lnurl_pay_req: Option<String>,
+    pub validated_lnurl_pay_req: Option<String>,
 }
 
 impl From<&NostrProfileUpdate> for ShareableNostrProfile {
@@ -56,6 +56,7 @@ impl From<&NostrProfileUpdate> for ShareableNostrProfile {
             pubkey: profile_update.pubkey.clone(),
             created_at: profile_update.created_at_epoch_ms as i64 / 1000,
             profile: profile_update.nostr_profile.clone(),
+            validated_ln_url_pay_req: profile_update.validated_lnurl_pay_req.clone(),
         }
     }
 }
@@ -266,7 +267,7 @@ async fn try_profile_update_from_event(event: &Event) -> Option<NostrProfileUpda
             created_at_epoch_ms,
             received_at_epoch_ms,
             nostr_profile,
-            lnurl_pay_req,
+            validated_lnurl_pay_req: lnurl_pay_req,
         };
         return Some(profile_update);
     }
