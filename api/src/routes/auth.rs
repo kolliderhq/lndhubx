@@ -4,6 +4,7 @@ use diesel::result::DatabaseErrorKind;
 use diesel::result::Error as DieselError;
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use utils::xlogging::slog as log;
@@ -32,11 +33,15 @@ pub async fn create(
     logger: Data<Logger>,
     creation_limiter: Data<Arc<Mutex<CreationLimiter>>>,
     register_data: Json<RegisterData>,
+    reserved_usernames: Data<HashSet<String>>,
 ) -> Result<HttpResponse, ApiError> {
     let username = match &register_data.username {
         Some(un) => un.clone().to_lowercase(),
         None => Uuid::new_v4().to_string().to_lowercase(),
     };
+    if reserved_usernames.contains(&username) {
+        return Err(ApiError::Auth(AuthError::UserExists));
+    }
 
     {
         let limiter = creation_limiter.into_inner();
