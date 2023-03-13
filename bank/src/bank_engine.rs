@@ -1891,7 +1891,7 @@ impl BankEngine {
                         msg.rate = Some(Rate::new(Currency::BTC, Currency::BTC, dec!(1)));
                     }
 
-                    let invoice = if let Ok(invoice) =
+                    let mut invoice = if let Ok(invoice) =
                         models::invoices::Invoice::get_by_payment_request(&psql_connection, payment_request.clone())
                     {
                         invoice
@@ -2274,7 +2274,18 @@ impl BankEngine {
                             err
                         );
                     } else {
-                        let time_now_sec = utils::time::time_now() / 1000;
+                        let time_now_ms = utils::time::time_now();
+                        invoice.settled = true;
+                        invoice.settled_date = time_now_ms as i64;
+                        if let Err(err) = invoice.update(&psql_connection) {
+                            slog::error!(
+                                self.logger,
+                                "Failed to store updated invoice: {:?}, error: {:?}",
+                                invoice,
+                                err
+                            );
+                        }
+                        let time_now_sec = time_now_ms / utils::time::MILLISECONDS_IN_SECOND;
                         publish_if_zap_note(&invoice, None, None, time_now_sec, true, listener);
                     }
                 }
