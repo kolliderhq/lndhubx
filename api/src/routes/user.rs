@@ -545,7 +545,8 @@ pub async fn check_username_available(
 
 #[derive(Deserialize)]
 pub struct CheckPaymentParams {
-    payment_hash: String,
+    payment_hash: Option<String>,
+    payment_request: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -559,9 +560,24 @@ pub async fn check_payment(pool: WebDbPool, params: Query<CheckPaymentParams>) -
 
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
 
-    let invoice = match Invoice::get_by_payment_hash(&conn, payment_hash) {
-        Ok(i) => i,
-        Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
+    if params.payment_hash.is_none() && params.payment_request.is_none() {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied))
+    }
+
+    let invoice = if let Some(ph) = params.payment_hash.clone() {
+        let i = match Invoice::get_by_payment_hash(&conn, ph) {
+            Ok(i) => i,
+            Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
+        };
+        i
+    } else if let Some(pr) = params.payment_request.clone() {
+        let i = match Invoice::get_by_payment_request(&conn, pr) {
+            Ok(i) => i,
+            Err(_) => return Err(ApiError::Db(DbError::CouldNotFetchData)),
+        };
+        i
+    } else {
+        return Err(ApiError::Db(DbError::CouldNotFetchData))
     };
 
     let response = CheckPaymentHashResponse { paid: invoice.settled };
