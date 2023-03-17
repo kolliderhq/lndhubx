@@ -15,6 +15,8 @@ pub enum AuthError {
     RegistrationLimitExceeded,
     #[error(display = "New registrations disabled.")]
     RegistrationsDisabled,
+    #[error(display = "Invalid username")]
+    InvalidUsername,
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -119,6 +121,7 @@ impl error::ResponseError for ApiError {
                 AuthError::IncorrectPassword => HttpResponse::Unauthorized(),
                 AuthError::RegistrationLimitExceeded => HttpResponse::Unauthorized(),
                 AuthError::RegistrationsDisabled => HttpResponse::Unauthorized(),
+                AuthError::InvalidUsername => HttpResponse::Unauthorized(),
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => HttpResponse::InternalServerError(),
@@ -155,6 +158,7 @@ impl error::ResponseError for ApiError {
                 AuthError::IncorrectPassword => StatusCode::UNAUTHORIZED,
                 AuthError::RegistrationLimitExceeded => StatusCode::UNAUTHORIZED,
                 AuthError::RegistrationsDisabled => StatusCode::UNAUTHORIZED,
+                AuthError::InvalidUsername => StatusCode::UNAUTHORIZED,
             },
             ApiError::Db(db) => match db {
                 DbError::DbConnectionError => StatusCode::INTERNAL_SERVER_ERROR,

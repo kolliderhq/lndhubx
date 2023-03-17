@@ -39,12 +39,17 @@ pub async fn create(
         Some(un) => un.clone().to_lowercase(),
         None => Uuid::new_v4().to_string().to_lowercase(),
     };
+
+    if !utils::user::check_username_valid(&username) {
+        return Err(ApiError::Auth(AuthError::InvalidUsername));
+    }
+
     if reserved_usernames.contains(&username) {
         return Err(ApiError::Auth(AuthError::UserExists));
     }
 
     {
-        let limiter = creation_limiter.into_inner();
+        let limiter = creation_limiter.clone().into_inner();
         let mut creation_limiter_guard = limiter.lock().await;
         if !creation_limiter_guard.is_creation_enabled() {
             log::warn!(
@@ -61,7 +66,17 @@ pub async fn create(
         }
     }
 
-    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+    let conn = match pool.try_get() {
+        Some(c) => c,
+        None => {
+            {
+                let limiter = creation_limiter.clone().into_inner();
+                let mut creation_limiter_guard = limiter.lock().await;
+                creation_limiter_guard.decrease();
+            }
+            return Err(ApiError::Db(DbError::DbConnectionError));
+        }
+    };
 
     let hashed_password = hash(&username, &register_data.password);
 
@@ -73,12 +88,19 @@ pub async fn create(
 
     let uid = match user.insert(&conn) {
         Ok(uid) => uid,
-        Err(err) => match err {
-            DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
-                return Err(ApiError::Db(DbError::UserAlreadyExists))
+        Err(err) => {
+            {
+                let limiter = creation_limiter.into_inner();
+                let mut creation_limiter_guard = limiter.lock().await;
+                creation_limiter_guard.decrease();
             }
-            _ => return Err(ApiError::Db(DbError::Unknown)),
-        },
+            return match err {
+                DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
+                    Err(ApiError::Db(DbError::UserAlreadyExists))
+                }
+                _ => Err(ApiError::Db(DbError::Unknown)),
+            };
+        }
     };
 
     // TODO: Make this configurable.
