@@ -109,6 +109,17 @@ impl CreationLimiter {
             Err(replenish_seconds_left)
         }
     }
+
+    pub fn decrease(&mut self) {
+        if self.created > 0 {
+            self.created -= 1;
+        }
+    }
+
+    pub fn is_remaining_quota(&self) -> bool {
+        let elapsed_seconds = self.last_interval_start.elapsed().as_secs();
+        elapsed_seconds >= self.creation_quota_interval_seconds || self.created < self.creation_quota
+    }
 }
 
 pub type WebDbPool = web::Data<DbPool>;
