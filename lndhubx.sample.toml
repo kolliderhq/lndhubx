@@ -85,9 +85,9 @@ leverage_check_interval_ms = 1000
 reserved_usernames = []
 
 [max_single_order_quantities]
-BTCUSD.PERP = 200
-BTCEUR.PERP = 200
-BTCGBP.PERP = 200
+"BTCUSD.PERP" = 200
+"BTCEUR.PERP" = 200
+"BTCGBP.PERP" = 200
 
 # Risk the dealer is willing to take before hedging.
 [risk_tolerances]
