@@ -376,16 +376,20 @@ impl DealerEngine {
                 }
             };
 
-            let capped_order_quantity = match self.max_single_order_quantities.get(&symbol) {
+            let capped_order_quantity = match self.max_single_order_quantities.get(&symbol.to_lowercase()) {
                 Some(cap) => {
-                    slog::info!(
-                        self.logger,
-                        "Capping order quantity for {} from {} to {}",
-                        symbol,
-                        order_quantity,
-                        cap
-                    );
-                    *cap
+                    if order_quantity > *cap {
+                        slog::info!(
+                            self.logger,
+                            "Capping order quantity for {} from {} to {}",
+                            symbol,
+                            order_quantity,
+                            cap
+                        );
+                        *cap
+                    } else {
+                        order_quantity
+                    }
                 }
                 None => order_quantity,
             };
