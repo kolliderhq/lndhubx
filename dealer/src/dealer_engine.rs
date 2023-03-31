@@ -62,6 +62,7 @@ pub struct DealerEngineSettings {
     pub leverage_check_interval_ms: u64,
 
     pub spread: Decimal,
+    pub max_single_order_quantities: HashMap<String, u64>,
 }
 
 pub struct DealerEngine {
@@ -87,6 +88,7 @@ pub struct DealerEngine {
     last_leverage_check_timestamp: Instant,
     spread: Decimal,
     funding_profit: Decimal,
+    max_single_order_quantities: HashMap<String, u64>,
 }
 
 impl DealerEngine {
@@ -142,6 +144,7 @@ impl DealerEngine {
             last_leverage_check_timestamp,
             spread: settings.spread,
             funding_profit: initial_funding_pnl,
+            max_single_order_quantities: settings.max_single_order_quantities,
         }
     }
 
@@ -373,16 +376,34 @@ impl DealerEngine {
                 }
             };
 
+            let capped_order_quantity = match self.max_single_order_quantities.get(&symbol.to_lowercase()) {
+                Some(cap) => {
+                    if order_quantity > *cap {
+                        slog::info!(
+                            self.logger,
+                            "Capping order quantity for {} from {} to {}",
+                            symbol,
+                            order_quantity,
+                            cap
+                        );
+                        *cap
+                    } else {
+                        order_quantity
+                    }
+                }
+                None => order_quantity,
+            };
+
             slog::info!(
                 self.logger,
                 "Placing trade on side: {:?} of qty: {} for symbol: {}",
                 trade_side,
-                order_quantity,
+                capped_order_quantity,
                 symbol
             );
 
             self.ws_client
-                .make_order(order_quantity, symbol, trade_side)
+                .make_order(capped_order_quantity, symbol, trade_side)
                 .expect("Failed to create order");
         }
     }
@@ -1413,6 +1434,7 @@ mod tests {
             position_max_leverage: dec!(1.0001),
             leverage_check_interval_ms: 1000,
             spread: dec!(0.01),
+            max_single_order_quantities: HashMap::new(),
         };
         let ws_client = MockWsClient::new();
         let mut dealer = DealerEngine::new(settings, ws_client, Decimal::ZERO);
