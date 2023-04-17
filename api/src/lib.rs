@@ -35,7 +35,9 @@ pub struct ApiSettings {
     creation_quota: u64,
     creation_quota_interval_seconds: u64,
     api_logging_settings: LoggingSettings,
+    #[serde(default)]
     admin_uids: Option<Vec<UserId>>,
+    reserved_usernames: Vec<String>,
 }
 
 impl ApiSettings {
@@ -107,6 +109,17 @@ impl CreationLimiter {
             Err(replenish_seconds_left)
         }
     }
+
+    pub fn decrease(&mut self) {
+        if self.created > 0 {
+            self.created -= 1;
+        }
+    }
+
+    pub fn is_remaining_quota(&self) -> bool {
+        let elapsed_seconds = self.last_interval_start.elapsed().as_secs();
+        elapsed_seconds >= self.creation_quota_interval_seconds || self.created < self.creation_quota
+    }
 }
 
 pub type WebDbPool = web::Data<DbPool>;
@@ -149,6 +162,12 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
         .into_iter()
         .collect::<HashSet<UserId>>();
 
+    let reserved_usernames = settings
+        .reserved_usernames
+        .iter()
+        .map(|username| username.to_lowercase())
+        .collect::<HashSet<String>>();
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -168,6 +187,7 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .app_data(Data::new(logger.clone()))
             .app_data(Data::new(creation_limiter.clone()))
             .app_data(Data::new(admin_uids.clone()))
+            .app_data(Data::new(reserved_usernames.clone()))
             .service(routes::auth::create)
             .service(routes::auth::auth)
             .service(routes::auth::whoami)

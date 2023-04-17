@@ -301,8 +301,9 @@ pub async fn pay_address(
         timeout(Duration::from_secs(5), response_rx.recv()).await
     {
         let resp = json!({
-          "pr": invoice.payment_request,
-          "routes": [],
+            "pr": invoice.payment_request,
+            "payment_hash": invoice.payment_hash,
+            "routes": [],
         });
         return Ok(HttpResponse::Ok().json(resp));
     }

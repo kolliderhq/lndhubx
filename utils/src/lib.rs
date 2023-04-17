@@ -2,8 +2,10 @@ pub mod config;
 pub mod lnurl;
 pub mod nostr;
 pub mod slack;
+pub mod user;
 pub mod xlogging;
 pub mod xzmq;
+
 pub use url::Url;
 
 pub mod time {
