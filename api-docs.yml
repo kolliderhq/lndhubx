@@ -189,6 +189,76 @@ paths:
         '200':
           description: OK
 
+  /checkpayment:
+    get:
+      summary: Lets you check the status of a payment.
+      parameters:
+        - in: query
+          name: payment_hash
+          schema:
+            type: string 
+          required: true
+          description: The payment hash of the payment you would like to get the status of.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckPaymentResponse'
+
+  /get_onchain_address:
+    get:
+      summary: Gets an BTC on-chain deposit address.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOnchainAddressResponse'
+
+  /make_onchain_swap:
+    post:
+      summary: This allows you to send lightning bitcoin to an onchain address.
+      requestBody:
+        description: Lightning to onchain Bitcoin.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/requestBodies/OnchainSwapRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnchainSwapResponse'
+
+  /lnurl_withdrawal/create:
+    get:
+      summary: Create an lnurl withdrawal request.
+      parameters:
+        - in: query
+          name: amount 
+          schema:
+            type: integer 
+          required: true
+          description: The amount of the withdrawal request.
+        - in: query
+          name: currency
+          schema:
+            type: string 
+          required: true
+          description: The currency you want to withdrawal (BTC, USD, EUR).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateLnurlWithdrawalRequest'
 
 components:
   schemas:
@@ -247,6 +317,33 @@ components:
           type: integer
         error:
           type: string
+
+    CheckPaymentResponse:
+      type: object
+      properties:
+        paid:
+          type: bool
+
+    GetOnchainAddressResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        commitment:
+          type: string 
+        signature:
+          type: string
+        secret_access_key:
+          type: string
+
+    OnchainSwapResponse:
+      type: object
+      properties:
+        bolt11_invoice:
+          type: string 
+        fees_sats:
+          type: integer 
+
     Swap:
       type: object
       properties:
@@ -262,6 +359,7 @@ components:
           type: string
         error:
           type: string
+
     PayInvoice:
       type: object
       properties:
@@ -288,6 +386,11 @@ components:
           type: string
         internal_tx_fee:
           type: string
+
+    CreateLnurlWithdrawalRequest:
+      type: object
+      properties:
+        lnurl: string
       
   requestBodies:
     CreateUser:
@@ -317,4 +420,14 @@ components:
         amount:
           type: string
           description: The amount you want to swap.
+
+    OnchainSwapRequest:
+      type: object
+      properties:
+        amount_sats:
+          type: integer 
+        onchain_address:
+          type: string 
+        onchain_sats_per_vbyte:
+          type: integer
   
