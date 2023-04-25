@@ -5,3 +5,4 @@ pub mod lnurl;
 pub mod nostr;
 pub mod user;
 pub mod user_profile;
+pub mod dealer;

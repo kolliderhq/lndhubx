@@ -37,6 +37,11 @@ pub struct DealerPnl {
     pub funding_pnl: Option<Decimal>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DealerState {
+    pub exposures: HashMap<Currency, Decimal>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DealerEngineSettings {
     pub psql_url: String,

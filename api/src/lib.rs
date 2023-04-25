@@ -38,6 +38,7 @@ pub struct ApiSettings {
     #[serde(default)]
     admin_uids: Option<Vec<UserId>>,
     reserved_usernames: Vec<String>,
+    dealer_only_mode: bool,
 }
 
 impl ApiSettings {
@@ -168,6 +169,8 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
         .map(|username| username.to_lowercase())
         .collect::<HashSet<String>>();
 
+    let dealer_only_mode = settings.dealer_only_mode.clone();
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -188,6 +191,9 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .app_data(Data::new(creation_limiter.clone()))
             .app_data(Data::new(admin_uids.clone()))
             .app_data(Data::new(reserved_usernames.clone()))
+            .app_data(Data::new(dealer_only_mode))
+            .service(routes::dealer::get_hedge_state)
+            .service(routes::dealer::set_hedge_state)
             .service(routes::auth::create)
             .service(routes::auth::auth)
             .service(routes::auth::whoami)

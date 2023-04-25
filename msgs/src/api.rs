@@ -362,6 +362,11 @@ pub struct NostrProfileSearchResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DealerHedgeStateRequest {
+    pub req_id: RequestId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Api {
     InvoiceRequest(InvoiceRequest),
     InvoiceResponse(InvoiceResponse),
@@ -388,4 +393,5 @@ pub enum Api {
     NostrProfileRequest(NostrProfileRequest),
     NostrProfileSearchRequest(NostrProfileSearchRequest),
     NostrProfileSearchResponse(NostrProfileSearchResponse),
+    DealerHedgeStateRequest(DealerHedgeStateRequest)
 }
