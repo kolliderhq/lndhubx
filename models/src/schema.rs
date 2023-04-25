@@ -1,4 +1,6 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     accounts (account_id) {
         account_id -> Uuid,
         balance -> Numeric,
@@ -10,7 +12,18 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
+    dca_settings (id) {
+        id -> Int4,
+        uid -> Int4,
+        interval -> Text,
+        amount -> Int8,
+        from_currency -> Text,
+        to_currency -> Text,
+    }
+}
+
+diesel::table! {
     deezy_btc_ln_swaps (id) {
         id -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -23,7 +36,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     deezy_secret_keys (secret_key) {
         secret_key -> Text,
         created_at -> Nullable<Timestamp>,
@@ -31,14 +44,14 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     internal_user_mappings (username) {
         username -> Text,
         uid -> Int4,
     }
 }
 
-table! {
+diesel::table! {
     invoices (payment_hash) {
         payment_hash -> Text,
         payment_request -> Text,
@@ -61,7 +74,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     ln_addresses (id) {
         id -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -70,14 +83,14 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     nostr_profile_indexer_times (id) {
         id -> Int4,
         last_check -> Nullable<Int8>,
     }
 }
 
-table! {
+diesel::table! {
     nostr_profile_records (pubkey) {
         pubkey -> Text,
         created_at -> Int8,
@@ -92,7 +105,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     nostr_public_keys (pubkey) {
         created_at -> Nullable<Timestamp>,
         pubkey -> Text,
@@ -100,7 +113,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     pre_signups (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -108,7 +121,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     summary_transactions (txid) {
         txid -> Text,
         fee_txid -> Nullable<Text>,
@@ -132,7 +145,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     transactions (txid) {
         txid -> Text,
         created_at -> Int8,
@@ -150,7 +163,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     user_profiles (uid) {
         uid -> Int4,
         email -> Nullable<Text>,
@@ -163,7 +176,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     users (uid) {
         uid -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -173,13 +186,15 @@ table! {
     }
 }
 
-joinable!(accounts -> users (uid));
-joinable!(internal_user_mappings -> users (uid));
-joinable!(nostr_public_keys -> users (uid));
-joinable!(user_profiles -> users (uid));
+diesel::joinable!(accounts -> users (uid));
+diesel::joinable!(dca_settings -> users (uid));
+diesel::joinable!(internal_user_mappings -> users (uid));
+diesel::joinable!(nostr_public_keys -> users (uid));
+diesel::joinable!(user_profiles -> users (uid));
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     accounts,
+    dca_settings,
     deezy_btc_ln_swaps,
     deezy_secret_keys,
     internal_user_mappings,

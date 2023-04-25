@@ -222,6 +222,9 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .service(routes::user_profile::user_profile)
             .service(routes::admin::disable_create)
             .service(routes::admin::enable_create)
+            .service(routes::user::get_dca_settings)
+            .service(routes::user::delete_dca_settings)
+            .service(routes::user::set_dca_settings)
     })
     .bind(endpoint)?
     .run()
