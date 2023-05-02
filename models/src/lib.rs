@@ -19,6 +19,7 @@ pub mod summary_transactions;
 pub mod transactions;
 pub mod user_profiles;
 pub mod users;
+pub mod dca;
 
 cfg_if::cfg_if! {
     if #[cfg(debug_assertions)] {

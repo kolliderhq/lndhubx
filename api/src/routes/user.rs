@@ -3,10 +3,12 @@ use actix_web::{
     web::{Json, Query},
     HttpResponse,
 };
+use bigdecimal::BigDecimal;
 
 use core_types::{Currency, Money};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use std::str::FromStr;
 
 use actix_web::http::header;
 use std::{sync::Arc, time::Duration};
@@ -32,6 +34,7 @@ use models::invoices::*;
 use models::ln_addresses::*;
 use models::summary_transactions::SummaryTransaction;
 use models::users::User;
+use models::dca::{DcaSetting, InsertableDcaSetting};
 
 const MINIMUM_PATTERN_LENGTH: usize = 1;
 
@@ -848,4 +851,87 @@ pub async fn make_onchain_swap(
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
         .json(swap_response))
+}
+
+#[get("/get_dca_settings")]
+pub async fn get_dca_settings(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    let dca_settings = match DcaSetting::get_by_uid(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(&dca_settings))
+}
+
+#[get("/delete_dca_settings")]
+pub async fn delete_dca_settings(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    let dca_settings = match DcaSetting::delete(&conn, uid as i32) {
+        Ok(u) => u,
+        Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
+    };
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .json(json!({"status": "ok"})))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DcaSettingData {
+    pub interval: String,
+    pub amount: BigDecimal,
+    pub from_currency: String,
+    pub to_currency: String
+}
+
+#[post("/set_dca_settings")]
+pub async fn set_dca_settings(
+    pool: WebDbPool,
+    auth_data: AuthData,
+    data: Json<DcaSettingData>,
+) -> Result<HttpResponse, ApiError> {
+    let uid = auth_data.uid as u64;
+
+    let intervals = vec!["1d".to_string(), "1w".to_string(), "1m".to_string()];
+
+    if !intervals.contains(&data.interval) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    if let Err(_) = Currency::from_str(&data.from_currency) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    if let Err(_) = Currency::from_str(&data.to_currency) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
+
+    if let Err(_) = DcaSetting::delete(&conn, uid as i32) {
+        dbg!("Dca setting doesn't exist yet.");
+    };
+
+    let insertable_dca_setting = InsertableDcaSetting {
+        uid: uid as i32,
+        amount: data.amount.clone(),
+        interval: data.interval.clone(),
+        from_currency: data.from_currency.clone(),
+        to_currency: data.to_currency.clone()
+    };
+
+    if insertable_dca_setting.insert(&conn).is_ok() {
+        Ok(HttpResponse::Ok().json(json!({"status": "ok"})))
+    } else {
+        Err(ApiError::Db(DbError::UserDoesNotExist))
+    }
 }

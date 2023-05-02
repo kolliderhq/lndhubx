@@ -11,6 +11,17 @@ table! {
 }
 
 table! {
+    dca_settings (id) {
+        id -> Int4,
+        uid -> Int4,
+        interval -> Text,
+        amount -> Numeric,
+        from_currency -> Text,
+        to_currency -> Text,
+    }
+}
+
+table! {
     deezy_btc_ln_swaps (id) {
         id -> Int4,
         created_at -> Nullable<Timestamp>,
@@ -174,12 +185,14 @@ table! {
 }
 
 joinable!(accounts -> users (uid));
+joinable!(dca_settings -> users (uid));
 joinable!(internal_user_mappings -> users (uid));
 joinable!(nostr_public_keys -> users (uid));
 joinable!(user_profiles -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     accounts,
+    dca_settings,
     deezy_btc_ln_swaps,
     deezy_secret_keys,
     internal_user_mappings,
