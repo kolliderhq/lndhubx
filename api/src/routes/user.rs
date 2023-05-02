@@ -917,6 +917,10 @@ pub async fn set_dca_settings(
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
+    if let Err(_) = DcaSetting::delete(&conn, uid as i32) {
+        dbg!("Dca setting doesn't exist yet.");
+    };
+
     let insertable_dca_setting = InsertableDcaSetting {
         uid: uid as i32,
         amount: data.amount.clone(),
