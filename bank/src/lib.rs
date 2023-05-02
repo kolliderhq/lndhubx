@@ -3,10 +3,13 @@ extern crate core;
 pub mod accountant;
 pub mod bank_engine;
 pub mod ledger;
+pub mod dca;
 
 use bank_engine::*;
 use futures::prelude::*;
 use std::time::Instant;
+
+use dca::dca_task;
 
 use diesel::{r2d2::ConnectionManager, PgConnection};
 use zmq::Socket as ZmqSocket;
@@ -96,6 +99,7 @@ pub async fn start(
     );
 
     let (invoice_tx, invoice_rx) = bounded(1024);
+    let (dca_tx, dca_rx) = bounded(1024);
     let (priority_tx, priority_rx) = bounded(1024);
 
     let invoice_task = {
@@ -105,6 +109,14 @@ pub async fn start(
     };
 
     tokio::spawn(invoice_task);
+
+    let dca_task = {
+        async move {
+            dca_task(dca_tx).await;
+        }
+    };
+
+    tokio::spawn(dca_task);
 
     let (payment_thread_tx, payment_thread_rx) = crossbeam_channel::bounded(2024);
 
@@ -176,6 +188,11 @@ pub async fn start(
 
         // Receiving msgs from the invoice subscribtion.
         if let Ok(msg) = invoice_rx.try_recv() {
+            bank_engine.process_msg(msg, &mut listener).await;
+        }
+
+        // Receiving msgs from dca rask.
+        if let Ok(msg) = dca_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
         }
 

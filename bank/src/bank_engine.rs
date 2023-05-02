@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use core_types::*;
 use diesel::result::Error as DieselError;
-use models::{accounts, invoices::Invoice, nostr_public_keys::NostrPublicKey, user_profiles::UserProfile, users::User};
+use models::{accounts, invoices::Invoice, nostr_public_keys::NostrPublicKey, user_profiles::UserProfile, users::User, dca::DcaSetting};
 
 use msgs::api::*;
 use msgs::bank::*;
@@ -2987,6 +2987,50 @@ impl BankEngine {
 
                     let msg = Message::Api(Api::PaymentResponse(payment_response));
                     listener(msg, ServiceIdentity::Api);
+                }
+                Bank::DcaRebalance(dca_rebalance) => {
+                    let conn = match &self.conn_pool {
+                        Some(conn) => conn,
+                        None => {
+                            slog::error!(self.logger, "No database provided.");
+                            return;
+                        }
+                    };
+
+                    let c = match conn.get() {
+                        Ok(psql_connection) => psql_connection,
+                        Err(_) => {
+                            slog::error!(self.logger, "Couldn't get psql connection.");
+                            return;
+                        }
+                    };
+
+                    let relevant_users = match DcaSetting::get_by_interval(&c, dca_rebalance.interval_name) {
+                        Ok(u) => u,
+                        Err(_) => {
+                            slog::info!(self.logger, "No relevant users found.");
+                            return
+                        }
+                    };
+                    relevant_users.iter().for_each(|user| {
+
+                        let from_currency = Currency::from_str(&user.from_currency).unwrap();
+                        let to_currency = Currency::from_str(&user.to_currency).unwrap();
+                        let amount = user.amount.to_string();
+                        let amount = Decimal::from_str(&amount).unwrap();
+
+                        let swap_request = SwapRequest {
+                            req_id: Uuid::new_v4(),
+                            uid: user.uid as u64,
+                            amount: Money::new(from_currency, amount),
+                            from: from_currency,
+                            to: to_currency,
+                            quote_id: None
+                        };
+
+                        let msg = Message::Api(Api::SwapRequest(swap_request));
+                        listener(msg, ServiceIdentity::Loopback)
+                    })
                 }
             },
             Message::Cli(Cli::MakeTx(make_tx)) => {

@@ -36,7 +36,7 @@ rust_decimal_macros = { version = "1.12.3" }
 rust_decimal= { version = "1.12.3" }
 
 uuid = { version = "0.8", features = ["serde", "v4"] }
-
+bigdecimal = { version = "0.1.2", features = ["serde"]}
 
 [dependencies.utils]
 path = "../utils"

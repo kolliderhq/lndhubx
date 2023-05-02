@@ -3,10 +3,12 @@ use actix_web::{
     web::{Json, Query},
     HttpResponse,
 };
+use bigdecimal::BigDecimal;
 
 use core_types::{Currency, Money};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use std::str::FromStr;
 
 use actix_web::http::header;
 use std::{sync::Arc, time::Duration};
@@ -880,13 +882,13 @@ pub async fn delete_dca_settings(pool: WebDbPool, auth_data: AuthData) -> Result
 
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "application/json"))
-        .json(json!({})))
+        .json(json!({"status": "ok"})))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DcaSettingData {
     pub interval: String,
-    pub amount: i64,
+    pub amount: BigDecimal,
     pub from_currency: String,
     pub to_currency: String
 }
@@ -899,11 +901,25 @@ pub async fn set_dca_settings(
 ) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
+    let intervals = vec!["1d".to_string(), "1w".to_string(), "1m".to_string()];
+
+    if !intervals.contains(&data.interval) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    if let Err(_) = Currency::from_str(&data.from_currency) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
+    if let Err(_) = Currency::from_str(&data.to_currency) {
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
+    }
+
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
     let insertable_dca_setting = InsertableDcaSetting {
         uid: uid as i32,
-        amount: data.amount,
+        amount: data.amount.clone(),
         interval: data.interval.clone(),
         from_currency: data.from_currency.clone(),
         to_currency: data.to_currency.clone()

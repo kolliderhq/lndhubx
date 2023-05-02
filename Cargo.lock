@@ -376,6 +376,7 @@ dependencies = [
  "actix-web",
  "actix-web-httpauth",
  "alcoholic_jwt",
+ "bigdecimal",
  "bincode",
  "boringauth",
  "chrono",

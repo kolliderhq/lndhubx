@@ -16,6 +16,12 @@ pub struct PaymentResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DcaRebalance {
+    pub interval_name: String
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Bank {
     PaymentResult(PaymentResult),
+    DcaRebalance(DcaRebalance)
 }

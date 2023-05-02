@@ -13,7 +13,7 @@ pub struct DcaSetting {
     pub id: i32,
     pub uid: i32,
     pub interval: String,
-    pub amount: i64,
+    pub amount: BigDecimal,
     pub from_currency: String,
     pub to_currency: String,
 }
@@ -23,6 +23,11 @@ impl DcaSetting {
         dca_settings::dsl::dca_settings
             .filter(dca_settings::uid.eq(uid))
             .first::<Self>(conn)
+    }
+    pub fn get_by_interval(conn: &diesel::PgConnection, interval: String) -> Result<Vec<Self>, DieselError> {
+        dca_settings::dsl::dca_settings
+            .filter(dca_settings::interval.eq(interval))
+            .load(conn)
     }
     pub fn delete(conn: &PgConnection, uid: i32) -> QueryResult<usize> {
         diesel::delete(
@@ -38,7 +43,7 @@ impl DcaSetting {
 pub struct InsertableDcaSetting {
     pub uid: i32,
     pub interval: String,
-    pub amount: i64,
+    pub amount: BigDecimal,
     pub from_currency: String,
     pub to_currency: String
 }
