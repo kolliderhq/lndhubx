@@ -818,7 +818,7 @@ pub async fn make_onchain_swap(
     let body = DeezySwapRequestBody {
         amount_sats: data.amount,
         on_chain_address: data.address.clone(),
-        on_chain_sats_per_vbyte: 2,
+        on_chain_sats_per_vbyte: 3,
     };
 
     let res = client
