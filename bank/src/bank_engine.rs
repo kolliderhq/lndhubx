@@ -768,6 +768,7 @@ impl BankEngine {
         };
 
         let fees = Money::zero(payment_request.currency);
+        // This should be in outbound currency.
         let amount = payment_request.amount.unwrap();
 
         let mut payment_response = PaymentResponse {
@@ -1890,6 +1891,9 @@ impl BankEngine {
                     if msg.currency == Currency::BTC {
                         msg.rate = Some(Rate::new(Currency::BTC, Currency::BTC, dec!(1)));
                     }
+
+                    // Amount is aways in outbound currency.
+                    msg.amount = Some(msg.invoice_amount.unwrap().exchange(&msg.rate.unwrap()).unwrap());
 
                     let mut invoice = if let Ok(invoice) =
                         models::invoices::Invoice::get_by_payment_request(&psql_connection, payment_request.clone())
