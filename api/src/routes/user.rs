@@ -799,6 +799,15 @@ pub struct LnBtcSwapResponse {
     pub fee_sats: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LnBtcSwapInfoResponse {
+    pub liquidity_fee_ppm: u64,
+    pub on_chain_bytes_estimate: u64,
+    pub max_swap_amount_sats: u64,
+    pub min_swap_amount_sats: u64,
+    pub available: bool,
+}
+
 #[post("/make_onchain_swap")]
 pub async fn make_onchain_swap(
     pool: WebDbPool,
@@ -815,10 +824,34 @@ pub async fn make_onchain_swap(
 
     let client = reqwest::Client::new();
 
-    let body = DeezySwapRequestBody {
+    let res = client.get("https://api.deezy.io/v1/swap/info")
+        .header("x-api-token", "")
+        .send();
+
+    let mut response = match res {
+        Ok(r) => r,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    let body = match response.text() {
+        Ok(b) => b,
+        Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
+    };
+
+    dbg!(&body);
+
+    let swap_info_response: LnBtcSwapInfoResponse = match serde_json::from_str(&body) {
+        Ok(sp) => sp,
+        Err(err) => {
+            dbg!(&err);
+            return Err(ApiError::External(ExternalError::FailedToFetchExternalData));
+        }
+    };
+
+    let mut body = DeezySwapRequestBody {
         amount_sats: data.amount,
         on_chain_address: data.address.clone(),
-        on_chain_sats_per_vbyte: 3,
+        on_chain_sats_per_vbyte: swap_info_response.on_chain_bytes_estimate,
     };
 
     let res = client
