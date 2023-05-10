@@ -780,10 +780,18 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
         .json(json!({})))
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum OnchainSpeed {
+    Fast,
+    Medium,
+    Slow
+}
+
 #[derive(Deserialize)]
 pub struct OnchainSwapData {
     pub amount: u64,
     pub address: String,
+    pub speed: Option<OnchainSpeed>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -799,13 +807,16 @@ pub struct LnBtcSwapResponse {
     pub fee_sats: u64,
 }
 
+
 #[derive(Serialize, Deserialize, Debug)]
-pub struct LnBtcSwapInfoResponse {
-    pub liquidity_fee_ppm: u64,
-    pub on_chain_bytes_estimate: u64,
-    pub max_swap_amount_sats: u64,
-    pub min_swap_amount_sats: u64,
-    pub available: bool,
+pub struct FeeEstimates {
+    pub sat_per_vbyte: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FeeEstimateResponse {
+    pub timestamp: u64,
+    pub estimates: HashMap<String, FeeEstimates>
 }
 
 #[post("/make_onchain_swap")]
@@ -824,8 +835,7 @@ pub async fn make_onchain_swap(
 
     let client = reqwest::Client::new();
 
-    let res = client.get("https://api.deezy.io/v1/swap/info")
-        .header("x-api-token", "")
+    let res = client.get("https://bitcoiner.live/api/fees/estimates/latest")
         .send();
 
     let mut response = match res {
@@ -840,7 +850,7 @@ pub async fn make_onchain_swap(
 
     dbg!(&body);
 
-    let swap_info_response: LnBtcSwapInfoResponse = match serde_json::from_str(&body) {
+    let fee_estimate_response: FeeEstimateResponse = match serde_json::from_str(&body) {
         Ok(sp) => sp,
         Err(err) => {
             dbg!(&err);
@@ -848,16 +858,26 @@ pub async fn make_onchain_swap(
         }
     };
 
+    let confirmation_time = if let Some(speed) = &data.speed {
+        match speed {
+            OnchainSpeed::Fast => String::from("30"),
+            OnchainSpeed::Medium => String::from("60"),
+            OnchainSpeed::Slow => String::from("120"),
+        }
+    } else {
+        String::from("30")
+    };
+
     let mut body = DeezySwapRequestBody {
         amount_sats: data.amount,
         on_chain_address: data.address.clone(),
-        on_chain_sats_per_vbyte: swap_info_response.on_chain_bytes_estimate,
+        on_chain_sats_per_vbyte: fee_estimate_response.estimates.get(&confirmation_time).unwrap().sat_per_vbyte as u64,
     };
 
     let res = client
         .post("https://api.deezy.io/v1/swap")
         .body(serde_json::to_string(&body).unwrap())
-        .header("x-api-token", "")
+        .header("x-api-token", "6c6c098933005b7cc5e08d989b7c24bc")
         .header("Content-Type", "application/json")
         .send();
 
