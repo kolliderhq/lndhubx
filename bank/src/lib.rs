@@ -17,6 +17,7 @@ use zmq::Socket as ZmqSocket;
 use core_types::*;
 use crossbeam_channel::bounded;
 use msgs::*;
+use msgs::journal::{Transaction, Journal};
 
 use lnd_connector::connector::*;
 use rust_decimal::prelude::*;
@@ -74,6 +75,46 @@ pub async fn insert_bank_state(bank: &BankEngine, client: &Client, bucket: &str)
     }
 }
 
+pub async fn insert_transaction(client: &Client, tx: Transaction, bucket: &str) -> Result<(), ()> {
+    let fields = vec![
+        ("outbound_amount", tx.outbound_amount),
+		("inbound_amount", tx.inbound_amount),
+        ("fees", tx.fees),
+        ("exchange_rate", tx.exchange_rate),
+    ];
+
+    let tags = vec![
+        ("outbound_currency", tx.outbound_currency),
+        ("inbound_currency", tx.inbound_currency),
+        ("outbound_uid", tx.outbound_uid.to_string()),
+        ("inbound_uid", tx.inbound_uid.to_string()),
+        ("tx_type", tx.tx_type),
+    ];
+
+    let mut builder = fields.into_iter().fold(
+        influxdb2::models::DataPoint::builder("summary_transactions"),
+        |builder, (field_name, value)| match value.to_f64() {
+            Some(converted) => builder.field(field_name, converted),
+            None => builder,
+        },
+    );
+
+    tags.into_iter().fold(
+        influxdb2::models::DataPoint::builder("summary_transactions"),
+        |builder, (tag_name, value)| {
+            builder.tag(tag_name, value)
+        },
+    );
+
+    if let Ok(data_point) = builder.build() {
+        let points = vec![data_point];
+        if let Err(err) = client.write(bucket, stream::iter(points)).await {
+            eprintln!("Failed to write point to Influx. Err: {err}");
+        }
+    }
+    Ok(())
+}
+
 pub async fn start(
     settings: BankEngineSettings,
     lnd_connector_settings: LndConnectorSettings,
@@ -101,6 +142,7 @@ pub async fn start(
     let (invoice_tx, invoice_rx) = bounded(1024);
     let (dca_tx, dca_rx) = bounded(1024);
     let (priority_tx, priority_rx) = bounded(1024);
+    let (journal_tx, journal_rx) = bounded(1024);
 
     let invoice_task = {
         async move {
@@ -161,6 +203,11 @@ pub async fn start(
                 panic!("Failed to send priority message: {err:?}");
             }
         }
+        ServiceIdentity::Journal => {
+            if let Err(err) = journal_tx.send(msg) {
+                panic!("Failed to send priority message: {err:?}");
+            }
+        }
         ServiceIdentity::Nostr => {
             utils::xzmq::send_as_bincode(&nostr_sender, &msg);
         }
@@ -212,6 +259,15 @@ pub async fn start(
 
         if let Ok(msg) = priority_rx.try_recv() {
             bank_engine.process_msg(msg, &mut listener).await;
+        }
+
+        if let Ok(msg) = journal_rx.try_recv() {
+            match msg {
+                Message::Journal(Journal::Transaction(msg))=> {
+                    insert_transaction(&influx_client, msg, &settings.influx_bucket.clone()).await;
+                }
+                _ => {}
+            }
         }
 
         if let Ok(frame) = cli_socket.recv_msg(1) {

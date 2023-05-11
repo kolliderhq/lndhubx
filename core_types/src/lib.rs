@@ -217,6 +217,7 @@ pub enum ServiceIdentity {
     Dealer,
     Loopback,
     Nostr,
+    Journal
 }
 
 #[derive(Debug, Clone)]

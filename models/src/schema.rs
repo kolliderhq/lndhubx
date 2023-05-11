@@ -181,6 +181,7 @@ table! {
         username -> Text,
         password -> Text,
         is_internal -> Bool,
+        origin -> Nullable<Text>,
     }
 }
 

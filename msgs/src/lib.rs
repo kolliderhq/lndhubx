@@ -8,6 +8,7 @@ pub mod cli;
 pub mod dealer;
 pub mod kollider_client;
 pub mod nostr;
+pub mod journal;
 
 use api::*;
 use bank::*;
@@ -15,6 +16,7 @@ use cli::*;
 use dealer::*;
 use kollider_client::*;
 use nostr::*;
+use journal::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deposit {
@@ -44,6 +46,7 @@ pub enum Message {
     Bank(Bank),
     Cli(Cli),
     Nostr(Nostr),
+    Journal(Journal)
 }
 
 #[cfg(test)]

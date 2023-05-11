@@ -50,6 +50,7 @@ pub struct User {
     pub password: String,
     /// Internal user flag
     pub is_internal: bool,
+    pub origin: Option<String>
 }
 
 #[derive(Insertable, Debug, Deserialize)]
@@ -58,6 +59,7 @@ pub struct InsertableUser {
     pub username: String,
     pub password: String,
     pub is_internal: bool,
+    pub origin: Option<String>
 }
 
 impl User {

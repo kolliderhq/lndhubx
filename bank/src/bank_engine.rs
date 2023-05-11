@@ -1,5 +1,6 @@
 use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
+use futures::prelude::*;
 
 use bigdecimal::BigDecimal;
 use std::collections::HashMap;
@@ -8,11 +9,12 @@ use uuid::Uuid;
 
 use core_types::*;
 use diesel::result::Error as DieselError;
-use models::{accounts, invoices::Invoice, nostr_public_keys::NostrPublicKey, user_profiles::UserProfile, users::User, dca::DcaSetting};
+use models::{accounts, invoices::Invoice, nostr_public_keys::NostrPublicKey, user_profiles::UserProfile, users::User, dca::DcaSetting, summary_transactions::SummaryTransaction};
 
 use msgs::api::*;
 use msgs::bank::*;
 use msgs::dealer::*;
+use msgs::journal::*;
 use msgs::*;
 use std::iter::Iterator;
 use utils::currencies::{SATS_DECIMALS, SATS_IN_BITCOIN};
@@ -26,6 +28,7 @@ use rand_core::{OsRng, RngCore};
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use msgs::nostr::Nostr;
 use serde::{Deserialize, Serialize};
+use influxdb2::Client;
 
 use crate::ledger::*;
 
@@ -481,7 +484,7 @@ impl BankEngine {
         }
     }
     /// Double entry transaction logic.
-    pub fn make_summary_tx(
+    pub fn make_summary_tx<F: FnMut(Message, ServiceIdentity)>(
         &self,
         outbound_account: &Account,
         outbound_uid: u64,
@@ -496,6 +499,7 @@ impl BankEngine {
         reference: Option<String>,
         outbound_username: Option<String>,
         inbound_username: Option<String>,
+        listener: &mut F,
     ) -> Result<String, BankError> {
         if amount.value() <= dec!(0) {
             return Err(BankError::FailedTransaction);
@@ -597,23 +601,38 @@ impl BankEngine {
             outbound_uid: outbound_uid as i32,
             inbound_uid: inbound_uid as i32,
             created_at: t as i64,
-            outbound_amount: outbound_amount_bigdec,
-            inbound_amount: inbound_amount_bigdec,
+            outbound_amount: outbound_amount_bigdec.clone(),
+            inbound_amount: inbound_amount_bigdec.clone(),
             outbound_account_id: outbound_account.account_id,
             inbound_account_id: inbound_account.account_id,
             outbound_currency: outbound_account.currency.to_string(),
             inbound_currency: inbound_account.currency.to_string(),
-            exchange_rate: rate_bigdec,
-            tx_type,
-            fees: fee_bigdec,
+            exchange_rate: rate_bigdec.clone(),
+            tx_type: tx_type.clone(),
+            fees: fee_bigdec.clone(),
             reference,
             outbound_username: Some(outbound_username),
             inbound_username: Some(inbound_username),
         };
-
+        
         if tx.insert(&c).is_err() {
             return Err(BankError::FailedTransaction);
         }
+
+        let journal_tx = Message::Journal(Journal::Transaction(Transaction {
+            txid: txid.clone(),
+            outbound_uid: outbound_uid,
+            inbound_uid: inbound_uid,
+            outbound_amount: outbound_amount_bigdec.to_f64().unwrap(),
+            inbound_amount: inbound_amount_bigdec.to_f64().unwrap(),
+            inbound_currency: inbound_account.currency.to_string(),
+            outbound_currency: outbound_account.currency.to_string(),
+            fees: fee_bigdec.to_f64().unwrap(),
+            exchange_rate: rate_bigdec.to_f64().unwrap(),
+            tx_type,
+        }));
+
+        listener(journal_tx, ServiceIdentity::Journal);
 
         Ok(txid)
     }
@@ -879,6 +898,7 @@ impl BankEngine {
                 Some(String::from("InternalTransfer")),
                 Some(format!("{}@kollider.me", outbound_user.username)),
                 Some(format!("{inbound_username}@kollider.me")),
+                listener,
             )
             .is_err()
         {
@@ -1067,6 +1087,7 @@ impl BankEngine {
                                 Some(String::from("ExternalDeposit")),
                                 None,
                                 None,
+                                listener,
                             )
                             .is_err()
                         {
@@ -1267,6 +1288,7 @@ impl BankEngine {
                             Some(String::from("ExternalDeposit")),
                             None,
                             None,
+                            listener,
                         )
                         .is_err()
                     {
@@ -2104,6 +2126,7 @@ impl BankEngine {
                                     Some(String::from("ExternalPayment")),
                                     Some(format!("{outbound_username}@kollider.xyz")),
                                     Some(inbound_username),
+                                    listener,
                                 )
                                 .is_err()
                             {
@@ -2150,6 +2173,7 @@ impl BankEngine {
                                     Some(String::from("ExternalPayment")),
                                     Some(format!("{outbound_username}@kollider.xyz")),
                                     Some(inbound_username),
+                                    listener,
                                 )
                                 .is_err()
                             {
@@ -2463,6 +2487,7 @@ impl BankEngine {
                             Some(String::from("Swap")),
                             None,
                             None,
+                            listener,
                         )
                         .is_err()
                     {
@@ -2934,6 +2959,7 @@ impl BankEngine {
                                     Some(String::from("PaymentRefund")),
                                     None,
                                     None,
+                                    listener,
                                 )
                                 .is_err()
                             {
@@ -2977,6 +3003,7 @@ impl BankEngine {
                                     Some(String::from("PaymentRefund")),
                                     None,
                                     None,
+                                    listener,
                                 )
                                 .is_err()
                             {

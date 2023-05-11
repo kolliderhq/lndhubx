@@ -25,6 +25,7 @@ pub struct RegisterData {
     pub username: Option<String>,
     /// Password field on supplied json.
     pub password: String,
+    pub origin: Option<String>
 }
 
 #[post("/create")]
@@ -80,10 +81,21 @@ pub async fn create(
 
     let hashed_password = hash(&username, &register_data.password);
 
+    let origin = if let Some(o) = register_data.origin.clone() {
+        if o.len() > 32 {
+            Some(o[..32].to_string())
+        } else {
+            Some(o)
+        }
+    } else {
+        None
+    };
+
     let user = InsertableUser {
         username: username.clone(),
         password: hashed_password,
         is_internal: false,
+        origin,
     };
 
     let uid = match user.insert(&conn) {
