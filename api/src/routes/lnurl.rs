@@ -24,8 +24,8 @@ use utils::xlogging::slog::Logger;
 
 use crate::comms::*;
 use crate::jwt::*;
-use crate::WebDbPool;
 use crate::WebSender;
+use crate::{ApiSettings, WebDbPool};
 
 #[derive(Deserialize, Debug)]
 pub struct CreateLnurlWithdrawalParams {
@@ -180,7 +180,11 @@ pub async fn pay_lnurl_withdrawal(
 }
 
 #[get("/.well-known/lnurlp/{username}")]
-pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<HttpResponse, ApiError> {
+pub async fn lnurl_pay_address(
+    path: Path<String>,
+    pool: WebDbPool,
+    settings: Data<ApiSettings>,
+) -> Result<HttpResponse, ApiError> {
     let username = path.into_inner();
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
@@ -194,10 +198,10 @@ pub async fn lnurl_pay_address(path: Path<String>, pool: WebDbPool) -> Result<Ht
         Err(_) => None,
     };
 
-    let callback = format!("https://kollider.me/api/pay/{username:}");
+    let callback = format!("https://{}/api/pay/{username:}", settings.domain);
     let max_sendable = 1000000000;
     let min_sendable = 1000;
-    let desc = format!("Paid to {username:}@kollider.me");
+    let desc = format!("Paid to {username:}@{}", settings.domain);
     let metadata = json!([["text/plain", desc]]);
 
     let resp = json!({
@@ -227,6 +231,7 @@ pub async fn pay_address(
     query: Query<PayAddressParams>,
     web_sender: WebSender,
     logger: Data<Logger>,
+    settings: Data<ApiSettings>,
 ) -> Result<HttpResponse, ApiError> {
     let username = path.into_inner();
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
@@ -260,7 +265,7 @@ pub async fn pay_address(
         }
         None => {
             let memo = "Lnurl Pay".to_string();
-            let desc = format!("Paid to {username:}@kollider.me");
+            let desc = format!("Paid to {username:}@{}", settings.domain);
             (memo, Some(format!("[[\"text/plain\",\"{desc}\"]]")))
         }
     };

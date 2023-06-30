@@ -38,6 +38,7 @@ pub struct ApiSettings {
     #[serde(default)]
     admin_uids: Option<Vec<UserId>>,
     reserved_usernames: Vec<String>,
+    domain: String,
 }
 
 impl ApiSettings {
@@ -158,6 +159,7 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
 
     let admin_uids = settings
         .admin_uids
+        .clone()
         .unwrap_or_default()
         .into_iter()
         .collect::<HashSet<UserId>>();
@@ -188,6 +190,7 @@ pub async fn start(settings: ApiSettings, logger: Logger) -> std::io::Result<()>
             .app_data(Data::new(creation_limiter.clone()))
             .app_data(Data::new(admin_uids.clone()))
             .app_data(Data::new(reserved_usernames.clone()))
+            .app_data(Data::new(settings.clone()))
             .service(routes::auth::create)
             .service(routes::auth::auth)
             .service(routes::auth::whoami)

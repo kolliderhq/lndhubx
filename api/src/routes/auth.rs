@@ -17,7 +17,7 @@ use models::users::*;
 use utils::xlogging::slog::Logger;
 
 use crate::jwt::*;
-use crate::{CreationLimiter, WebDbPool};
+use crate::{ApiSettings, CreationLimiter, WebDbPool};
 
 #[derive(Deserialize)]
 pub struct RegisterData {
@@ -25,7 +25,7 @@ pub struct RegisterData {
     pub username: Option<String>,
     /// Password field on supplied json.
     pub password: String,
-    pub origin: Option<String>
+    pub origin: Option<String>,
 }
 
 #[post("/create")]
@@ -35,6 +35,7 @@ pub async fn create(
     creation_limiter: Data<Arc<Mutex<CreationLimiter>>>,
     register_data: Json<RegisterData>,
     reserved_usernames: Data<HashSet<String>>,
+    settings: Data<ApiSettings>,
 ) -> Result<HttpResponse, ApiError> {
     let username = match &register_data.username {
         Some(un) => un.clone().to_lowercase(),
@@ -115,10 +116,10 @@ pub async fn create(
         }
     };
 
-    // TODO: Make this configurable.
+    let full_username = format!("{username}@{}", settings.domain);
     let ln_address = InsertableLnAddress {
-        username: format!("{username}@kollider.me"),
-        domain: String::from("kollider.me"),
+        username: full_username,
+        domain: settings.domain.clone(),
     };
 
     if ln_address.insert(&conn).is_err() {
