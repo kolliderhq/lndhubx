@@ -1,6 +1,6 @@
+use futures::prelude::*;
 use rust_decimal::prelude::*;
 use rust_decimal_macros::*;
-use futures::prelude::*;
 
 use bigdecimal::BigDecimal;
 use std::collections::HashMap;
@@ -9,7 +9,10 @@ use uuid::Uuid;
 
 use core_types::*;
 use diesel::result::Error as DieselError;
-use models::{accounts, invoices::Invoice, nostr_public_keys::NostrPublicKey, user_profiles::UserProfile, users::User, dca::DcaSetting, summary_transactions::SummaryTransaction};
+use models::{
+    accounts, dca::DcaSetting, invoices::Invoice, nostr_public_keys::NostrPublicKey,
+    summary_transactions::SummaryTransaction, user_profiles::UserProfile, users::User,
+};
 
 use msgs::api::*;
 use msgs::bank::*;
@@ -25,10 +28,10 @@ use futures::stream::FuturesUnordered;
 use lnd_connector::connector::{LndConnector, LndConnectorSettings};
 use rand_core::{OsRng, RngCore};
 
+use influxdb2::Client;
 use msgs::cli::{Cli, MakeTx, MakeTxResult};
 use msgs::nostr::Nostr;
 use serde::{Deserialize, Serialize};
-use influxdb2::Client;
 
 use crate::ledger::*;
 
@@ -68,6 +71,7 @@ pub struct BankEngineSettings {
     pub deposit_request_rate_limiter_settings: RateLimiterSettings,
     #[serde(default)]
     pub normalize_account_balances: bool,
+    pub domain: String,
 }
 
 impl Default for Ledger {
@@ -126,6 +130,7 @@ pub struct BankEngine {
     pub withdrawal_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
     pub deposit_request_rate_limiter: HashMap<UserId, (u64, Instant)>,
     pub last_rates: HashMap<(Currency, Currency), Rate>,
+    pub domain: String,
 }
 
 impl BankEngine {
@@ -164,6 +169,7 @@ impl BankEngine {
             payment_thread_sender,
             lnd_connector_settings,
             last_rates: HashMap::new(),
+            domain: settings.domain,
         }
     }
 
@@ -614,7 +620,7 @@ impl BankEngine {
             outbound_username: Some(outbound_username),
             inbound_username: Some(inbound_username),
         };
-        
+
         if tx.insert(&c).is_err() {
             return Err(BankError::FailedTransaction);
         }
@@ -896,8 +902,8 @@ impl BankEngine {
                 Some(txid),
                 None,
                 Some(String::from("InternalTransfer")),
-                Some(format!("{}@kollider.me", outbound_user.username)),
-                Some(format!("{inbound_username}@kollider.me")),
+                Some(format!("{}@{}", outbound_user.username, self.domain)),
+                Some(format!("{inbound_username}@{}", self.domain)),
                 listener,
             )
             .is_err()
@@ -1815,7 +1821,7 @@ impl BankEngine {
                             if address.len() == 2 {
                                 let domain = address[1].to_string();
                                 // Making sure this address has generated a payment request.
-                                if msg.payment_request.is_some() && domain != *"kollider.me" {
+                                if msg.payment_request.is_some() && domain != self.domain {
                                     inbound_username = recipient.clone();
                                     let ln_address = models::ln_addresses::InsertableLnAddress {
                                         username: recipient,
@@ -1824,10 +1830,16 @@ impl BankEngine {
                                     if ln_address.insert(&psql_connection).is_err() {
                                         slog::warn!(self.logger, "Wasn't able to insert external ln address");
                                     };
-                                } else if domain == *"kollider.me" && is_internal {
+                                } else if domain == self.domain && is_internal {
                                     msg.recipient = Some(username);
                                     if let Err(err) = self.make_internal_tx(msg.clone(), listener) {
-                                        slog::error!(self.logger, "Failed PaymentRequest for internal kollider.me user: {:?} failed, error: {:?}", msg, err);
+                                        slog::error!(
+                                            self.logger,
+                                            "Failed PaymentRequest for internal {} user: {:?} failed, error: {:?}",
+                                            self.domain,
+                                            msg,
+                                            err
+                                        );
                                     }
                                     return;
                                 }
@@ -2625,7 +2637,7 @@ impl BankEngine {
                         fees: msg.fees,
                     };
 
-                    let lnurl_path = String::from("https://kollider.me/api/lnurl_withdrawal/request");
+                    let lnurl_path = format!("https://{}/api/lnurl_withdrawal/request", self.domain);
                     let q = msg.req_id;
                     let lnurl = if let Ok(encoded) = utils::lnurl::encode(&lnurl_path, Some(q.to_string())) {
                         encoded
@@ -2643,7 +2655,7 @@ impl BankEngine {
                     listener(msg, ServiceIdentity::Api);
                 }
                 Api::GetLnurlWithdrawalRequest(msg) => {
-                    let callback = String::from("https://kollider.me/api/lnurl_withdrawal/pay");
+                    let callback = format!("https://{}/api/lnurl_withdrawal/pay", self.domain);
                     let mut response = GetLnurlWithdrawalResponse {
                         callback,
                         req_id: msg.req_id,
@@ -3040,11 +3052,10 @@ impl BankEngine {
                         Ok(u) => u,
                         Err(_) => {
                             slog::info!(self.logger, "No relevant users found.");
-                            return
+                            return;
                         }
                     };
                     relevant_users.iter().for_each(|user| {
-
                         let from_currency = Currency::from_str(&user.from_currency).unwrap();
                         let to_currency = Currency::from_str(&user.to_currency).unwrap();
                         let amount = user.amount.to_string();
@@ -3056,7 +3067,7 @@ impl BankEngine {
                             amount: Money::new(from_currency, amount),
                             from: from_currency,
                             to: to_currency,
-                            quote_id: None
+                            quote_id: None,
                         };
 
                         let msg = Message::Api(Api::SwapRequest(swap_request));
