@@ -1,3 +1,5 @@
+domain = "local.domain"
+
 ### API Config
 psql_url = "postgres://[psql-user]:[psql-password]@localhost:5432/lndhubx"
 

@@ -6,13 +6,14 @@ use actix_web::{
 use bigdecimal::BigDecimal;
 
 use core_types::{Currency, Money};
+use std::str::FromStr;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
-use std::str::FromStr;
 
 use actix_web::http::header;
 use std::{sync::Arc, time::Duration};
 
+use actix_web::web::Data;
 use rust_decimal::prelude::Decimal;
 use rust_decimal_macros::*;
 use serde::{Deserialize, Serialize};
@@ -26,15 +27,15 @@ use msgs::*;
 
 use crate::comms::*;
 use crate::jwt::*;
-use crate::WebDbPool;
 use crate::WebSender;
+use crate::{ApiSettings, WebDbPool};
 
+use models::dca::{DcaSetting, InsertableDcaSetting};
 use models::deezy_stuff::*;
 use models::invoices::*;
 use models::ln_addresses::*;
 use models::summary_transactions::SummaryTransaction;
 use models::users::User;
-use models::dca::{DcaSetting, InsertableDcaSetting};
 
 const MINIMUM_PATTERN_LENGTH: usize = 1;
 
@@ -564,7 +565,7 @@ pub async fn check_payment(pool: WebDbPool, params: Query<CheckPaymentParams>) -
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
 
     if params.payment_hash.is_none() && params.payment_request.is_none() {
-        return Err(ApiError::Request(RequestError::InvalidDataSupplied))
+        return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
     let invoice = if let Some(ph) = params.payment_hash.clone() {
@@ -580,7 +581,7 @@ pub async fn check_payment(pool: WebDbPool, params: Query<CheckPaymentParams>) -
         };
         i
     } else {
-        return Err(ApiError::Db(DbError::CouldNotFetchData))
+        return Err(ApiError::Db(DbError::CouldNotFetchData));
     };
 
     let response = CheckPaymentHashResponse { paid: invoice.settled };
@@ -664,7 +665,11 @@ pub struct BtcLnSwapResponse {
 }
 
 #[get("/get_onchain_address")]
-pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+pub async fn get_onchain_address(
+    pool: WebDbPool,
+    auth_data: AuthData,
+    settings: Data<ApiSettings>,
+) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
@@ -676,7 +681,7 @@ pub async fn get_onchain_address(pool: WebDbPool, auth_data: AuthData) -> Result
 
     let client = reqwest::Client::new();
     let mut map = HashMap::new();
-    let ln_address = format!("{}@kollider.me", user.username);
+    let ln_address = format!("{}@{}", user.username, settings.domain);
 
     if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid) {
         map.insert("secret_access_key".to_string(), sk.secret_key);
@@ -784,14 +789,14 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
 pub enum OnchainSpeed {
     Fast,
     Medium,
-    Slow
+    Slow,
 }
 
 #[derive(Deserialize)]
 pub struct OnchainSwapData {
     pub amount: u64,
     pub address: String,
-    pub speed: Option<OnchainSpeed>
+    pub speed: Option<OnchainSpeed>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -807,7 +812,6 @@ pub struct LnBtcSwapResponse {
     pub fee_sats: u64,
 }
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FeeEstimates {
     pub sat_per_vbyte: f64,
@@ -816,7 +820,7 @@ pub struct FeeEstimates {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FeeEstimateResponse {
     pub timestamp: u64,
-    pub estimates: HashMap<String, FeeEstimates>
+    pub estimates: HashMap<String, FeeEstimates>,
 }
 
 #[post("/make_onchain_swap")]
@@ -835,8 +839,7 @@ pub async fn make_onchain_swap(
 
     let client = reqwest::Client::new();
 
-    let res = client.get("https://bitcoiner.live/api/fees/estimates/latest")
-        .send();
+    let res = client.get("https://bitcoiner.live/api/fees/estimates/latest").send();
 
     let mut response = match res {
         Ok(r) => r,
@@ -871,7 +874,11 @@ pub async fn make_onchain_swap(
     let mut body = DeezySwapRequestBody {
         amount_sats: data.amount,
         on_chain_address: data.address.clone(),
-        on_chain_sats_per_vbyte: fee_estimate_response.estimates.get(&confirmation_time).unwrap().sat_per_vbyte as u64,
+        on_chain_sats_per_vbyte: fee_estimate_response
+            .estimates
+            .get(&confirmation_time)
+            .unwrap()
+            .sat_per_vbyte as u64,
     };
 
     let res = client
@@ -943,7 +950,7 @@ pub struct DcaSettingData {
     pub interval: String,
     pub amount: BigDecimal,
     pub from_currency: String,
-    pub to_currency: String
+    pub to_currency: String,
 }
 
 #[post("/set_dca_settings")]
@@ -979,7 +986,7 @@ pub async fn set_dca_settings(
         amount: data.amount.clone(),
         interval: data.interval.clone(),
         from_currency: data.from_currency.clone(),
-        to_currency: data.to_currency.clone()
+        to_currency: data.to_currency.clone(),
     };
 
     if insertable_dca_setting.insert(&conn).is_ok() {
