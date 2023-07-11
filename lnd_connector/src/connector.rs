@@ -200,17 +200,16 @@ impl LndConnector {
         let send_request = if let Some(pr) = payment_request {
             let limit = tonic_openssl_lnd::lnrpc::fee_limit::Limit::Fixed(max_fee);
             let fee_limit = tonic_openssl_lnd::lnrpc::FeeLimit { limit: Some(limit) };
-            let send_request = tonic_openssl_lnd::routerrpc::SendPaymentRequest {
+            let send_request = tonic_openssl_lnd::lnrpc::SendRequest {
                 payment_request: pr,
-                fee_limit_sat: max_fee,
+                fee_limit: Some(fee_limit),
                 allow_self_payment: true,
-                timeout_seconds: 60,
                 ..Default::default()
             };
             Some(send_request)
         } else {
             return Err(LndConnectorError::FailedToSendPayment);
-        }
+        };
         // } else {
         //     key_send_request
         // };
