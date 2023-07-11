@@ -1,5 +1,8 @@
 domain = "local.domain"
 
+### Deezy Config
+deezy_api_token = "<DEEZY-API-TOKEN>"
+
 ### API Config
 psql_url = "postgres://[psql-user]:[psql-password]@localhost:5432/lndhubx"
 
@@ -56,7 +59,7 @@ nostr_relays_urls = [
     "wss://brb.io",
     "wss://relay.current.fyi",
     "wss://nostr.bitcoiner.social",
-    "wss://nostr.kollider.xyz"
+    "wss://nostr.kollider.xyz",
 ]
 nostr_historical_profile_indexer = false
 
@@ -135,4 +138,3 @@ level = "debug"
 name = "nostr_engine"
 slack_hook = ""
 slack_channel = ""
-

@@ -560,8 +560,6 @@ pub struct CheckPaymentHashResponse {
 
 #[get("/checkpayment")]
 pub async fn check_payment(pool: WebDbPool, params: Query<CheckPaymentParams>) -> Result<HttpResponse, ApiError> {
-    let payment_hash = params.payment_hash.clone();
-
     let conn = pool.try_get().ok_or(ApiError::Db(DbError::DbConnectionError))?;
 
     if params.payment_hash.is_none() && params.payment_request.is_none() {
@@ -691,7 +689,7 @@ pub async fn get_onchain_address(
 
     let res = client
         .post("https://api.deezy.io/v1/source")
-        .header("x-api-token", "")
+        .header("x-api-token", settings.deezy_api_token.clone())
         .json(&map)
         .send();
 
@@ -741,7 +739,11 @@ pub async fn get_onchain_address(
 }
 
 #[get("/get_btc_ln_swap_state")]
-pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Result<HttpResponse, ApiError> {
+pub async fn get_btc_ln_swap_state(
+    pool: WebDbPool,
+    auth_data: AuthData,
+    settings: Data<ApiSettings>,
+) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
@@ -762,8 +764,11 @@ pub async fn get_btc_ln_swap_state(pool: WebDbPool, auth_data: AuthData) -> Resu
 
     dbg!(&map);
 
-    let res = client.post("https://api.deezy.io/v1/source/lookup").json(&map).send();
-
+    let res = client
+        .post("https://api.deezy.io/v1/source/lookup")
+        .header("x-api-token", settings.deezy_api_token.clone())
+        .json(&map)
+        .send();
     let mut response = match res {
         Ok(r) => r,
         Err(_) => return Err(ApiError::External(ExternalError::FailedToFetchExternalData)),
@@ -828,6 +833,7 @@ pub async fn make_onchain_swap(
     pool: WebDbPool,
     auth_data: AuthData,
     data: Json<OnchainSwapData>,
+    settings: Data<ApiSettings>,
 ) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
@@ -871,7 +877,7 @@ pub async fn make_onchain_swap(
         String::from("30")
     };
 
-    let mut body = DeezySwapRequestBody {
+    let body = DeezySwapRequestBody {
         amount_sats: data.amount,
         on_chain_address: data.address.clone(),
         on_chain_sats_per_vbyte: fee_estimate_response
@@ -884,7 +890,7 @@ pub async fn make_onchain_swap(
     let res = client
         .post("https://api.deezy.io/v1/swap")
         .body(serde_json::to_string(&body).unwrap())
-        .header("x-api-token", "6c6c098933005b7cc5e08d989b7c24bc")
+        .header("x-api-token", settings.deezy_api_token.clone())
         .header("Content-Type", "application/json")
         .send();
 
@@ -935,7 +941,7 @@ pub async fn delete_dca_settings(pool: WebDbPool, auth_data: AuthData) -> Result
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-    let dca_settings = match DcaSetting::delete(&conn, uid as i32) {
+    let _dca_settings = match DcaSetting::delete(&conn, uid as i32) {
         Ok(u) => u,
         Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
     };
@@ -967,17 +973,17 @@ pub async fn set_dca_settings(
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    if let Err(_) = Currency::from_str(&data.from_currency) {
+    if Currency::from_str(&data.from_currency).is_err() {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
-    if let Err(_) = Currency::from_str(&data.to_currency) {
+    if Currency::from_str(&data.to_currency).is_err() {
         return Err(ApiError::Request(RequestError::InvalidDataSupplied));
     }
 
     let conn = pool.get().map_err(|_| ApiError::Db(DbError::DbConnectionError))?;
 
-    if let Err(_) = DcaSetting::delete(&conn, uid as i32) {
+    if DcaSetting::delete(&conn, uid as i32).is_err() {
         dbg!("Dca setting doesn't exist yet.");
     };
 
