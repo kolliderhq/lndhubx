@@ -39,6 +39,7 @@ pub struct ApiSettings {
     admin_uids: Option<Vec<UserId>>,
     reserved_usernames: Vec<String>,
     domain: String,
+    deezy_api_token: String,
 }
 
 impl ApiSettings {
