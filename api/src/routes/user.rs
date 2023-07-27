@@ -662,11 +662,17 @@ pub struct BtcLnSwapResponse {
     secret_access_key: String,
 }
 
+#[derive(Deserialize)]
+pub struct LnAddressParams {
+    lnurl_or_lnaddress: Option<String>,
+}
+
 #[get("/get_onchain_address")]
 pub async fn get_onchain_address(
     pool: WebDbPool,
     auth_data: AuthData,
     settings: Data<ApiSettings>,
+    params: Query<LnAddressParams>,
 ) -> Result<HttpResponse, ApiError> {
     let uid = auth_data.uid as u64;
 
@@ -679,7 +685,10 @@ pub async fn get_onchain_address(
 
     let client = reqwest::Client::new();
     let mut map = HashMap::new();
-    let ln_address = format!("{}@{}", user.username, settings.domain);
+    let ln_address = match params.lnurl_or_lnaddress.clone() {
+        Some(ln) => ln,
+        None => format!("{}@{}", user.username, settings.domain),
+    };
 
     if let Ok(sk) = DeezySecretKey::get_by_uid(&conn, user.uid) {
         map.insert("secret_access_key".to_string(), sk.secret_key);
