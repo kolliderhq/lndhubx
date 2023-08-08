@@ -193,7 +193,7 @@ pub async fn lnurl_pay_address(
         Err(_) => return Err(ApiError::Db(DbError::UserDoesNotExist)),
     };
 
-    let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, String::from("kollider")) {
+    let nostr_pubkey = match NostrPublicKey::get_by_username(&conn, username.clone()) {
         Ok(pubk) => Some(pubk.pubkey),
         Err(_) => None,
     };
